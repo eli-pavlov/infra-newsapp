@@ -1,4 +1,3 @@
-// .github/workflows/plan.yml
 name: plan
 on:
   workflow_dispatch: {}
