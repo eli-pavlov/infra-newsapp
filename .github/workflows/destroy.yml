@@ -16,12 +16,13 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.5
+          terraform_version: 1.9.5
+          terraform_wrapper: false
 
       - name: Write OCI key (PEM) to runner
         run: |
           umask 077
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
+          printf '%s' "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
 
       - name: Create backend.oci.hcl
         run: |
