@@ -25,26 +25,22 @@ jobs:
         with:
           terraform_version: 1.7.5
 
-      - name: Create backend.oci.hcl
+      - name: Create backend.oci.hcl for Terraform Init
         run: |
           cat > backend.oci.hcl <<'HCL'
-          bucket    = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace = "${{ secrets.OS_NAMESPACE }}"
-          region    = "${{ secrets.OCI_REGION }}"
-          key       = "${{ secrets.TF_STATE_KEY }}"
+          tenancy_ocid     = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid        = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint      = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem  = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket           = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace        = "${{ secrets.OS_NAMESPACE }}"
+          region           = "${{ secrets.OCI_REGION }}"
+          key              = "${{ secrets.TF_STATE_KEY }}"
           workspace_key_prefix = "envs/"
           HCL
 
       - name: Terraform init (root)
         env:
-          # --- OCI Backend Authentication Variables ---
-          # These are required for 'terraform init' to connect to the state bucket.
-          OCI_TENANCY_OCID:     ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_USER_OCID:        ${{ secrets.OCI_USER_OCID }}
-          OCI_FINGERPRINT:      ${{ secrets.OCI_FINGERPRINT }}
-          OCI_REGION:           ${{ secrets.OCI_REGION }}
-          OCI_PRIVATE_KEY:      ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-
           # --- Terraform Input Variables ---
           # These are for configuring the resources in your .tf files.
           TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
@@ -65,14 +61,7 @@ jobs:
 
       - name: Terraform plan
         env:
-          # Set the OCI provider variables again for the plan step
-          OCI_TENANCY_OCID:     ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_USER_OCID:        ${{ secrets.OCI_USER_OCID }}
-          OCI_FINGERPRINT:      ${{ secrets.OCI_FINGERPRINT }}
-          OCI_REGION:           ${{ secrets.OCI_REGION }}
-          OCI_PRIVATE_KEY:      ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-          
-          # Set the Terraform input variables
+          # Set the Terraform input variables for the plan step
           TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
           TF_VAR_user_ocid:           ${{ secrets.OCI_USER_OCID }}
           TF_VAR_fingerprint:         ${{ secrets.OCI_FINGERPRINT }}
