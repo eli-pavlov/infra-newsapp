@@ -7,8 +7,6 @@ variable "compartment_ocid" {}
 variable "availability_domain" {}
 variable "os_image_id" {}
 variable "cluster_name" {}
-variable "public_key_path" {}
-variable "admin_cidr" {}
 
 module "network" {
   source            = "./modules/network"
