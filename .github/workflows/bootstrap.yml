@@ -2,19 +2,15 @@ name: bootstrap
 on:
   workflow_dispatch: {}
   push:
-    branches:
-      - main
-      - master
+    branches: [main]
 
 permissions:
   contents: read
 
+
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
@@ -25,15 +21,35 @@ jobs:
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.7.5
+        with: { terraform_version: 1.7.5 }
 
       - name: Write OCI key (PEM) to runner
         run: |
           umask 077
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
 
-      - name: Terraform init (bootstrap)
+      - name: Fingerprint sanity check
+        run: |
+          FP=$(openssl rsa -pubout -outform DER -in "$RUNNER_TEMP/oci_api_key.pem" 2>/dev/null | openssl sha1 -c | awk '{print $2}')
+          echo "Fingerprint: $FP"
+          [ "$FP" = "${{ secrets.OCI_FINGERPRINT }}" ] || { echo "::error::PEM fingerprint != OCI_FINGERPRINT"; exit 1; }
+
+      - name: Terraform init
+        working-directory: bootstrap/state-bucket
+        env:
+          # consumed by the OCI provider
+          OCI_TENANCY_OCID:     ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID:        ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT:      ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION:           ${{ secrets.OCI_REGION }}
+          OCI_PRIVATE_KEY_PATH: ${{ runner.temp }}/oci_api_key.pem
+          # your TF input vars
+          TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
+          TF_VAR_bucket_name:      ${{ secrets.TF_STATE_BUCKET }}
+          TF_VAR_os_namespace:     ${{ secrets.OS_NAMESPACE }}
+        run: terraform init -upgrade
+
+      - name: Terraform apply
         working-directory: bootstrap/state-bucket
         env:
           OCI_TENANCY_OCID:     ${{ secrets.OCI_TENANCY_OCID }}
@@ -41,18 +57,7 @@ jobs:
           OCI_FINGERPRINT:      ${{ secrets.OCI_FINGERPRINT }}
           OCI_REGION:           ${{ secrets.OCI_REGION }}
           OCI_PRIVATE_KEY_PATH: ${{ runner.temp }}/oci_api_key.pem
-        run: terraform init
-
-
-      - name: Terraform apply (bootstrap)
-        working-directory: bootstrap/state-bucket
-        env:
-          TF_VAR_tenancy_ocid:     ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:        ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:      ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_region:           ${{ secrets.OCI_REGION }}
-          TF_VAR_private_key_path: ${{ runner.temp }}/oci_api_key.pem
           TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
           TF_VAR_bucket_name:      ${{ secrets.TF_STATE_BUCKET }}
           TF_VAR_os_namespace:     ${{ secrets.OS_NAMESPACE }}
-        run: terraform apply
+        run: terraform apply -auto-approve
