@@ -60,3 +60,8 @@ variable "private_key_pem" {
   type      = string
   sensitive = true
 }
+variable "admin_cidr" {
+  description = "The IP CIDR of the admin network to allow SSH access. Must be provided as a secret."
+  type        = string
+  # The default value has been removed to make this a required variable.
+}

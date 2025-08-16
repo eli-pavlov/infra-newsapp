@@ -1,27 +1,11 @@
-provider "oci" {
-  tenancy_ocid = var.tenancy_ocid
-  user_ocid    = var.user_ocid
-  fingerprint  = var.fingerprint
-  region       = var.region
-  private_key  = var.private_key_pem
-}
-
 module "network" {
   source            = "./modules/network"
   region            = var.region
   compartment_ocid  = var.compartment_ocid
   tenancy_ocid      = var.tenancy_ocid
-  my_public_ip_cidr = local.resolved_admin_cidr
+  my_public_ip_cidr = var.admin_cidr
 }
 
-data "http" "ip" {
-  url = "https://ifconfig.me/ip"
-}
-
-locals {
-  # If admin_cidr is set, use it; otherwise use caller /32
-  resolved_admin_cidr = var.admin_cidr != "" ? var.admin_cidr : "${data.http.ip.response_body}/32"
-}
 module "cluster" {
   source                 = "./modules/cluster"
   region                 = var.region
