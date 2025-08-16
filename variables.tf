@@ -56,9 +56,9 @@ variable "public_key_path" {
   type        = string
 }
 
-variable "public_key_pem" {
-  description = "The key content."
-  type        = string
+variable "private_key_pem" {
+  type      = string
+  sensitive = true
 }
 
 variable "admin_cidr" {
