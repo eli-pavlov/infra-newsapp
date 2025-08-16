@@ -8,47 +8,68 @@ permissions:
   contents: read
 
 jobs:
-  bootstrap:
+  export:
     runs-on: ubuntu-latest
-    env:
-      TF_IN_AUTOMATION: "1"
-      TF_INPUT: "0"
-      TF_CLI_ARGS_init: "-input=false"
-      TF_CLI_ARGS_apply: "-input=false -auto-approve"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout (not strictly needed, but harmless)
+        uses: actions/checkout@v4
 
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.7.5
-
-      # Provide ONE of these secrets:
-      #   - OCI_PRIVATE_KEY_PEM_B64  (Base64 one-liner)
-      #   - OCI_PRIVATE_KEY_PEM      (raw PEM with \n escapes)
-      - name: Materialize OCI key (auto-detect Base64 vs raw)
-        env:
-          KEY_B64: ${{ secrets.OCI_PRIVATE_KEY_PEM_B64 }}
-          KEY_RAW: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+      - name: Guard required secrets
+        # The correct way to check for multiple secrets is to list them explicitly.
+        # Shell loops cannot be used inside GitHub Actions expressions.
+        shell: bash
         run: |
           set -euo pipefail
-          umask 077
-          OUT="$RUNNER_TEMP/oci_api_key.pem"
-          if [ -n "${KEY_B64:-}" ]; then
-            printf "%s" "${KEY_B64}" | base64 -d > "$OUT" || { echo "::error::Invalid Base64"; exit 1; }
-          elif [ -n "${KEY_RAW:-}" ]; then
-            printf '%b' "${KEY_RAW}" > "$OUT"
-          else
-            echo "::error::Provide OCI_PRIVATE_KEY_PEM_B64 or OCI_PRIVATE_KEY_PEM"; exit 1
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ]; then
+            
+            echo "::error::One or more required secrets are missing. Check your repository secrets for OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_REGION, OCI_PRIVATE_KEY_PEM, TF_STATE_BUCKET."
+            exit 1
           fi
-          [ -s "$OUT" ] || { echo "::error::PEM file is empty"; exit 1; }
 
-      - name: Fingerprint sanity check
+      - name: Install OCI CLI (quiet)
+        shell: bash
+        run: |
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet oci-cli
+          # Ensure the oci binary (installed under ~/.local/bin) is on PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          oci --version
+
+      - name: Configure OCI CLI
+        shell: bash
         run: |
           set -euo pipefail
-          FP=$(openssl rsa -pubout -outform DER -in "$RUNNER_TEMP/oci_api_key.pem" 2>/dev/null | openssl sha1 -c | awk '{print $2}')
-          echo "Calculated fingerprint: $FP"
-          [ "$FP" = "${{ secrets.OCI_FINGERPRINT }}" ] || { echo "::error::PEM fingerprint != OCI_FINGERPRINT"; exit 1; }
+          mkdir -p "$HOME/.oci"
+          umask 077
+          # write key
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          # write config (absolute path for key_file is required)
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          CFG
+      - name: Upload key to bucket (raw PEM)
+        shell: bash
+        run: |
+          set -euo pipefail
+          OBJ_NAME="diagnostics/keys/oci_api_key.pem"
+          echo "Uploading key to bucket=${BUCKET_NAME}, object=${OBJ_NAME}"
+          oci os object put \
+            --bucket-name "${BUCKET_NAME}" \
+            --name "${OBJ_NAME}" \
+            --file "$HOME/.oci/oci_api_key.pem" \
+            --content-type "application/x-pem-file" \
+            --force > /dev/null
+          echo "Key uploaded."
 
       - name: Terraform init
         working-directory: bootstrap/state-bucket
