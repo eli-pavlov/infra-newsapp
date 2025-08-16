@@ -28,7 +28,7 @@ resource "oci_core_instance_pool" "k3s_servers" {
   load_balancers {
     backend_set_name = "k3s_kubeapi_backend"
     port             = 6443
-    load_balancer_id = var.public_nlb_id 
+    load_balancer_id = var.public_nlb_id
     vnic_selection   = "PrimaryVnic"
   }
 

@@ -1,16 +1,16 @@
 locals {
   public_ingress_rules = {
     http = {
-      source   = "0.0.0.0/0"
-      port     = 80
+      source = "0.0.0.0/0"
+      port   = 80
     }
     https = {
-      source   = "0.0.0.0/0"
-      port     = 443
+      source = "0.0.0.0/0"
+      port   = 443
     }
     kubeapi = {
-      source   = var.my_public_ip_cidr
-      port     = 6443
+      source = var.my_public_ip_cidr
+      port   = 6443
     }
   }
 }

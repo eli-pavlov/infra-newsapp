@@ -14,7 +14,7 @@ variable "compartment_ocid" {
 }
 
 variable "environment" {
-  type = string
+  type    = string
   default = "staging"
 }
 
@@ -110,31 +110,31 @@ variable "ingress_controller_https_nodeport" {
 }
 
 variable "private_lb_id" {
-  type    = string
+  type = string
 }
 
 variable "private_lb_ip_address" {
-  type    = string
+  type = string
 }
 
 variable "public_nlb_id" {
-  type    = string
+  type = string
 }
 
 variable "public_nlb_ip_address" {
-  type    = string
+  type = string
 }
 
 variable "workers_subnet_id" {
-  type    = string
+  type = string
 }
 
 variable "workers_http_nsg_id" {
-  type    = string
+  type = string
 }
 
 variable "servers_kubeapi_nsg_id" {
-  type    = string
+  type = string
 }
 
 variable "k3s_server_pool_size" {

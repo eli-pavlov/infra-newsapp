@@ -1,5 +1,5 @@
 locals {
-  private_ingress_ports = [ "80", "443", "6443" ]
+  private_ingress_ports = ["80", "443", "6443"]
 }
 
 # Private Load Balancer for the K3S nodes
