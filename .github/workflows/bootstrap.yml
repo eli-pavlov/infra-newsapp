@@ -23,6 +23,7 @@ jobs:
         with:
           terraform_version: 1.7.5
 
+      # Decode your Base64 secret into a real PEM file
       - name: Decode private key (Base64 → PEM)
         run: |
           umask 077
@@ -41,9 +42,10 @@ jobs:
           TF_VAR_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
           TF_VAR_user_ocid:       ${{ secrets.OCI_USER_OCID }}
           TF_VAR_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM_B64 }}   # Base64 string, decoded in pre-step
+          # 👇 Pass the *decoded* PEM content into the var
+          TF_VAR_private_key_pem: "$(cat $RUNNER_TEMP/oci_api_key.pem)"
 
-          # your actual module/input vars
+          # Your other TF vars
           TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
           TF_VAR_bucket_name:      ${{ secrets.TF_STATE_BUCKET }}
           TF_VAR_os_namespace:     ${{ secrets.OS_NAMESPACE }}
@@ -56,7 +58,7 @@ jobs:
           TF_VAR_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
           TF_VAR_user_ocid:       ${{ secrets.OCI_USER_OCID }}
           TF_VAR_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM_B64 }}
+          TF_VAR_private_key_pem: "$(cat $RUNNER_TEMP/oci_api_key.pem)"
 
           TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
           TF_VAR_bucket_name:      ${{ secrets.TF_STATE_BUCKET }}
