@@ -28,11 +28,11 @@ locals {
 }
 module "cluster" {
   source                 = "./modules/cluster"
-  tenancy_ocid     = var.tenancy_ocid
-  user_ocid        = var.user_ocid
-  fingerprint      = var.fingerprint
-  private_key_path = var.private_key_path
-  region           = var.region
+  tenancy_ocid           = var.tenancy_ocid
+  user_ocid              = var.user_ocid
+  fingerprint            = var.fingerprint
+  private_key_path       = var.private_key_path
+  region                 = var.region
   availability_domain    = var.availability_domain
   compartment_ocid       = var.compartment_ocid
   cluster_name           = var.cluster_name
