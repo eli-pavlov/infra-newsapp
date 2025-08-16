@@ -6,9 +6,6 @@ variable "availability_domain" {
   type = string
 }
 
-variable "tenancy_ocid" {
-}
-
 variable "compartment_ocid" {
   type = string
 }
@@ -133,10 +130,6 @@ variable "workers_http_nsg_id" {
   type = string
 }
 
-variable "private_key_pem" {
-  type      = string
-  sensitive = true
-}
 variable "servers_kubeapi_nsg_id" {
   type = string
 }
@@ -183,15 +176,4 @@ variable "longhorn_release" {
 variable "expose_kubeapi" {
   type    = bool
   default = true
-}
-variable "user_ocid" {
-  description = "The OCID of the user for the OCI provider."
-  type        = string
-  sensitive   = true
-}
-
-variable "fingerprint" {
-  description = "The fingerprint of the API key for the OCI provider."
-  type        = string
-  sensitive   = true
 }
