@@ -17,16 +17,43 @@ jobs:
       OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
       OCI_REGION:         ${{ secrets.OCI_REGION }}
       OCI_PRIVATE_KEY_PATH: $RUNNER_TEMP/oci_api_key.pem
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Guard required secrets
+        # Map each secret into env, then check them in bash.
+        env:
+          REQ_OCI_TENANCY_OCID:   ${{ secrets.OCI_TENANCY_OCID }}
+          REQ_OCI_USER_OCID:      ${{ secrets.OCI_USER_OCID }}
+          REQ_OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
+          REQ_OCI_REGION:         ${{ secrets.OCI_REGION }}
+          REQ_OCI_PRIVATE_KEY_PEM:${{ secrets.OCI_PRIVATE_KEY_PEM }}
+          REQ_TF_STATE_BUCKET:    ${{ secrets.TF_STATE_BUCKET }}
+          REQ_OS_NAMESPACE:       ${{ secrets.OS_NAMESPACE }}
+          REQ_COMPARTMENT_OCID:   ${{ secrets.COMPARTMENT_OCID }}
         shell: bash
         run: |
-          set -euo pipefail
-          for s in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_REGION OCI_PRIVATE_KEY_PEM TF_STATE_BUCKET OS_NAMESPACE; do
-            [[ -n "${{ secrets[$s] }}" ]] || { echo "::error::Missing secret: $s"; exit 1; }
+          set -eo pipefail
+          missing=()
+          for v in \
+            REQ_OCI_TENANCY_OCID \
+            REQ_OCI_USER_OCID \
+            REQ_OCI_FINGERPRINT \
+            REQ_OCI_REGION \
+            REQ_OCI_PRIVATE_KEY_PEM \
+            REQ_TF_STATE_BUCKET \
+            REQ_OS_NAMESPACE \
+            REQ_COMPARTMENT_OCID
+          do
+            if [ -z "${!v:-}" ]; then
+              missing+=("${v#REQ_}")
+            fi
           done
+          if ((${#missing[@]})); then
+            echo "::error::Missing secret(s): ${missing[*]}"
+            exit 1
+          fi
 
       - name: Write OCI key (PEM) to runner
         shell: bash
@@ -45,7 +72,6 @@ jobs:
 
       - name: Terraform init (bootstrap/state-bucket)
         working-directory: bootstrap/state-bucket
-        # Only module input vars need TF_VAR_*
         env:
           TF_VAR_region:            ${{ env.OCI_REGION }}
           TF_VAR_tenancy_ocid:      ${{ env.OCI_TENANCY_OCID }}
@@ -69,5 +95,3 @@ jobs:
           TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}
           TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
         run: terraform apply -auto-approve
-
-#test
