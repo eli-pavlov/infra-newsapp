@@ -21,10 +21,9 @@ variable "fingerprint" {
   sensitive   = true
 }
 
-variable "private_key_pem" {
-  description = "PEM-encoded private key contents"
+variable "private_key_path" {
+  description = "Path to the PEM private key on the runner/host"
   type        = string
-  sensitive   = true
 }
 
 # Uncomment if your key is passphrase-protected
