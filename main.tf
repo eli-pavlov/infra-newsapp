@@ -1,13 +1,3 @@
-variable "tenancy_ocid" {}
-variable "user_ocid" {}
-variable "fingerprint" {}
-variable "private_key_path" {}
-variable "region" {}
-variable "compartment_ocid" {}
-variable "availability_domain" {}
-variable "os_image_id" {}
-variable "cluster_name" {}
-
 module "network" {
   source            = "./modules/network"
   region            = var.region
