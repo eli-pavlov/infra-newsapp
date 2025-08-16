@@ -133,6 +133,10 @@ variable "workers_http_nsg_id" {
   type = string
 }
 
+variable "private_key_pem" {
+  type      = string
+  sensitive = true
+}
 variable "servers_kubeapi_nsg_id" {
   type = string
 }
