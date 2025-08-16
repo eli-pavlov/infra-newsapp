@@ -65,11 +65,6 @@ variable "private_subnet_id" {
   type        = string
 }
 
-variable "compartment_ocid" {
-  description = "The OCID of the compartment where resources will be created."
-  type        = string
-}
-
 variable "availability_domain_name" {
   description = "The name of the availability domain to place the load balancer in."
   type        = string
