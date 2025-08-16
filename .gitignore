@@ -35,3 +35,8 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# Backend config (holds bucket/key/endpoint only, no secrets)
+backend.s3.hcl
+*.tfvars
+
