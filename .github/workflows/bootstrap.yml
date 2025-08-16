@@ -11,24 +11,22 @@ jobs:
   bootstrap:
     runs-on: ubuntu-latest
     env:
-      # Provider & backend auth use these:
       OCI_TENANCY_OCID:   ${{ secrets.OCI_TENANCY_OCID }}
       OCI_USER_OCID:      ${{ secrets.OCI_USER_OCID }}
       OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
       OCI_REGION:         ${{ secrets.OCI_REGION }}
-      OCI_PRIVATE_KEY_PATH: $RUNNER_TEMP/oci_api_key.pem
+      OCI_PRIVATE_KEY_PATH: ${{ runner.temp }}/oci_api_key.pem
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Guard required secrets
-        # Map each secret into env, then check them in bash.
         env:
           REQ_OCI_TENANCY_OCID:   ${{ secrets.OCI_TENANCY_OCID }}
           REQ_OCI_USER_OCID:      ${{ secrets.OCI_USER_OCID }}
           REQ_OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
           REQ_OCI_REGION:         ${{ secrets.OCI_REGION }}
-          REQ_OCI_PRIVATE_KEY_PEM:${{ secrets.OCI_PRIVATE_KEY_PEM }}
+          REQ_OCI_PRIVATE_KEY_PEM: ${{ secrets.OCI_PRIVATE_KEY_PEM }}   # <-- space added
           REQ_TF_STATE_BUCKET:    ${{ secrets.TF_STATE_BUCKET }}
           REQ_OS_NAMESPACE:       ${{ secrets.OS_NAMESPACE }}
           REQ_COMPARTMENT_OCID:   ${{ secrets.COMPARTMENT_OCID }}
@@ -54,6 +52,8 @@ jobs:
             echo "::error::Missing secret(s): ${missing[*]}"
             exit 1
           fi
+
+
 
       - name: Write OCI key (PEM) to runner
         shell: bash
