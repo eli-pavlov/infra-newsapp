@@ -26,16 +26,16 @@ terraform {
 provider "oci" {
   # The tenancy_ocid is a required argument that uniquely identifies
   # your tenancy in OCI.
-  tenancy_ocid     = var.tenancy_ocid
+  tenancy_ocid = var.tenancy_ocid
   # The user_ocid is a required argument that identifies the user account
   # that Terraform will use for authentication.
-  user_ocid        = var.user_ocid
+  user_ocid = var.user_ocid
   # The fingerprint corresponds to the fingerprint of the public key
   # associated with the user.
-  fingerprint      = var.fingerprint
+  fingerprint = var.fingerprint
   # The private_key_path tells the OCI provider where to find the private key
   # file on the runner. This is the key that was written from the secret.
   private_key_path = var.private_key_path
   # The region is the geographical location where resources will be created.
-  region           = var.region
+  region = var.region
 }
