@@ -27,7 +27,8 @@ jobs:
       - name: Decode private key (Base64 → PEM)
         run: |
           umask 077
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | base64 -d > "$RUNNER_TEMP/oci_api_key.pem"
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM_B64 }}" | base64 -d > "$RUNNER_TEMP/oci_api_key.pem"
+
 
       - name: Fingerprint sanity check
         run: |
