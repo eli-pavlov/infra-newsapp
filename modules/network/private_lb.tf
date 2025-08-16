@@ -1,4 +1,10 @@
-locals { private_ingress_ports = [80, 443, 6443] }  # numbers, not strings
+locals {
+  private_ingress_ports = [
+    80,
+    443,
+    6443
+  ]
+}
 
 
 # Private Load Balancer for the K3S nodes
@@ -69,20 +75,16 @@ resource "oci_core_network_security_group" "private_lb" {
 
 resource "oci_core_network_security_group_security_rule" "private" {
   for_each                  = toset(local.private_ingress_ports)
-  network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "INGRESS"
-  protocol                  = 6 # tcp
-
-  description = "Allow port ${each.value} from K3S Public Load Balancer Security Group"
-
-  source      = oci_core_network_security_group.public_nlb.id
-  source_type = "NETWORK_SECURITY_GROUP"
-  stateless   = false
-
+  protocol                  = "6" # TCP
+  network_security_group_id = oci_core_network_security_group.private.id
+  source                    = module.network.workers_subnet_id
+  source_type               = "CIDR_BLOCK"
+  stateless                 = false
   tcp_options {
     destination_port_range {
-      max = each.value
-      min = each.value
+      max = each.key
+      min = each.key
     }
   }
 }
