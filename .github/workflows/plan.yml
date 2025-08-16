@@ -84,6 +84,9 @@ jobs:
           TF_VAR_cluster_name:         ${{ secrets.CLUSTER_NAME }}
           TF_VAR_public_key_path:      ${{ runner.temp }}/ssh_public_key.pub
           TF_VAR_admin_cidr:           ${{ secrets.ADMIN_CIDR }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
+          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
         run: terraform plan -out=tfplan
 
       - name: Upload plan artifact
