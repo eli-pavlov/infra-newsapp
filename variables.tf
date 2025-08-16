@@ -20,12 +20,6 @@ variable "fingerprint" {
   sensitive   = true
 }
 
-variable "private_key_path" {
-  description = "The file path to the API key's private key."
-  type        = string
-  sensitive   = true
-}
-
 variable "region" {
   description = "The OCI region to deploy resources in."
   type        = string
@@ -56,9 +50,9 @@ variable "public_key_path" {
   type        = string
 }
 
-variable "private_key_pem" {
-  type      = string
-  sensitive = true
+variable "public_key_pem" {
+  description = "The key content."
+  type        = string
 }
 
 variable "admin_cidr" {
@@ -80,4 +74,8 @@ variable "os_namespace" {
 variable "TF_STATE_KEY" {
   description = "The key to use for the remote Terraform state file."
   type        = string
+}
+variable "private_key_pem" {
+  type      = string
+  sensitive = true
 }
