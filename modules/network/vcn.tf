@@ -96,4 +96,3 @@ resource "oci_identity_policy" "compute_dynamic_group_policy" {
     "allow dynamic-group ${oci_identity_dynamic_group.compute_dynamic_group.name} to read compute-management-family in compartment id ${var.compartment_ocid}"
   ]
 }
-

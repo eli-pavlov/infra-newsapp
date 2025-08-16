@@ -1,34 +1,51 @@
-variable "cluster_name" {
-  description = "The name of the Kubernetes cluster."
-  type        = string
+variable "region" {
+  type = string
 }
 
-variable "vcn_id" {
-  description = "The OCID of the VCN to deploy the resources into."
-  type        = string
+variable "tenancy_ocid" {
+  type = string
 }
 
 variable "compartment_ocid" {
-  description = "The OCID of the compartment where resources will be created."
-  type        = string
+  type = string
 }
 
-variable "private_subnet_id" {
-  description = "The OCID of the private subnet for the private load balancer."
-  type        = string
+variable "environment" {
+  type    = string
+  default = "staging"
 }
 
-variable "public_subnet_id" {
-  description = "The OCID of the public subnet for the public network load balancer."
-  type        = string
+variable "oci_core_vcn_dns_label" {
+  type    = string
+  default = "defaultvcn"
 }
 
-variable "workers_subnet_cidr" {
-  description = "The CIDR block of the workers subnet."
-  type        = string
+variable "oci_core_subnet_dns_label10" {
+  type    = string
+  default = "defaultsubnet10"
+}
+
+variable "oci_core_subnet_dns_label11" {
+  type    = string
+  default = "defaultsubnet11"
+}
+
+variable "oci_core_vcn_cidr" {
+  type    = string
+  default = "10.0.0.0/16"
+}
+
+variable "oci_core_subnet_cidr10" {
+  type    = string
+  default = "10.0.0.0/24"
+}
+
+variable "oci_core_subnet_cidr11" {
+  type    = string
+  default = "10.0.1.0/24"
 }
 
 variable "my_public_ip_cidr" {
-  description = "The public IP CIDR of the admin machine for SSH access."
   type        = string
+  description = "My public ip CIDR"
 }
