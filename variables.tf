@@ -61,20 +61,6 @@ variable "admin_cidr" {
   default     = null
 }
 
-variable "bucket_name" {
-  description = "The name of the Terraform state bucket."
-  type        = string
-}
-
-variable "os_namespace" {
-  description = "The namespace of the object storage bucket."
-  type        = string
-}
-
-variable "TF_STATE_KEY" {
-  description = "The key to use for the remote Terraform state file."
-  type        = string
-}
 variable "private_key_pem" {
   type      = string
   sensitive = true
