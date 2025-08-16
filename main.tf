@@ -1,3 +1,15 @@
+variable "tenancy_ocid" {}
+variable "user_ocid" {}
+variable "fingerprint" {}
+variable "private_key_path" {}
+variable "region" {}
+variable "compartment_ocid" {}
+variable "availability_domain" {}
+variable "os_image_id" {}
+variable "cluster_name" {}
+variable "public_key_path" {}
+variable "admin_cidr" {}
+
 module "network" {
   source            = "./modules/network"
   region            = var.region
@@ -16,9 +28,12 @@ locals {
 }
 module "cluster" {
   source                 = "./modules/cluster"
-  region                 = var.region
+  tenancy_ocid     = var.tenancy_ocid
+  user_ocid        = var.user_ocid
+  fingerprint      = var.fingerprint
+  private_key_path = var.private_key_path
+  region           = var.region
   availability_domain    = var.availability_domain
-  tenancy_ocid           = var.tenancy_ocid
   compartment_ocid       = var.compartment_ocid
   cluster_name           = var.cluster_name
   public_key_path        = var.public_key_path
@@ -31,3 +46,4 @@ module "cluster" {
   workers_http_nsg_id    = module.network.private_lb_security_group
   servers_kubeapi_nsg_id = module.network.public_nlb_security_group
 }
+
