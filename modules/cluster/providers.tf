@@ -19,26 +19,3 @@ terraform {
     }
   }
 }
-
-
-# The user_ocid is a required argument that identifies the user account
-# that Terraform will use for authentication.
-variable "user_ocid" {
-  type        = string
-  description = "The OCID of the user."
-}
-
-# The fingerprint corresponds to the fingerprint of the public key
-# associated with the user.
-variable "fingerprint" {
-  type        = string
-  description = "The fingerprint of the user's public key."
-}
-
-provider "oci" {
-  tenancy_ocid = var.tenancy_ocid
-  user_ocid    = var.user_ocid
-  fingerprint  = var.fingerprint
-  private_key  = var.private_key_pem
-  region       = var.region
-}
