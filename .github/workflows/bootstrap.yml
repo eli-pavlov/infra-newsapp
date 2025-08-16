@@ -57,19 +57,6 @@ jobs:
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
           region=${{ secrets.OCI_REGION }}
           CFG
-      - name: Upload key to bucket (raw PEM)
-        shell: bash
-        run: |
-          set -euo pipefail
-          OBJ_NAME="diagnostics/keys/oci_api_key.pem"
-          echo "Uploading key to bucket=${BUCKET_NAME}, object=${OBJ_NAME}"
-          oci os object put \
-            --bucket-name "${BUCKET_NAME}" \
-            --name "${OBJ_NAME}" \
-            --file "$HOME/.oci/oci_api_key.pem" \
-            --content-type "application/x-pem-file" \
-            --force > /dev/null
-          echo "Key uploaded."
 
       - name: Terraform init
         working-directory: bootstrap/state-bucket
