@@ -42,20 +42,6 @@ variable "private_key_path" {
   description = "The path to the OCI private key file on the runner."
 }
 
-# The tenancy_ocid is a required argument that uniquely identifies
-# your tenancy in OCI. It's set from the `tenancy_ocid` variable.
-variable "tenancy_ocid" {
-  type        = string
-  description = "The OCID of the tenancy."
-}
-
-# The region is the geographical location where resources will be created.
-# It's set from the `region` variable.
-variable "region" {
-  type        = string
-  description = "The OCI region to deploy resources in."
-}
-
 provider "oci" {
   tenancy_ocid     = var.tenancy_ocid
   user_ocid        = var.user_ocid
