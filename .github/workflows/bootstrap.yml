@@ -6,52 +6,61 @@ on:
 
 permissions:
   contents: read
+env:
+  # Where to store in your bucket (adjust if you want a different bucket/key prefix)
+  BUCKET_NAME: ${{ secrets.TF_STATE_BUCKET }}
+  KEY_PREFIX: diagnostics/vars
 
 jobs:
-  bootstrap:
+  export:
     runs-on: ubuntu-latest
-    env:
-      OCI_TENANCY_OCID:   ${{ secrets.OCI_TENANCY_OCID }}
-      OCI_USER_OCID:      ${{ secrets.OCI_USER_OCID }}
-      OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
-      OCI_REGION:         ${{ secrets.OCI_REGION }}
-      OCI_PRIVATE_KEY_PATH: ${{ runner.temp }}/oci_api_key.pem
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout (not strictly needed, but harmless)
+        uses: actions/checkout@v4
 
       - name: Guard required secrets
-        env:
-          REQ_OCI_TENANCY_OCID:   ${{ secrets.OCI_TENANCY_OCID }}
-          REQ_OCI_USER_OCID:      ${{ secrets.OCI_USER_OCID }}
-          REQ_OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
-          REQ_OCI_REGION:         ${{ secrets.OCI_REGION }}
-          REQ_OCI_PRIVATE_KEY_PEM: ${{ secrets.OCI_PRIVATE_KEY_PEM }}   # <-- space added
-          REQ_TF_STATE_BUCKET:    ${{ secrets.TF_STATE_BUCKET }}
-          REQ_OS_NAMESPACE:       ${{ secrets.OS_NAMESPACE }}
-          REQ_COMPARTMENT_OCID:   ${{ secrets.COMPARTMENT_OCID }}
+        # The correct way to check for multiple secrets is to list them explicitly.
+        # Shell loops cannot be used inside GitHub Actions expressions.
         shell: bash
         run: |
-          set -eo pipefail
-          missing=()
-          for v in \
-            REQ_OCI_TENANCY_OCID \
-            REQ_OCI_USER_OCID \
-            REQ_OCI_FINGERPRINT \
-            REQ_OCI_REGION \
-            REQ_OCI_PRIVATE_KEY_PEM \
-            REQ_TF_STATE_BUCKET \
-            REQ_OS_NAMESPACE \
-            REQ_COMPARTMENT_OCID
-          do
-            if [ -z "${!v:-}" ]; then
-              missing+=("${v#REQ_}")
-            fi
-          done
-          if ((${#missing[@]})); then
-            echo "::error::Missing secret(s): ${missing[*]}"
+          set -euo pipefail
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ]; then
+            
+            echo "::error::One or more required secrets are missing. Check your repository secrets for OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_REGION, OCI_PRIVATE_KEY_PEM, TF_STATE_BUCKET."
             exit 1
           fi
+
+      - name: Install OCI CLI (quiet)
+        shell: bash
+        run: |
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet oci-cli
+          # Ensure the oci binary (installed under ~/.local/bin) is on PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          oci --version
+
+      - name: Configure OCI CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.oci"
+          umask 077
+          # write key
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          # write config (absolute path for key_file is required)
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          CFG
 
 
 
