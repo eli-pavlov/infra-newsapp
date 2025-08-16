@@ -1,7 +1,3 @@
-locals {
-  resolved_admin_cidr = var.admin_cidr != "" ? var.admin_cidr : "${data.http.ip.response_body}/32"
-}
-
 module "network" {
   source            = "./modules/network"
   region            = var.region
@@ -14,14 +10,10 @@ data "http" "ip" {
   url = "https://ifconfig.me/ip"
 }
 
-module "network" {
-  source                       = "./modules/network"
-  region                       = var.region
-  compartment_ocid             = var.compartment_ocid
-  tenancy_ocid                 = var.tenancy_ocid
-  my_public_ip_cidr            = join("/", [data.http.ip.response_body, "32"])
+locals {
+  # If admin_cidr is set, use it; otherwise use caller /32
+  resolved_admin_cidr = var.admin_cidr != "" ? var.admin_cidr : "${data.http.ip.response_body}/32"
 }
-
 module "cluster" {
   source                       = "./modules/cluster"
   region                       = var.region

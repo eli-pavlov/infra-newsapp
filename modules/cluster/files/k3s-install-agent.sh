@@ -24,10 +24,11 @@ check_os() {
 }
 
 install_oci_cli_ubuntu(){
-  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y python3 python3-pip nginx
+  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y python3 python3-pip nginx python3-jinja2
   systemctl enable nginx
   pip install oci-cli
 }
+
 
 install_oci_cli_oracle(){
   if [[ $major -eq 9 ]]; then
@@ -245,7 +246,8 @@ with open(nginx_config_path, 'w') as handle:
 EOF
 
 chmod +x /root/find_ips.sh
-./root/find_ips.sh
+/root/find_ips.sh
+
 
 python3 /root/render_nginx_config.py
 

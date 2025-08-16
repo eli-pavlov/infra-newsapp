@@ -27,3 +27,9 @@ variable "admin_cidrs" {
   default = []
 }
 
+variable "admin_cidr" {
+  description = "Optional override for kube-API allowlist"
+  type        = string
+  default     = ""
+}
+

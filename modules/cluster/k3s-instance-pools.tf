@@ -68,6 +68,6 @@ resource "oci_core_instance_pool" "k3s_workers" {
   }
 
   depends_on = [
-    resource.oci_core_instance_pool.k3s_servers
+    oci_core_instance_pool.k3s_servers
   ]
 }

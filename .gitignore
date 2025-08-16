@@ -4,6 +4,11 @@
 # .tfstate files
 *.tfstate
 *.tfstate.*
+*.tfvars
+*.key
+*.pub
+*.pem
+*.txt
 
 # Crash log files
 crash.log

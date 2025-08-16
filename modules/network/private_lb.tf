@@ -1,6 +1,5 @@
-locals {
-  private_ingress_ports = [ "80", "443", "6443" ]
-}
+locals { private_ingress_ports = [80, 443, 6443] }  # numbers, not strings
+
 
 # Private Load Balancer for the K3S nodes
 resource "oci_load_balancer_load_balancer" "k3s_private_lb" {
