@@ -1,16 +1,16 @@
 locals {
   public_ingress_rules = {
     http = {
-      source   = "0.0.0.0/0"
-      port     = 80
+      source = "0.0.0.0/0"
+      port   = 80
     }
     https = {
-      source   = "0.0.0.0/0"
-      port     = 443
+      source = "0.0.0.0/0"
+      port   = 443
     }
     kubeapi = {
-      source   = var.my_public_ip_cidr
-      port     = 6443
+      source = var.my_public_ip_cidr
+      port   = 6443
     }
   }
 }
@@ -18,21 +18,20 @@ locals {
 # Public NLB
 resource "oci_network_load_balancer_network_load_balancer" "k3s_public_lb" {
   compartment_id             = var.compartment_ocid
-  display_name               = "K3S Public Network Load Balancer"
-  subnet_id                  = oci_core_subnet.oci_core_subnet11.id
+  display_name               = "${var.cluster_name}-public-nlb"
+  subnet_id                  = var.public_subnet_id
   network_security_group_ids = [oci_core_network_security_group.public_nlb.id]
-
-  is_private                     = false
+  is_private                 = false
   is_preserve_source_destination = false
 }
 
 # Backend Sets
-resource "oci_network_load_balancer_backend_set" "this" {
-  for_each                 = local.public_ingress_rules
-  name                     = "k3s_${each.key}_backend"
-  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
-  policy                   = "FIVE_TUPLE"
-  is_preserve_source       = true
+resource "oci_network_load_balancer_backend_set" "public_nlb_backend" {
+  for_each                   = local.public_ingress_rules
+  name                       = "k3s_${each.key}_backend"
+  network_load_balancer_id   = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
+  policy                     = "FIVE_TUPLE"
+  is_preserve_source         = true
 
   health_checker {
     protocol = "TCP"
@@ -41,24 +40,24 @@ resource "oci_network_load_balancer_backend_set" "this" {
 }
 
 # Listeners
-resource "oci_network_load_balancer_listener" "this" {
-  for_each                 = local.public_ingress_rules
-  default_backend_set_name = oci_network_load_balancer_backend_set.this[each.key].name
-  name                     = "k3s_${each.key}_listener"
-  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
-  port                     = each.value.port
-  protocol                 = "TCP"
+resource "oci_network_load_balancer_listener" "public_nlb_listener" {
+  for_each                   = local.public_ingress_rules
+  default_backend_set_name   = oci_network_load_balancer_backend_set.public_nlb_backend[each.key].name
+  name                       = "k3s_${each.key}_listener"
+  network_load_balancer_id   = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
+  port                       = each.value.port
+  protocol                   = "TCP"
 }
 
 # Security Group
 resource "oci_core_network_security_group" "public_nlb" {
   compartment_id = var.compartment_ocid
-  vcn_id         = oci_core_vcn.default_oci_core_vcn.id
-  display_name   = "K3S Public Network Load Balancer Security Group"
+  vcn_id         = var.vcn_id
+  display_name   = "${var.cluster_name}-public-nlb-nsg"
 }
 
 # Rules
-resource "oci_core_network_security_group_security_rule" "public" {
+resource "oci_core_network_security_group_security_rule" "public_nlb" {
   for_each                  = local.public_ingress_rules
   network_security_group_id = oci_core_network_security_group.public_nlb.id
   direction                 = "INGRESS"
