@@ -1,7 +1,3 @@
-# This file declares all variables used throughout the Terraform configuration.
-# It makes the configuration files cleaner and allows Terraform to validate
-# the existence and types of variables passed to the workflow.
-
 variable "tenancy_ocid" {
   description = "The OCID of the tenancy."
   type        = string
@@ -46,17 +42,19 @@ variable "cluster_name" {
 }
 
 variable "public_key_content" {
-  description = "The file path to the public SSH key for the compute instances."
+  description = "The content of the public SSH key for the compute instances."
   type        = string
+  sensitive   = true
 }
 
 variable "admin_cidr" {
-  description = "The IP CIDR of the admin network to allow SSH access."
+  description = "The IP CIDR of the admin network to allow SSH access. Must be provided as a secret."
   type        = string
-  default     = null
+  # The default value has been removed to make this a required variable.
 }
 
 variable "private_key_pem" {
-  type      = string
-  sensitive = true
+  description = "The content of the OCI private key in PEM format."
+  type        = string
+  sensitive   = true
 }
