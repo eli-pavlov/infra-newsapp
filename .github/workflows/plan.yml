@@ -88,7 +88,6 @@ jobs:
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
           TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
-        run: terraform plan -out=tfplan
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
