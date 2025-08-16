@@ -59,6 +59,9 @@ jobs:
           TF_VAR_cluster_name:       ${{ secrets.CLUSTER_NAME }}
           TF_VAR_public_key_path:    ${{ runner.temp }}/ssh_public_key.pub
           TF_VAR_admin_cidr:         ${{ secrets.ADMIN_CIDR }}
+          TF_VAR_bucket_name:        ${{ secrets.TF_STATE_BUCKET }}
+          TF_VAR_os_namespace:       ${{ secrets.OS_NAMESPACE }}
+          TF_VAR_TF_STATE_KEY:       ${{ secrets.TF_STATE_KEY }}
         run: terraform init -backend-config=backend.oci.hcl
 
       - name: Terraform plan
@@ -74,6 +77,9 @@ jobs:
           TF_VAR_cluster_name:       ${{ secrets.CLUSTER_NAME }}
           TF_VAR_public_key_path:    ${{ runner.temp }}/ssh_public_key.pub
           TF_VAR_admin_cidr:         ${{ secrets.ADMIN_CIDR }}
+          TF_VAR_bucket_name:        ${{ secrets.TF_STATE_BUCKET }}
+          TF_VAR_os_namespace:       ${{ secrets.OS_NAMESPACE }}
+          TF_VAR_TF_STATE_KEY:       ${{ secrets.TF_STATE_KEY }}
         run: terraform plan -out=tfplan
 
       - name: Upload plan artifact
