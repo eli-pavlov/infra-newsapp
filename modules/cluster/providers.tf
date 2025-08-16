@@ -5,7 +5,7 @@
 # download and use the correct provider plugins.
 terraform {
   required_providers {
-    oci       = {
+    oci = {
       source  = "oracle/oci"
       version = "~> 5.0"
     }
