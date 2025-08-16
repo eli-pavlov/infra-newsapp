@@ -40,8 +40,8 @@ resource "oci_core_instance_configuration" "k3s_worker_template" {
       display_name = "k3s worker template"
 
       metadata = {
-        "ssh_authorized_keys" = file(var.public_key_path)
-        "user_data"           = data.cloudinit_config.k3s_worker_tpl.rendered
+        "ssh_authorized_keys" = var.public_key_content
+        "user_data"           = data.cloudinit_config.k3s_server_tpl.rendered
       }
 
       shape = var.compute_shape

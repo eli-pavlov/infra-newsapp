@@ -25,7 +25,7 @@ module "cluster" {
   availability_domain    = var.availability_domain
   compartment_ocid       = var.compartment_ocid
   cluster_name           = var.cluster_name
-  public_key_path        = var.public_key_path
+  public_key_content     = var.public_key_content
   os_image_id            = var.os_image_id
   public_nlb_id          = module.network.public_nlb_id
   public_nlb_ip_address  = module.network.public_nlb_ip_address

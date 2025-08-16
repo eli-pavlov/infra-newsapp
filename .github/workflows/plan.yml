@@ -25,14 +25,6 @@ jobs:
           # Using a consistent version across workflows is recommended
           terraform_version: 1.7.5
 
-      # This step is no longer needed and has been removed.
-      # - name: Write OCI key (PEM) to runner
-      #   ...
-
-      - name: Write SSH public key to runner
-        run: |
-          umask 077
-          echo "${{ secrets.SSH_PUBLIC_KEY }}" > "$RUNNER_TEMP/ssh_public_key.pub"
 
       - name: Create backend.oci.hcl
         run: |
@@ -58,8 +50,8 @@ jobs:
           TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
           TF_VAR_os_image_id:         ${{ secrets.OS_IMAGE_ID }}
           TF_VAR_cluster_name:        ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_public_key_path:     ${{ runner.temp }}/ssh_public_key.pub # This still needs to be a path
           TF_VAR_admin_cidr:          ${{ secrets.ADMIN_CIDR }}
+          TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
         run: terraform init -backend-config=backend.oci.hcl
 
       - name: Terraform validate

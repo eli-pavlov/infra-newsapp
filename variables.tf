@@ -45,7 +45,7 @@ variable "cluster_name" {
   type        = string
 }
 
-variable "public_key_path" {
+variable "public_key_content" {
   description = "The file path to the public SSH key for the compute instances."
   type        = string
 }
