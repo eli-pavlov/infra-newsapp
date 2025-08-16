@@ -34,24 +34,14 @@ jobs:
           set -euo pipefail
           umask 077
           OUT="$RUNNER_TEMP/oci_api_key.pem"
-
           if [ -n "${KEY_B64:-}" ]; then
-            printf "%s" "${KEY_B64}" | base64 -d > "$OUT" || { echo "::error::Invalid Base64 in OCI_PRIVATE_KEY_PEM_B64"; exit 1; }
+            printf "%s" "${KEY_B64}" | base64 -d > "$OUT" || { echo "::error::Invalid Base64"; exit 1; }
           elif [ -n "${KEY_RAW:-}" ]; then
             printf '%b' "${KEY_RAW}" > "$OUT"
           else
-            echo "::error::Provide OCI_PRIVATE_KEY_PEM_B64 (Base64) or OCI_PRIVATE_KEY_PEM (raw with \\n)"; exit 1
+            echo "::error::Provide OCI_PRIVATE_KEY_PEM_B64 or OCI_PRIVATE_KEY_PEM"; exit 1
           fi
-
-          [ -s "$OUT" ] || { echo "::error::PEM file is empty after decoding"; exit 1; }
-
-          # ✅ Correct heredoc for GitHub ENV
-          {
-            echo "TF_VAR_private_key_pem<<EOF"
-            cat "$OUT"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
+          [ -s "$OUT" ] || { echo "::error::PEM file is empty"; exit 1; }
 
       - name: Fingerprint sanity check
         run: |
@@ -63,26 +53,25 @@ jobs:
       - name: Terraform init
         working-directory: bootstrap/state-bucket
         env:
-          TF_VAR_region:          ${{ secrets.OCI_REGION }}
-          TF_VAR_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:       ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
-          # private key is already in TF_VAR_private_key_pem via GITHUB_ENV
-          TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_bucket_name:      ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_os_namespace:     ${{ secrets.OS_NAMESPACE }}
+          TF_VAR_region:            ${{ secrets.OCI_REGION }}
+          TF_VAR_tenancy_ocid:      ${{ secrets.OCI_TENANCY_OCID }}
+          TF_VAR_user_ocid:         ${{ secrets.OCI_USER_OCID }}
+          TF_VAR_fingerprint:       ${{ secrets.OCI_FINGERPRINT }}
+          TF_VAR_private_key_path:  ${{ runner.temp }}/oci_api_key.pem
+          TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}
+          TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}
+          TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
         run: terraform init -upgrade
 
       - name: Terraform apply
         working-directory: bootstrap/state-bucket
         env:
-          TF_VAR_region:          ${{ secrets.OCI_REGION }}
-          TF_VAR_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:       ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
-          # private key already exported
-          TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_bucket_name:      ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_os_namespace:     ${{ secrets.OS_NAMESPACE }}
+          TF_VAR_region:            ${{ secrets.OCI_REGION }}
+          TF_VAR_tenancy_ocid:      ${{ secrets.OCI_TENANCY_OCID }}
+          TF_VAR_user_ocid:         ${{ secrets.OCI_USER_OCID }}
+          TF_VAR_fingerprint:       ${{ secrets.OCI_FINGERPRINT }}
+          TF_VAR_private_key_path:  ${{ runner.temp }}/oci_api_key.pem
+          TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}
+          TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}
+          TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
         run: terraform apply -auto-approve
-#test
