@@ -49,3 +49,28 @@ variable "my_public_ip_cidr" {
   type        = string
   description = "My public ip CIDR"
 }
+
+variable "cluster_name" {
+  description = "The name of the Kubernetes cluster."
+  type        = string
+}
+
+variable "vcn_id" {
+  description = "The OCID of the VCN to deploy the load balancer into."
+  type        = string
+}
+
+variable "private_subnet_id" {
+  description = "The OCID of the private subnet to use for the load balancer."
+  type        = string
+}
+
+variable "compartment_ocid" {
+  description = "The OCID of the compartment where resources will be created."
+  type        = string
+}
+
+variable "availability_domain_name" {
+  description = "The name of the availability domain to place the load balancer in."
+  type        = string
+}

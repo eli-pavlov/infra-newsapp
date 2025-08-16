@@ -27,3 +27,19 @@ resource "oci_core_network_security_group_security_rule" "private" {
     }
   }
 }
+resource "oci_core_network_security_group" "private_lb" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = var.vcn_id
+  display_name   = "${var.cluster_name}-private-lb-nsg"
+}
+
+resource "oci_load_balancer_load_balancer" "k3s_private_lb" {
+  compartment_id = var.compartment_ocid
+  display_name   = "${var.cluster_name}-private-lb"
+  is_private     = true
+  shape          = "100Mbps"
+
+  subnet_ids = [var.private_subnet_id]
+
+  network_security_group_ids = [oci_core_network_security_group.private_lb.id]
+}
