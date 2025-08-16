@@ -1,39 +1,35 @@
+variable "region" {
+  description = "OCI region, e.g., eu-frankfurt-1"
+  type        = string
+}
+
 variable "tenancy_ocid" {
-  type      = string
-  sensitive = true
+  description = "Tenancy OCID"
+  type        = string
+  sensitive   = true
 }
 
 variable "user_ocid" {
-  type      = string
-  sensitive = true
+  description = "User OCID"
+  type        = string
+  sensitive   = true
 }
 
 variable "fingerprint" {
-  type      = string
-  sensitive = true
+  description = "API key fingerprint"
+  type        = string
+  sensitive   = true
 }
 
-variable "private_key_path" {
-  type      = string
-  sensitive = true
+variable "private_key_pem" {
+  description = "PEM-encoded private key contents"
+  type        = string
+  sensitive   = true
 }
 
-variable "region" {
-  type      = string
-  sensitive = true
-}
-
-variable "compartment_ocid" {
-  type      = string
-  sensitive = true
-}
-
-variable "bucket_name" {
-  type      = string
-  sensitive = true
-}
-
-variable "os_namespace" {
-  type      = string
-  sensitive = true
-}
+# Uncomment if your key is passphrase-protected
+# variable "private_key_password" {
+#   description = "Passphrase for the private key"
+#   type        = string
+#   sensitive   = true
+# }
