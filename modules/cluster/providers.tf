@@ -5,7 +5,7 @@
 # download and use the correct provider plugins.
 terraform {
   required_providers {
-    oci = {
+    oci       = {
       source  = "oracle/oci"
       version = "~> 5.0"
     }
@@ -42,17 +42,24 @@ variable "private_key_path" {
   description = "The path to the OCI private key file on the runner."
 }
 
+# The tenancy_ocid is a required argument that uniquely identifies
+# your tenancy in OCI. It's set from the `tenancy_ocid` variable.
+variable "tenancy_ocid" {
+  type        = string
+  description = "The OCID of the tenancy."
+}
+
+# The region is the geographical location where resources will be created.
+# It's set from the `region` variable.
+variable "region" {
+  type        = string
+  description = "The OCI region to deploy resources in."
+}
+
 provider "oci" {
-  # The tenancy_ocid is a required argument that uniquely identifies
-  # your tenancy in OCI. It's set from the `tenancy_ocid` variable.
-  user_ocid = var.user_ocid
-  # The fingerprint corresponds to the fingerprint of the public key
-  # associated with the user. It's set from the `fingerprint` variable.
-  fingerprint = var.fingerprint
-  # The private_key_path tells the OCI provider where to find the private key
-  # file on the runner. This is the key that was written from the secret.
-  # It's set from the `private_key_path` variable.
+  tenancy_ocid     = var.tenancy_ocid
+  user_ocid        = var.user_ocid
+  fingerprint      = var.fingerprint
   private_key_path = var.private_key_path
-  # The region is the geographical location where resources will be created.
-  # It's set from the `region` variable.
+  region           = var.region
 }
