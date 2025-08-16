@@ -20,14 +20,6 @@ terraform {
   }
 }
 
-# --- Variable Declarations ---
-
-# The tenancy_ocid is a required argument that uniquely identifies
-# your tenancy in OCI.
-variable "tenancy_ocid" {
-  type        = string
-  description = "The OCID of the tenancy."
-}
 
 # The user_ocid is a required argument that identifies the user account
 # that Terraform will use for authentication.
@@ -50,17 +42,6 @@ variable "private_key_path" {
   description = "The path to the OCI private key file on the runner."
 }
 
-# The region is the geographical location where resources will be created.
-variable "region" {
-  type        = string
-  description = "The OCI region to deploy resources into."
-}
-
-# --- Provider Configuration ---
-
-# Configure the OCI provider. The values for these arguments are
-# automatically passed in from the GitHub Actions workflow environment
-# variables, which are prefixed with `TF_VAR_`.
 provider "oci" {
   # The tenancy_ocid is a required argument that uniquely identifies
   # your tenancy in OCI. It's set from the `tenancy_ocid` variable.
