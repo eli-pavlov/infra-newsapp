@@ -4,11 +4,7 @@ on:
   # This workflow is typically triggered after a successful 'plan' workflow
   # and a human approval, often via pull request merges.
   # For this example, we'll keep the same push trigger.
-  push:
-    branches:
-      - main
-      - master
-
+  
 permissions:
   contents: read
 
