@@ -56,6 +56,11 @@ variable "public_key_path" {
   type        = string
 }
 
+variable "public_key_pem" {
+  description = "The key content."
+  type        = string
+}
+
 variable "admin_cidr" {
   description = "The IP CIDR of the admin network to allow SSH access."
   type        = string

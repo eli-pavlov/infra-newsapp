@@ -19,17 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.9.5
-          terraform_wrapper: false
-
-      - name: Write OCI key (PEM) to runner
-        run: |
-          umask 077
-          printf '%s' "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
-
       - name: Write SSH public key to runner
         run: |
           umask 077
@@ -50,44 +39,41 @@ jobs:
 
       - name: Terraform init (root)
         env:
-          TF_VAR_tenancy_ocid:         ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:            ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:          ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_region:               ${{ secrets.OCI_REGION }}
-          TF_VAR_private_key_path:     ${{ runner.temp }}/oci_api_key.pem
-          TF_VAR_compartment_ocid:     ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_availability_domain:  ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_os_image_id:          ${{ secrets.OS_IMAGE_ID }}
-          TF_VAR_cluster_name:         ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_public_key_path:      ${{ runner.temp }}/ssh_public_key.pub
-          TF_VAR_admin_cidr:           ${{ secrets.ADMIN_CIDR }}
-          OCI_TENANCY_OCID:     ${{ secrets.OCI_TENANCY_OCID }}
-          OCI_USER_OCID:        ${{ secrets.OCI_USER_OCID }}
-          OCI_FINGERPRINT:      ${{ secrets.OCI_FINGERPRINT }}
-          OCI_REGION:           ${{ secrets.OCI_REGION }}
-          OCI_PRIVATE_KEY_PATH: ${{ runner.temp }}/oci_api_key.pem
+          TF_VAR_tenancy_ocid:          ${{ secrets.OCI_TENANCY_OCID }}
+          TF_VAR_user_ocid:             ${{ secrets.OCI_USER_OCID }}
+          TF_VAR_fingerprint:           ${{ secrets.OCI_FINGERPRINT }}
+          TF_VAR_region:                ${{ secrets.OCI_REGION }}
+          TF_VAR_private_key_pem:       ${{ secrets.OCI_PRIVATE_KEY_PEM }}  # <--- Use key content
+          TF_VAR_compartment_ocid:      ${{ secrets.COMPARTMENT_OCID }}
+          TF_VAR_availability_domain:   ${{ secrets.AVAILABILITY_DOMAIN }}
+          TF_VAR_os_image_id:           ${{ secrets.OS_IMAGE_ID }}
+          TF_VAR_cluster_name:          ${{ secrets.CLUSTER_NAME }}
+          TF_VAR_public_key_path:       ${{ runner.temp }}/ssh_public_key.pub
+          TF_VAR_admin_cidr:            ${{ secrets.ADMIN_CIDR }}
+          OCI_TENANCY_OCID:             ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID:                ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT:              ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION:                   ${{ secrets.OCI_REGION }}
+          OCI_PRIVATE_KEY_PATH:         ${{ runner.temp }}/oci_api_key.pem
         run: terraform init -backend-config=backend.oci.hcl
 
       - name: Terraform validate
         run: terraform validate
 
       - name: Terraform plan
-        run: terraform plan -var="bucket_name=$TF_STATE_BUCKET" -var="os_namespace=$OS_NAMESPACE" -var="TF_STATE_KEY=$TF_STATE_KEY"
         env:
-          TF_VAR_tenancy_ocid:         ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:            ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:          ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_region:               ${{ secrets.OCI_REGION }}
-          TF_VAR_private_key_path:     ${{ runner.temp }}/oci_api_key.pem
-          TF_VAR_compartment_ocid:     ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_availability_domain:  ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_os_image_id:          ${{ secrets.OS_IMAGE_ID }}
-          TF_VAR_cluster_name:         ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_public_key_path:      ${{ runner.temp }}/ssh_public_key.pub
-          TF_VAR_admin_cidr:           ${{ secrets.ADMIN_CIDR }}
-          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-          OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
-          TF_STATE_KEY: ${{ secrets.TF_STATE_KEY }}
+          TF_VAR_tenancy_ocid:          ${{ secrets.OCI_TENANCY_OCID }}
+          TF_VAR_user_ocid:             ${{ secrets.OCI_USER_OCID }}
+          TF_VAR_fingerprint:           ${{ secrets.OCI_FINGERPRINT }}
+          TF_VAR_region:                ${{ secrets.OCI_REGION }}
+          TF_VAR_private_key_pem:       ${{ secrets.OCI_PRIVATE_KEY_PEM }}  # <--- Use key content
+          TF_VAR_compartment_ocid:      ${{ secrets.COMPARTMENT_OCID }}
+          TF_VAR_availability_domain:   ${{ secrets.AVAILABILITY_DOMAIN }}
+          TF_VAR_os_image_id:           ${{ secrets.OS_IMAGE_ID }}
+          TF_VAR_cluster_name:          ${{ secrets.CLUSTER_NAME }}
+          TF_VAR_public_key_path:       ${{ runner.temp }}/ssh_public_key.pub
+          TF_VAR_admin_cidr:            ${{ secrets.ADMIN_CIDR }}
+        run: terraform plan -out=tfplan
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
