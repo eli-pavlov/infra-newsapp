@@ -14,8 +14,11 @@ env:
 jobs:
   export:
     runs-on: ubuntu-latest
+    env:
+     TF_IN_AUTOMATION: "1"
+     TF_INPUT: "0"
     steps:
-      - name: Checkout (not strictly needed, but harmless)
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Guard required secrets
