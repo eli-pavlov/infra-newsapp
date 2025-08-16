@@ -2,13 +2,13 @@
 
 check_os() {
   name=$(cat /etc/os-release | grep ^NAME= | sed 's/"//g')
-  clean_name=$${name#*=}
+  clean_name=${name#*=}
 
   version=$(cat /etc/os-release | grep ^VERSION_ID= | sed 's/"//g')
-  clean_version=$${version#*=}
-  major=$${clean_version%.*}
-  minor=$${clean_version#*.}
-  
+  clean_version=${version#*=}
+  major=${clean_version%.*}
+  minor=${clean_version#*.}
+
   if [[ "$clean_name" == "Ubuntu" ]]; then
     operating_system="ubuntu"
   elif [[ "$clean_name" == "Oracle Linux Server" ]]; then
@@ -29,7 +29,6 @@ install_oci_cli_ubuntu(){
   pip install oci-cli
 }
 
-
 install_oci_cli_oracle(){
   if [[ $major -eq 9 ]]; then
     dnf -y install oraclelinux-developer-release-el9
@@ -42,28 +41,24 @@ install_oci_cli_oracle(){
 }
 
 wait_lb() {
-while [ true ]
-do
-  curl --output /dev/null --silent -k https://${k3s_url}:6443
-  if [[ "$?" -eq 0 ]]; then
-    break
-  fi
-  sleep 5
-  echo "wait for LB"
-done
+  while true; do
+    curl --output /dev/null --silent -k https://${k3s_url}:6443
+    if [[ "$?" -eq 0 ]]; then
+      break
+    fi
+    sleep 5
+    echo "wait for LB"
+  done
 }
 
 check_os
 
 if [[ "$operating_system" == "ubuntu" ]]; then
-  # Disable firewall 
+  # Disable firewall
   /usr/sbin/netfilter-persistent stop
   /usr/sbin/netfilter-persistent flush
-
   systemctl stop netfilter-persistent.service
   systemctl disable netfilter-persistent.service
-
-  # END Disable firewall
 
   apt-get update
   apt-get install -y software-properties-common jq
@@ -72,7 +67,7 @@ if [[ "$operating_system" == "ubuntu" ]]; then
   %{ if ! disable_ingress }
   install_oci_cli_ubuntu
   %{ endif }
-  
+
   # Fix /var/log/journal dir size
   echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf
   echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf
@@ -82,7 +77,6 @@ fi
 if [[ "$operating_system" == "oraclelinux" ]]; then
   # Disable firewall
   systemctl disable --now firewalld
-  # END Disable firewall
 
   # Fix iptables/SELinux bug
   echo '(allow iptables_t cgroup_t (dir (ioctl)))' > /root/local_iptables.cil
@@ -101,7 +95,7 @@ fi
 
 k3s_install_params=()
 
-%{ if k3s_subnet != "default_route_table" } 
+%{ if k3s_subnet != "default_route_table" }
 local_ip=$(ip -4 route ls ${k3s_subnet} | grep -Po '(?<=src )(\S+)')
 flannel_iface=$(ip -4 route ls ${k3s_subnet} | grep -Po '(?<=dev )(\S+)')
 
@@ -113,7 +107,7 @@ if [[ "$operating_system" == "oraclelinux" ]]; then
   k3s_install_params+=("--selinux")
 fi
 
-INSTALL_PARAMS="$${k3s_install_params[*]}"
+INSTALL_PARAMS="${k3s_install_params[*]}"
 
 %{ if k3s_version == "latest" }
 K3S_VERSION=$(curl --silent https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name')
@@ -134,29 +128,17 @@ export OCI_CLI_AUTH=instance_principal
 private_ips=()
 
 # Fetch the OCID of all the running instances in OCI and store to an array
-instance_ocids=$(oci search resource structured-search --query-text "QUERY instance resources where lifeCycleState='RUNNING'"  --query 'data.items[*].identifier' --raw-output | jq -r '.[]' ) 
+instance_ocids=$(oci search resource structured-search --query-text "QUERY instance resources where lifeCycleState='RUNNING'" --query 'data.items[*].identifier' --raw-output | jq -r '.[]')
 
 # Iterate through the array to fetch details of each instance one by one
-for val in $${instance_ocids[@]} ; do
-  
-  echo $val
-
-  # Get name of the instance
+for val in ${instance_ocids[@]} ; do
   instance_name=$(oci compute instance get --instance-id $val --raw-output --query 'data."display-name"')
-  echo $instance_name
-
-
-  # Get Public Ip of the instance
   public_ip=$(oci compute instance list-vnics --instance-id $val --raw-output --query 'data[0]."public-ip"')
-  echo $public_ip
-
   private_ip=$(oci compute instance list-vnics --instance-id $val --raw-output --query 'data[0]."private-ip"')
-  echo $private_ip
   private_ips+=($private_ip)
 done
 
-for i in "$${private_ips[@]}"
-do
+for i in "${private_ips[@]}"; do
   echo "$i" >> /tmp/private_ips
 done
 EOF
@@ -177,13 +159,11 @@ load_module $NGINX_MODULE;
 user $NGINX_USER;
 worker_processes auto;
 pid /run/nginx.pid;
-
 EOD
 
 cat << 'EOF' > /root/nginx-footer.tpl
 events {
   worker_connections 768;
-  # multi_accept on;
 }
 
 stream {
@@ -199,25 +179,25 @@ stream {
   }
 
   log_format basic '$remote_addr [$time_local] '
-    '$protocol $status $bytes_sent $bytes_received '
-    '$session_time "$upstream_addr" '
-    '"$upstream_bytes_sent" "$upstream_bytes_received" "$upstream_connect_time"';
+                   '$protocol $status $bytes_sent $bytes_received '
+                   '$session_time "$upstream_addr" '
+                   '"$upstream_bytes_sent" "$upstream_bytes_received" "$upstream_connect_time"';
 
   access_log /var/log/nginx/k3s_access.log basic;
   error_log  /var/log/nginx/k3s_error.log;
-
-  proxy_protocol on;
 
   server {
     listen 443;
     proxy_pass k3s-https;
     proxy_next_upstream on;
+    proxy_protocol on;
   }
 
   server {
     listen 80;
     proxy_pass k3s-http;
     proxy_next_upstream on;
+    proxy_protocol on;
   }
 }
 EOF
@@ -226,10 +206,9 @@ cat /root/nginx-header.tpl /root/nginx-footer.tpl > /root/nginx.tpl
 
 cat << 'EOF' > /root/render_nginx_config.py
 from jinja2 import Template
-import os
 
 RAW_IP = open('/tmp/private_ips', 'r').readlines()
-IPS = [i.replace('\n','') for i in RAW_IP]
+IPS = [i.strip() for i in RAW_IP]
 
 nginx_config_template_path = '/root/nginx.tpl'
 nginx_config_path = '/etc/nginx/nginx.conf'
@@ -248,22 +227,19 @@ EOF
 chmod +x /root/find_ips.sh
 /root/find_ips.sh
 
-
 python3 /root/render_nginx_config.py
 
 nginx -t
-
 systemctl restart nginx
 }
 
-%{ if ! disable_ingress }
+%{ if ingress_controller == "nginx" }
 proxy_protocol_stuff
 %{ endif }
 
 %{ if install_longhorn }
 if [[ "$operating_system" == "ubuntu" ]]; then
-  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y  open-iscsi curl util-linux
+  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
 fi
-
 systemctl enable --now iscsid.service
 %{ endif }

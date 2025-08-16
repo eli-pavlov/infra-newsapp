@@ -41,7 +41,7 @@ install_helm() {
 }
 
 install_prometheus_stack() {
-  echo "Installing kube-prometheus-stack (Prometheus + Grafana)…"
+  echo "Installing kube-prometheus-stack (Prometheus + Grafana)â€¦"
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
   helm repo update
   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
@@ -49,13 +49,13 @@ install_prometheus_stack() {
 }
 
 install_argocd() {
-  echo "Installing Argo CD…"
+  echo "Installing Argo CDâ€¦"
   kubectl create namespace argocd || true
   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 }
 
 install_postgresql() {
-  echo "Installing PostgreSQL…"
+  echo "Installing PostgreSQLâ€¦"
   helm repo add bitnami https://charts.bitnami.com/bitnami
   helm repo update
 
@@ -84,12 +84,12 @@ install_postgresql() {
 
 wait_for_postgres() {
   # Bitnami chart creates StatefulSet: postgres-postgresql
-  echo "Waiting for PostgreSQL StatefulSet to be Ready…"
+  echo "Waiting for PostgreSQL StatefulSet to be Readyâ€¦"
   kubectl -n database rollout status statefulset/postgres-postgresql --timeout=600s || true
 }
 
 create_db_uri_secret() {
-  echo "Creating DB_URI secret for FE/BE pods…"
+  echo "Creating DB_URI secret for FE/BE podsâ€¦"
 
   # If vars not in scope (e.g., on re-run), read them from the secret
   if [[ -z "$POSTGRES_USER" || -z "$POSTGRES_PASSWORD" || -z "$POSTGRES_DB" ]]; then
@@ -115,7 +115,7 @@ create_db_uri_secret() {
 create_ingress_routes() {
   # Only if nginx ingress is enabled in this cluster
   if [[ "${ingress_controller}" == "nginx" ]]; then
-    echo "Creating Ingress routes for Argo CD and Grafana…"
+    echo "Creating Ingress routes for Argo CD and Grafanaâ€¦"
 
     # Argo CD at /argocd
     cat <<'EOF' | kubectl apply -f -

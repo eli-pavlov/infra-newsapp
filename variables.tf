@@ -1,35 +1,16 @@
-# These must be provided in env.auto.tfvars
-variable "compartment_ocid" {}
-variable "tenancy_ocid" {}
-variable "user_ocid" {}
-variable "fingerprint" {}
-variable "private_key_path" {}
-variable "public_key_path" {}
-variable "availability_domain" {}
-variable "cluster_name" {}
-variable "os_image_id" {}
-variable "region" {}
+variable "tenancy_ocid"       { type = string, sensitive = true }
+variable "user_ocid"          { type = string, sensitive = true }
+variable "fingerprint"        { type = string, sensitive = true }
+variable "private_key_path"   { type = string, sensitive = true }
+variable "region"             { type = string }
 
-# These have safe and sensible defaults
-variable "k3s_server_pool_size" {
-  default = 1
-}
+# From your env.auto.tfvars that triggered warnings:
+variable "availability_domain" { type = string, default = null }
+variable "admin_cidr"          { type = string, default = null }
+variable "os_image_id"         { type = string, default = null }
+variable "cluster_name"        { type = string, default = null }
+variable "bucket_name"         { type = string, default = null }
+variable "os_namespace"        { type = string, default = null }
 
-variable "k3s_worker_pool_size" {
-  default = 2
-}
-
-variable "admin_cidrs" {
-  type = list(object({
-    cidr     = string
-    protocol = string
-  }))
-  default = []
-}
-
-variable "admin_cidr" {
-  description = "Optional override for kube-API allowlist"
-  type        = string
-  default     = ""
-}
-
+# Anything your modules require will already be declared inside modules;
+# add more top-level variables here only if Terraform complains again.
