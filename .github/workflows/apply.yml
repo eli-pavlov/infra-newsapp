@@ -1,10 +1,7 @@
 name: apply
 on:
   workflow_dispatch: {}
-  # This workflow is typically triggered after a successful 'plan' workflow
-  # and a human approval, often via pull request merges.
-  # For this example, we'll keep the same push trigger.
-  
+
 permissions:
   contents: read
 
@@ -17,11 +14,23 @@ jobs:
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
+      # Keep these in sync with plan.yml
+      TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid:           ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint:         ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_region:              ${{ secrets.OCI_REGION }}
+      TF_VAR_private_key_pem:     ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+      TF_VAR_compartment_ocid:    ${{ secrets.COMPARTMENT_OCID }}
+      TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
+      TF_VAR_os_image_id:         ${{ secrets.OS_IMAGE_ID }}
+      TF_VAR_cluster_name:        ${{ secrets.CLUSTER_NAME }}
+      TF_VAR_admin_cidr:          ${{ secrets.ADMIN_CIDR }}
+      TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
 
-      # Download the plan artifact from the 'plan' workflow.
-      # This ensures we apply the exact plan that was reviewed.
+      # NOTE: this downloads from the SAME workflow run that uploaded it.
+      # If you trigger apply in a separate run, this step won’t find the artifact.
       - name: Download plan artifact
         uses: actions/download-artifact@v4
         with:
@@ -30,56 +39,24 @@ jobs:
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.5
-
-      - name: Write OCI key (PEM) to runner
-        run: |
-          umask 077
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
-
-      - name: Write SSH public key to runner
-        run: |
-          umask 077
-          echo "${{ secrets.SSH_PUBLIC_KEY }}" > "$RUNNER_TEMP/ssh_public_key.pub"
+          terraform_version: 1.9.5
 
       - name: Create backend.oci.hcl
         run: |
           cat > backend.oci.hcl <<'HCL'
-          bucket     = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace  = "${{ secrets.OS_NAMESPACE }}"
-          region     = "${{ secrets.OCI_REGION }}"
-          key        = "${{ secrets.TF_STATE_KEY }}"
+          tenancy_ocid     = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid        = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint      = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem  = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket           = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace        = "${{ secrets.OS_NAMESPACE }}"
+          region           = "${{ secrets.OCI_REGION }}"
+          key              = "${{ secrets.TF_STATE_KEY }}"
           workspace_key_prefix = "envs/"
           HCL
 
-      - name: Terraform init (root)
-        env:
-          TF_VAR_tenancy_ocid:       ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:          ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:        ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_region:             ${{ secrets.OCI_REGION }}
-          TF_VAR_private_key_path:   ${{ runner.temp }}/oci_api_key.pem
-          TF_VAR_compartment_ocid:   ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_os_image_id:        ${{ secrets.OS_IMAGE_ID }}
-          TF_VAR_cluster_name:       ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_public_key_path:    ${{ runner.temp }}/ssh_public_key.pub
-          TF_VAR_admin_cidr:         ${{ secrets.ADMIN_CIDR }}
+      - name: Terraform init (match plan versions)
         run: terraform init -backend-config=backend.oci.hcl
 
-      # Apply the plan file.
-      # The -auto-approve flag is used for automation.
-      - name: Terraform apply
-        env:
-          TF_VAR_tenancy_ocid:       ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid:          ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint:        ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_region:             ${{ secrets.OCI_REGION }}
-          TF_VAR_private_key_path:   ${{ runner.temp }}/oci_api_key.pem
-          TF_VAR_compartment_ocid:   ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_os_image_id:        ${{ secrets.OS_IMAGE_ID }}
-          TF_VAR_cluster_name:       ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_public_key_path:    ${{ runner.temp }}/ssh_public_key.pub
-          TF_VAR_admin_cidr:         ${{ secrets.ADMIN_CIDR }}
-        run: terraform apply -auto-approve tfplan
+      - name: Terraform apply (saved plan)
+        run: terraform apply -input=false tfplan
