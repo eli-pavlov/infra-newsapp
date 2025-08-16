@@ -6,9 +6,9 @@ check_os() {
   name=$(grep ^NAME= /etc/os-release | sed 's/"//g')
   clean_name=${name#*=}
   version=$(grep ^VERSION_ID= /etc/os-release | sed 's/"//g')
-  clean_version=${version#*=}
-  major=${clean_version%.*}
-  minor=${clean_version#*.}
+  clean_version=$${version#*=}
+  major=$${clean_version%.*}
+  minor=$${clean_version#*.}
 
   if [[ "$clean_name" == "Ubuntu" ]]; then
     operating_system="ubuntu"
