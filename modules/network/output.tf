@@ -25,12 +25,3 @@ output "private_lb_security_group" {
 output "public_nlb_security_group" {
   value = oci_core_network_security_group.public_nlb.id
 }
-
-output "private_lb_id" {
-  description = "The OCID of the private load balancer."
-  value       = oci_load_balancer_load_balancer.k3s_private_lb.id
-}
-output "public_nlb_id" {
-  description = "The OCID of the public network load balancer."
-  value       = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
-}
