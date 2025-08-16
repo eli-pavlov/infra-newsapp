@@ -69,7 +69,7 @@ jobs:
           TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
           TF_VAR_os_image_id:         ${{ secrets.OS_IMAGE_ID }}
           TF_VAR_cluster_name:        ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_public_key_path:     ${{ runner.temp }}/ssh_public_key.pub
+          TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_admin_cidr:          ${{ secrets.ADMIN_CIDR }}
         run: terraform plan -out=tfplan # CORRECTED: Removed invalid CLI variables
 
