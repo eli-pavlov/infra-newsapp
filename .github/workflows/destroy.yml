@@ -26,10 +26,10 @@ jobs:
       - name: Create backend.oci.hcl
         run: |
           cat > backend.oci.hcl <<'HCL'
-          bucket    = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace = "${{ secrets.OS_NAMESPACE }}"
-          region    = "${{ secrets.OCI_REGION }}"
-          key       = "${{ secrets.TF_STATE_KEY }}"
+          bucket     = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace  = "${{ secrets.OS_NAMESPACE }}"
+          region     = "${{ secrets.OCI_REGION }}"
+          key        = "${{ secrets.TF_STATE_KEY }}"
           workspace_key_prefix = "envs/"
           HCL
 
