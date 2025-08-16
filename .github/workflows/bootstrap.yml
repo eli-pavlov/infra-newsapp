@@ -16,7 +16,7 @@ jobs:
       OCI_USER_OCID:      ${{ secrets.OCI_USER_OCID }}
       OCI_FINGERPRINT:    ${{ secrets.OCI_FINGERPRINT }}
       OCI_REGION:         ${{ secrets.OCI_REGION }}
-      OCI_PRIVATE_KEY_PATH: ${{ runner.temp }}/oci_api_key.pem
+      OCI_PRIVATE_KEY_PATH: $RUNNER_TEMP/oci_api_key.pem
     steps:
       - uses: actions/checkout@v4
 
