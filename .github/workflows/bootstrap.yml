@@ -36,24 +36,22 @@ jobs:
           OUT="$RUNNER_TEMP/oci_api_key.pem"
 
           if [ -n "${KEY_B64:-}" ]; then
-            # decode Base64 safely; printf avoids extra newline
             printf "%s" "${KEY_B64}" | base64 -d > "$OUT" || { echo "::error::Invalid Base64 in OCI_PRIVATE_KEY_PEM_B64"; exit 1; }
           elif [ -n "${KEY_RAW:-}" ]; then
-            # interpret \n escapes into real newlines
             printf '%b' "${KEY_RAW}" > "$OUT"
           else
             echo "::error::Provide OCI_PRIVATE_KEY_PEM_B64 (Base64) or OCI_PRIVATE_KEY_PEM (raw with \\n)"; exit 1
           fi
 
-          # Guard: file must exist & be non-empty
           [ -s "$OUT" ] || { echo "::error::PEM file is empty after decoding"; exit 1; }
 
-          # Export the raw PEM as a multiline env var for later steps
+          # ✅ Correct heredoc for GitHub ENV
           {
-            echo "TF_VAR_private_key_pem<<'EOF'"
+            echo "TF_VAR_private_key_pem<<EOF"
             cat "$OUT"
             echo "EOF"
           } >> "$GITHUB_ENV"
+
 
       - name: Fingerprint sanity check
         run: |
