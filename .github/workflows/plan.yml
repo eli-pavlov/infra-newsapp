@@ -72,6 +72,7 @@ jobs:
         run: terraform validate
 
       - name: Terraform plan
+        run: terraform plan -var="bucket_name=$TF_STATE_BUCKET" -var="os_namespace=$OS_NAMESPACE" -var="TF_STATE_KEY=$TF_STATE_KEY"
         env:
           TF_VAR_tenancy_ocid:         ${{ secrets.OCI_TENANCY_OCID }}
           TF_VAR_user_ocid:            ${{ secrets.OCI_USER_OCID }}
