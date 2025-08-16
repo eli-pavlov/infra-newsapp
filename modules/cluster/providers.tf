@@ -64,9 +64,6 @@ variable "region" {
 provider "oci" {
   # The tenancy_ocid is a required argument that uniquely identifies
   # your tenancy in OCI. It's set from the `tenancy_ocid` variable.
-  tenancy_ocid = var.tenancy_ocid
-  # The user_ocid is a required argument that identifies the user account
-  # that Terraform will use for authentication. It's set from the `user_ocid` variable.
   user_ocid = var.user_ocid
   # The fingerprint corresponds to the fingerprint of the public key
   # associated with the user. It's set from the `fingerprint` variable.
@@ -77,5 +74,4 @@ provider "oci" {
   private_key_path = var.private_key_path
   # The region is the geographical location where resources will be created.
   # It's set from the `region` variable.
-  region = var.region
 }
