@@ -40,9 +40,9 @@ resource "oci_core_instance_configuration" "k3s_server_template" {
       display_name = "k3s server template"
 
       metadata = {
-            "ssh_authorized_keys" = var.public_key_content
-            "user_data"           = data.cloudinit_config.k3s_server_tpl.rendered
-          }
+        "ssh_authorized_keys" = var.public_key_content
+        "user_data"           = data.cloudinit_config.k3s_server_tpl.rendered
+      }
 
       shape = var.compute_shape
       shape_config {
