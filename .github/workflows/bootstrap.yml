@@ -1,6 +1,10 @@
 name: bootstrap
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
