@@ -35,13 +35,6 @@ variable "fingerprint" {
   description = "The fingerprint of the user's public key."
 }
 
-# The private_key_path tells the OCI provider where to find the private key
-# file on the runner. This is the key that was written from the secret.
-variable "private_key_path" {
-  type        = string
-  description = "The path to the OCI private key file on the runner."
-}
-
 provider "oci" {
   tenancy_ocid = var.tenancy_ocid
   user_ocid    = var.user_ocid
