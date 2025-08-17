@@ -42,7 +42,7 @@ install_helm() {
 }
 
 render_nginx_config(){
-cat << EOF > "$NGINX_RESOURCES_FILE"
+cat << 'EOF' > "$NGINX_RESOURCES_FILE"
 ---
 apiVersion: v1
 kind: Service
