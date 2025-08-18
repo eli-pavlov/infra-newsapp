@@ -12,10 +12,10 @@ T_INSTALL_LONGHORN="${install_longhorn}"      # "true" or "false"
 # ---------------------- Helpers --------------------------
 detect_os() {
   local name version clean_name clean_version
-  name=$(grep ^NAME= /etc/os-release | sed 's/"//g');   clean_name=${name#*=}
-  version=$(grep ^VERSION_ID= /etc/os-release | sed 's/"//g'); clean_version=${version#*=}
-  OS_MAJOR=${clean_version%.*}
-  OS_MINOR=${clean_version#*.}
+  name=$(grep ^NAME= /etc/os-release | sed 's/"//g');   clean_name=$${name#*=}
+  version=$(grep ^VERSION_ID= /etc/os-release | sed 's/"//g'); clean_version=$${version#*=}
+  OS_MAJOR=$${clean_version%.*}
+  OS_MINOR=$${clean_version#*.}
   if [[ "$clean_name" == "Ubuntu" ]]; then
     OS_FAMILY="ubuntu"
   elif [[ "$clean_name" == "Oracle Linux Server" ]]; then
@@ -80,13 +80,13 @@ install_longhorn_bits_if_needed() {
 detect_os
 base_setup
 
-# Build K3s install params (use a simple string to avoid ${params[*]})
+# Build K3s install params (use a simple string to avoid $${params[*]})
 PARAMS=""
 if [[ "$T_K3S_SUBNET" != "default_route_table" ]]; then
   local_ip=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=src )(\S+)' || true)
   flannel_iface=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=dev )(\S+)' || true)
-  if [[ -n "${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip"; fi
-  if [[ -n "${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
+  if [[ -n "$${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip"; fi
+  if [[ -n "$${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
 fi
 if [[ "$OS_FAMILY" == "oraclelinux" ]]; then PARAMS="$PARAMS --selinux"; fi
 

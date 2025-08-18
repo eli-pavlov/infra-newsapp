@@ -31,10 +31,10 @@ T_DB_MOUNT_PATH="${db_mount_path}"                 # e.g. /var/lib/postgresql/da
 # ---------------------- Helpers --------------------------
 detect_os() {
   local name version clean_name clean_version
-  name=$(grep ^NAME= /etc/os-release | sed 's/"//g');   clean_name=${name#*=}
-  version=$(grep ^VERSION_ID= /etc/os-release | sed 's/"//g'); clean_version=${version#*=}
-  OS_MAJOR=${clean_version%.*}
-  OS_MINOR=${clean_version#*.}
+  name=$(grep ^NAME= /etc/os-release | sed 's/"//g');   clean_name=$${name#*=}
+  version=$(grep ^VERSION_ID= /etc/os-release | sed 's/"//g'); clean_version=$${version#*=}
+  OS_MAJOR=$${clean_version%.*}
+  OS_MINOR=$${clean_version#*.}
   if [[ "$clean_name" == "Ubuntu" ]]; then
     OS_FAMILY="ubuntu"
   elif [[ "$clean_name" == "Oracle Linux Server" ]]; then
@@ -184,13 +184,13 @@ detect_os
 base_setup
 resolve_k3s_version
 
-# Build server params (use a simple string to avoid ${params[*]})
+# Build server params (use a simple string to avoid $${params[*]})
 PARAMS="--tls-san $T_TLS_SAN_PRIV"
 if [[ "$T_K3S_SUBNET" != "default_route_table" ]]; then
   local_ip=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=src )(\S+)' || true)
   flannel_iface=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=dev )(\S+)' || true)
-  if [[ -n "${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip --advertise-address $local_ip"; fi
-  if [[ -n "${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
+  if [[ -n "$${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip --advertise-address $local_ip"; fi
+  if [[ -n "$${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
 fi
 # Disable the default traefik if we will use nginx (or if explicitly disabled)
 if [[ "$T_DISABLE_INGRESS" == "true" ]]; then
@@ -210,7 +210,7 @@ fi
 FIRST_NAME=$(first_server_name || true)
 THIS_NAME=$(this_server_name || true)
 
-if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
+if [[ -n "$${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
   echo "This is the FIRST server. Initializing cluster..."
   until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" sh -s - server --cluster-init $PARAMS); do
     echo "k3s cluster-init failed, retrying..."
@@ -233,7 +233,7 @@ until kubectl get pods -A | grep -q 'Running'; do
 done
 
 # First-server only post steps
-if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
+if [[ -n "$${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
   install_longhorn_if_first
   if [[ "$T_DISABLE_INGRESS" != "true" && "$T_INGRESS_CONTROLLER" == "nginx" ]]; then
     install_ingress_nginx_nodeport
@@ -245,7 +245,7 @@ echo "K3s server setup complete."
 # ---------------- PostgreSQL + durable block volume (LAST STEP) ----------------
 # First server only: mount OCI block volume, create hostPath PV/PVC, install Bitnami PostgreSQL,
 # and publish DB env to backend namespaces.
-if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
+if [[ -n "$${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
   echo "Setting up PostgreSQL with durable OCI Block Volume..."
 
   install_helm
