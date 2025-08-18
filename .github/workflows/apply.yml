@@ -57,6 +57,7 @@ jobs:
 
       - name: Terraform init (match plan versions)
         run: terraform init -backend-config=backend.oci.hcl
-
+      - name: Terraform plan (in apply)
+        run: terraform plan -out=tfplan
       - name: Terraform apply (saved plan)
         run: terraform apply -input=false tfplan
