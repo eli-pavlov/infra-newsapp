@@ -1,7 +1,7 @@
 name: 'Terraform Apply to Main'
 
 on:
-  # ✅ TRIGGER: Runs only on pushes to your main branches
+  # TRIGGER: Runs only on pushes to your main branches
   workflow_dispatch: {}
 
 permissions:
