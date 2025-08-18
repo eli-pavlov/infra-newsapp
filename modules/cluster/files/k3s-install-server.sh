@@ -1,6 +1,6 @@
 #!/bin/bash
 # K3s SERVER install (cluster-init on first server, others join via PRIVATE LB).
-# ASCII-only; no Terraform template directives.
+# ASCII-only; Terraform only fills the top vars.
 set -euo pipefail
 
 # ------- Vars injected by Terraform (strings only) -------
@@ -70,28 +70,28 @@ base_setup() {
 }
 
 wait_for_api_lb() {
-  echo "Waiting for LB ${T_K3S_URL} ..."
+  echo "Waiting for LB $T_K3S_URL ..."
   while true; do
-    curl --output /dev/null --silent -k "${T_K3S_URL}" && break
+    curl --output /dev/null --silent -k "$T_K3S_URL" && break
     sleep 5
     echo "  still waiting..."
   done
 }
 
 resolve_k3s_version() {
-  if [[ "${T_K3S_VERSION}" == "latest" ]]; then
+  if [[ "$T_K3S_VERSION" == "latest" ]]; then
     K3S_VERSION=$(curl --silent https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name')
   else
-    K3S_VERSION="${T_K3S_VERSION}"
+    K3S_VERSION="$T_K3S_VERSION"
   fi
-  echo "Using K3s version: ${K3S_VERSION}"
+  echo "Using K3s version: $K3S_VERSION"
 }
 
 first_server_name() {
   export OCI_CLI_AUTH=instance_principal
   oci compute instance list \
-    --compartment-id "${T_COMPARTMENT_OCID}" \
-    --availability-domain "${T_AVAILABILITY_DOMAIN}" \
+    --compartment-id "$T_COMPARTMENT_OCID" \
+    --availability-domain "$T_AVAILABILITY_DOMAIN" \
     --lifecycle-state RUNNING \
     --sort-by TIMECREATED |
     jq -r '.data[] | select(."display-name" | endswith("k3s-servers")) | .["display-name"]' |
@@ -103,20 +103,20 @@ this_server_name() {
 }
 
 install_longhorn_if_first() {
-  if [[ "${T_INSTALL_LONGHORN}" == "true" ]]; then
+  if [[ "$T_INSTALL_LONGHORN" == "true" ]]; then
     if [[ "$OS_FAMILY" == "ubuntu" ]]; then
       DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
     elif [[ "$OS_FAMILY" == "oraclelinux" ]]; then
       dnf -y install iscsi-initiator-utils util-linux || true
     fi
     systemctl enable --now iscsid.service || true
-    kubectl apply -f "https://raw.githubusercontent.com/longhorn/longhorn/${T_LONGHORN_RELEASE}/deploy/longhorn.yaml"
+    kubectl apply -f "https://raw.githubusercontent.com/longhorn/longhorn/$T_LONGHORN_RELEASE/deploy/longhorn.yaml"
   fi
 }
 
 install_ingress_nginx_nodeport() {
   # Deploy controller (baremetal manifest)
-  kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-${T_NGINX_INGRESS_RELEASE}/deploy/static/provider/baremetal/deploy.yaml"
+  kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-$T_NGINX_INGRESS_RELEASE/deploy/static/provider/baremetal/deploy.yaml"
 
   # Create a NodePort service + ConfigMap (no PROXY protocol; trust forwarded headers)
   cat > /root/nginx-ingress-nodeport.yaml <<YAML
@@ -136,12 +136,12 @@ spec:
     - name: http
       port: 80
       targetPort: 80
-      nodePort: ${T_HTTP_NODEPORT}
+      nodePort: $T_HTTP_NODEPORT
       protocol: TCP
     - name: https
       port: 443
       targetPort: 443
-      nodePort: ${T_HTTPS_NODEPORT}
+      nodePort: $T_HTTPS_NODEPORT
       protocol: TCP
 ---
 apiVersion: v1
@@ -170,36 +170,35 @@ detect_os
 base_setup
 resolve_k3s_version
 
-# Build server params
-params=( "--tls-san" "${T_TLS_SAN_PRIV}" )
-if [[ "${T_K3S_SUBNET}" != "default_route_table" ]]; then
-  local_ip=$(ip -4 route ls "${T_K3S_SUBNET}" | grep -Po '(?<=src )(\S+)' || true)
-  flannel_iface=$(ip -4 route ls "${T_K3S_SUBNET}" | grep -Po '(?<=dev )(\S+)' || true)
-  if [[ -n "${local_ip:-}" ]]; then params+=("--node-ip" "${local_ip}" "--advertise-address" "${local_ip}"); fi
-  if [[ -n "${flannel_iface:-}" ]]; then params+=("--flannel-iface" "${flannel_iface}"); fi
+# Build server params (use a simple string to avoid ${params[*]})
+PARAMS="--tls-san $T_TLS_SAN_PRIV"
+if [[ "$T_K3S_SUBNET" != "default_route_table" ]]; then
+  local_ip=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=src )(\S+)' || true)
+  flannel_iface=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=dev )(\S+)' || true)
+  if [[ -n "${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip --advertise-address $local_ip"; fi
+  if [[ -n "${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
 fi
 # Disable the default traefik if we will use nginx (or if explicitly disabled)
-if [[ "${T_DISABLE_INGRESS}" == "true" ]]; then
-  params+=("--disable" "traefik")
+if [[ "$T_DISABLE_INGRESS" == "true" ]]; then
+  PARAMS="$PARAMS --disable traefik"
 else
-  if [[ "${T_INGRESS_CONTROLLER}" != "default" ]]; then
-    params+=("--disable" "traefik")
+  if [[ "$T_INGRESS_CONTROLLER" != "default" ]]; then
+    PARAMS="$PARAMS --disable traefik"
   fi
 fi
-if [[ "${T_EXPOSE_KUBEAPI}" == "true" ]]; then
-  params+=("--tls-san" "${T_TLS_SAN_PUB}")
+if [[ "$T_EXPOSE_KUBEAPI" == "true" ]]; then
+  PARAMS="$PARAMS --tls-san $T_TLS_SAN_PUB"
 fi
 if [[ "$OS_FAMILY" == "oraclelinux" ]]; then
-  params+=("--selinux")
+  PARAMS="$PARAMS --selinux"
 fi
-INSTALL_PARAMS="${params[*]}"
 
 FIRST_NAME=$(first_server_name || true)
 THIS_NAME=$(this_server_name || true)
 
-if [[ -n "${FIRST_NAME}" && "${FIRST_NAME}" == "${THIS_NAME}" ]]; then
+if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
   echo "This is the FIRST server. Initializing cluster..."
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" K3S_TOKEN="${T_K3S_TOKEN}" sh -s - server --cluster-init ${INSTALL_PARAMS}); do
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" sh -s - server --cluster-init $PARAMS); do
     echo "k3s cluster-init failed, retrying..."
     sleep 5
   done
@@ -207,7 +206,7 @@ else
   echo "This server is JOINING an existing cluster..."
   # wait for API via private LB
   wait_for_api_lb
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" K3S_TOKEN="${T_K3S_TOKEN}" K3S_URL="${T_K3S_URL}" sh -s - server ${INSTALL_PARAMS}); do
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" K3S_URL="$T_K3S_URL" sh -s - server $PARAMS); do
     echo "k3s server join failed, retrying..."
     sleep 5
   done
@@ -220,9 +219,9 @@ until kubectl get pods -A | grep -q 'Running'; do
 done
 
 # First-server only post steps
-if [[ -n "${FIRST_NAME}" && "${FIRST_NAME}" == "${THIS_NAME}" ]]; then
+if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
   install_longhorn_if_first
-  if [[ "${T_DISABLE_INGRESS}" != "true" && "${T_INGRESS_CONTROLLER}" == "nginx" ]]; then
+  if [[ "$T_DISABLE_INGRESS" != "true" && "$T_INGRESS_CONTROLLER" == "nginx" ]]; then
     install_ingress_nginx_nodeport
   fi
 fi

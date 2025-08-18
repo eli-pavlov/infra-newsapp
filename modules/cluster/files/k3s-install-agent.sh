@@ -1,10 +1,10 @@
 #!/bin/bash
-# K3s AGENT install (joins via PRIVATE LB). ASCII-only; no Terraform template directives.
+# K3s AGENT install (joins via PRIVATE LB). ASCII-only; Terraform only fills the top vars.
 set -euo pipefail
 
 # ------- Vars injected by Terraform (strings only) -------
 T_K3S_VERSION="${k3s_version}"                # e.g. "latest" or "v1.29.5+k3s1"
-T_K3S_SUBNET="${k3s_subnet}"                  # e.g. "default_route_table" or a CIDR route selector
+T_K3S_SUBNET="${k3s_subnet}"                  # e.g. "default_route_table" or a CIDR selector
 T_K3S_TOKEN="${k3s_token}"
 T_K3S_URL="https://${k3s_url}:6443"           # Private LB IP for server API
 T_INSTALL_LONGHORN="${install_longhorn}"      # "true" or "false"
@@ -47,25 +47,25 @@ base_setup() {
 }
 
 wait_for_api_lb() {
-  echo "Waiting for LB ${T_K3S_URL} ..."
+  echo "Waiting for LB $T_K3S_URL ..."
   while true; do
-    curl --output /dev/null --silent -k "${T_K3S_URL}" && break
+    curl --output /dev/null --silent -k "$T_K3S_URL" && break
     sleep 5
     echo "  still waiting..."
   done
 }
 
 resolve_k3s_version() {
-  if [[ "${T_K3S_VERSION}" == "latest" ]]; then
+  if [[ "$T_K3S_VERSION" == "latest" ]]; then
     K3S_VERSION=$(curl --silent https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name')
   else
-    K3S_VERSION="${T_K3S_VERSION}"
+    K3S_VERSION="$T_K3S_VERSION"
   fi
-  echo "Using K3s version: ${K3S_VERSION}"
+  echo "Using K3s version: $K3S_VERSION"
 }
 
 install_longhorn_bits_if_needed() {
-  if [[ "${T_INSTALL_LONGHORN}" == "true" ]]; then
+  if [[ "$T_INSTALL_LONGHORN" == "true" ]]; then
     if [[ "$OS_FAMILY" == "ubuntu" ]]; then
       DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
       systemctl enable --now iscsid.service || true
@@ -80,22 +80,21 @@ install_longhorn_bits_if_needed() {
 detect_os
 base_setup
 
-# Build K3s install params
-params=()
-if [[ "${T_K3S_SUBNET}" != "default_route_table" ]]; then
-  local_ip=$(ip -4 route ls "${T_K3S_SUBNET}" | grep -Po '(?<=src )(\S+)' || true)
-  flannel_iface=$(ip -4 route ls "${T_K3S_SUBNET}" | grep -Po '(?<=dev )(\S+)' || true)
-  if [[ -n "${local_ip:-}" ]]; then params+=("--node-ip ${local_ip}"); fi
-  if [[ -n "${flannel_iface:-}" ]]; then params+=("--flannel-iface ${flannel_iface}"); fi
+# Build K3s install params (use a simple string to avoid ${params[*]})
+PARAMS=""
+if [[ "$T_K3S_SUBNET" != "default_route_table" ]]; then
+  local_ip=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=src )(\S+)' || true)
+  flannel_iface=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=dev )(\S+)' || true)
+  if [[ -n "${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip"; fi
+  if [[ -n "${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
 fi
-if [[ "$OS_FAMILY" == "oraclelinux" ]]; then params+=("--selinux"); fi
-INSTALL_PARAMS="${params[*]}"
+if [[ "$OS_FAMILY" == "oraclelinux" ]]; then PARAMS="$PARAMS --selinux"; fi
 
 resolve_k3s_version
 wait_for_api_lb
 
 # Install K3s as AGENT (explicit)
-until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" K3S_TOKEN="${T_K3S_TOKEN}" K3S_URL="${T_K3S_URL}" sh -s - agent ${INSTALL_PARAMS}); do
+until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" K3S_URL="$T_K3S_URL" sh -s - agent $PARAMS); do
   echo "k3s agent did not install correctly, retrying..."
   sleep 3
 done
