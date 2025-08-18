@@ -23,9 +23,7 @@ jobs:
       TF_VAR_availability_domain:  ${{ secrets.AVAILABILITY_DOMAIN }}
       TF_VAR_os_image_id:          ${{ secrets.OS_IMAGE_ID }}
       TF_VAR_cluster_name:         ${{ secrets.CLUSTER_NAME }}
-      # ✅ FIX: Corrected typo from 'admin_cidr' to 'admin_cidrs'
       TF_VAR_admin_cidrs:          ${{ secrets.ADMIN_CIDRS }}
-      # ✅ FIX: Added missing variable to match plan/apply workflows
       TF_VAR_cloudflare_cidrs:     ${{ secrets.CLOUDFLARE_CIDRS }}
       TF_VAR_public_key_content:   ${{ secrets.SSH_PUBLIC_KEY }}
     steps:
