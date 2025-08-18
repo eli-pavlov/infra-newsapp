@@ -1,50 +1,125 @@
 #!/bin/bash
-set -e
+# K3s SERVER install (cluster-init on first server, others join via PRIVATE LB).
+# ASCII-only; no Terraform template directives.
+set -euo pipefail
 
-#
-# Helper Functions
-#
+# ------- Vars injected by Terraform (strings only) -------
+T_K3S_VERSION="${k3s_version}"                     # "latest" or explicit version
+T_K3S_SUBNET="${k3s_subnet}"
+T_K3S_TOKEN="${k3s_token}"
+T_COMPARTMENT_OCID="${compartment_ocid}"
+T_AVAILABILITY_DOMAIN="${availability_domain}"
 
-verify_os() {
-  # Source the os-release file and verify the OS is Ubuntu
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
+T_K3S_URL="https://${k3s_url}:6443"                # Private LB IP for API
+T_TLS_SAN_PRIV="${k3s_tls_san}"                    # Usually the private LB IP
+T_TLS_SAN_PUB="${k3s_tls_san_public}"              # Public NLB IP (if expose_kubeapi true)
+
+T_DISABLE_INGRESS="${disable_ingress}"             # "true"/"false"
+T_INGRESS_CONTROLLER="${ingress_controller}"       # "default" or "nginx"
+T_NGINX_INGRESS_RELEASE="${nginx_ingress_release}" # e.g. v1.5.1
+T_INSTALL_LONGHORN="${install_longhorn}"           # "true"/"false"
+T_LONGHORN_RELEASE="${longhorn_release}"           # e.g. v1.4.2
+T_EXPOSE_KUBEAPI="${expose_kubeapi}"               # "true"/"false"
+
+T_HTTP_NODEPORT="${ingress_controller_http_nodeport}"   # 30080
+T_HTTPS_NODEPORT="${ingress_controller_https_nodeport}" # 30443
+
+# ---------------------- Helpers --------------------------
+detect_os() {
+  local name version clean_name clean_version
+  name=$(grep ^NAME= /etc/os-release | sed 's/"//g');   clean_name=${name#*=}
+  version=$(grep ^VERSION_ID= /etc/os-release | sed 's/"//g'); clean_version=${version#*=}
+  OS_MAJOR=${clean_version%.*}
+  OS_MINOR=${clean_version#*.}
+  if [[ "$clean_name" == "Ubuntu" ]]; then
+    OS_FAMILY="ubuntu"
+  elif [[ "$clean_name" == "Oracle Linux Server" ]]; then
+    OS_FAMILY="oraclelinux"
   else
-    echo "!!! Cannot find /etc/os-release" >&2
-    exit 1
+    OS_FAMILY="unknown"
   fi
-
-  if [[ "$NAME" != "Ubuntu" ]]; then
-    echo "!!! This script is designed for Ubuntu only. Detected OS: $NAME" >&2
-    exit 1
-  fi
-
-  echo "---> Verified OS: Ubuntu"
+  echo "Server install on: $OS_FAMILY $OS_MAJOR.$OS_MINOR"
 }
 
-wait_lb() {
-  echo "---> Waiting for the load balancer at https://${k3s_url}:6443 to be available..."
-  while true; do
-    if curl --output /dev/null --silent -k "https://${k3s_url}:6443"; then
-      echo "---> Load balancer is responsive. Proceeding."
-      break
+base_setup() {
+  if [[ "$OS_FAMILY" == "ubuntu" ]]; then
+    /usr/sbin/netfilter-persistent stop || true
+    /usr/sbin/netfilter-persistent flush || true
+    systemctl disable --now netfilter-persistent.service || true
+    apt-get update
+    apt-get install -y jq curl software-properties-common python3 python3-pip
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+    pip3 install --no-cache-dir oci-cli
+  elif [[ "$OS_FAMILY" == "oraclelinux" ]]; then
+    systemctl disable --now firewalld || true
+    echo '(allow iptables_t cgroup_t (dir (ioctl)))' > /root/local_iptables.cil
+    semodule -i /root/local_iptables.cil || true
+    dnf -y update
+    if [[ "$OS_MAJOR" -eq 9 ]]; then
+      dnf -y install oraclelinux-developer-release-el9
+      dnf -y install jq curl python39-oci-cli
+    else
+      dnf -y install oraclelinux-developer-release-el8
+      dnf -y module enable python36:3.6
+      dnf -y install jq curl python36-oci-cli
     fi
+  fi
+  echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf || true
+  echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf || true
+  systemctl restart systemd-journald || true
+}
+
+wait_for_api_lb() {
+  echo "Waiting for LB ${T_K3S_URL} ..."
+  while true; do
+    curl --output /dev/null --silent -k "${T_K3S_URL}" && break
     sleep 5
-    echo "     Still waiting for LB..."
+    echo "  still waiting..."
   done
 }
 
-install_helm() {
-  echo "---> Installing Helm..."
-  curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-  chmod +x get_helm.sh
-  ./get_helm.sh
-  echo "---> Helm installation complete."
+resolve_k3s_version() {
+  if [[ "${T_K3S_VERSION}" == "latest" ]]; then
+    K3S_VERSION=$(curl --silent https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name')
+  else
+    K3S_VERSION="${T_K3S_VERSION}"
+  fi
+  echo "Using K3s version: ${K3S_VERSION}"
 }
 
-# Render NodePort Service + ConfigMap for ingress-nginx (NO proxy-protocol in Option B)
-render_nginx_config(){
-cat << EOF > "$NGINX_RESOURCES_FILE"
+first_server_name() {
+  export OCI_CLI_AUTH=instance_principal
+  oci compute instance list \
+    --compartment-id "${T_COMPARTMENT_OCID}" \
+    --availability-domain "${T_AVAILABILITY_DOMAIN}" \
+    --lifecycle-state RUNNING \
+    --sort-by TIMECREATED |
+    jq -r '.data[] | select(."display-name" | endswith("k3s-servers")) | .["display-name"]' |
+    head -n 1
+}
+
+this_server_name() {
+  curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance | jq -r '.displayName'
+}
+
+install_longhorn_if_first() {
+  if [[ "${T_INSTALL_LONGHORN}" == "true" ]]; then
+    if [[ "$OS_FAMILY" == "ubuntu" ]]; then
+      DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
+    elif [[ "$OS_FAMILY" == "oraclelinux" ]]; then
+      dnf -y install iscsi-initiator-utils util-linux || true
+    fi
+    systemctl enable --now iscsid.service || true
+    kubectl apply -f "https://raw.githubusercontent.com/longhorn/longhorn/${T_LONGHORN_RELEASE}/deploy/longhorn.yaml"
+  fi
+}
+
+install_ingress_nginx_nodeport() {
+  # Deploy controller (baremetal manifest)
+  kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-${T_NGINX_INGRESS_RELEASE}/deploy/static/provider/baremetal/deploy.yaml"
+
+  # Create a NodePort service + ConfigMap (no PROXY protocol; trust forwarded headers)
+  cat > /root/nginx-ingress-nodeport.yaml <<YAML
 ---
 apiVersion: v1
 kind: Service
@@ -52,6 +127,7 @@ metadata:
   name: ingress-nginx-controller-loadbalancer
   namespace: ingress-nginx
 spec:
+  type: NodePort
   selector:
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: ingress-nginx
@@ -59,172 +135,96 @@ spec:
   ports:
     - name: http
       port: 80
-      protocol: TCP
       targetPort: 80
-      nodePort: ${ingress_controller_http_nodeport}
+      nodePort: ${T_HTTP_NODEPORT}
+      protocol: TCP
     - name: https
       port: 443
-      protocol: TCP
       targetPort: 443
-      nodePort: ${ingress_controller_https_nodeport}
-  type: NodePort
+      nodePort: ${T_HTTPS_NODEPORT}
+      protocol: TCP
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
   labels:
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: ingress-nginx
-    app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: ingress-nginx
-    app.kubernetes.io/part-of: ingress-nginx
-    app.kubernetes.io/version: 1.1.1
-    helm.sh/chart: ingress-nginx-4.0.16
-  name: ingress-nginx-controller
-  namespace: ingress-nginx
 data:
   allow-snippet-annotations: "true"
   use-forwarded-headers: "true"
   compute-full-forwarded-for: "true"
   enable-real-ip: "true"
-  forwarded-for-header: "X-Forwarded-For"
   proxy-real-ip-cidr: "0.0.0.0/0"
-EOF
+  proxy-body-size: "20m"
+  use-proxy-protocol: "false"
+YAML
+  kubectl apply -f /root/nginx-ingress-nodeport.yaml
 }
 
-install_and_configure_nginx(){
-  echo "---> Installing and configuring NGINX Ingress Controller..."
-  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-${nginx_ingress_release}/deploy/static/provider/baremetal/deploy.yaml
-  NGINX_RESOURCES_FILE=/root/nginx-ingress-resources.yaml
-  render_nginx_config
-  kubectl apply -f $NGINX_RESOURCES_FILE
-  echo "---> NGINX Ingress Controller installation complete."
-}
+# --------------------- Main logic ------------------------
+detect_os
+base_setup
+resolve_k3s_version
 
-install_ingress(){
-  local INGRESS_CONTROLLER=$1
-  if [[ "$INGRESS_CONTROLLER" == "nginx" ]]; then
-    install_and_configure_nginx
-  else
-    echo "!!! Ingress controller '$INGRESS_CONTROLLER' not supported."
+# Build server params
+params=( "--tls-san" "${T_TLS_SAN_PRIV}" )
+if [[ "${T_K3S_SUBNET}" != "default_route_table" ]]; then
+  local_ip=$(ip -4 route ls "${T_K3S_SUBNET}" | grep -Po '(?<=src )(\S+)' || true)
+  flannel_iface=$(ip -4 route ls "${T_K3S_SUBNET}" | grep -Po '(?<=dev )(\S+)' || true)
+  if [[ -n "${local_ip:-}" ]]; then params+=("--node-ip" "${local_ip}" "--advertise-address" "${local_ip}"); fi
+  if [[ -n "${flannel_iface:-}" ]]; then params+=("--flannel-iface" "${flannel_iface}"); fi
+fi
+# Disable the default traefik if we will use nginx (or if explicitly disabled)
+if [[ "${T_DISABLE_INGRESS}" == "true" ]]; then
+  params+=("--disable" "traefik")
+else
+  if [[ "${T_INGRESS_CONTROLLER}" != "default" ]]; then
+    params+=("--disable" "traefik")
   fi
-}
+fi
+if [[ "${T_EXPOSE_KUBEAPI}" == "true" ]]; then
+  params+=("--tls-san" "${T_TLS_SAN_PUB}")
+fi
+if [[ "$OS_FAMILY" == "oraclelinux" ]]; then
+  params+=("--selinux")
+fi
+INSTALL_PARAMS="${params[*]}"
 
-#
-# Main Execution Logic
-#
+FIRST_NAME=$(first_server_name || true)
+THIS_NAME=$(this_server_name || true)
 
-verify_os
-
-# --- Ubuntu Specific Configuration ---
-echo "---> Configuring Ubuntu..."
-# Disable firewall
-/usr/sbin/netfilter-persistent stop
-/usr/sbin/netfilter-persistent flush
-systemctl stop netfilter-persistent.service
-systemctl disable netfilter-persistent.service
-
-# Install packages
-apt-get update
-apt-get install -y software-properties-common jq
-DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y python3 python3-pip
-pip install oci-cli
-
-# Fix /var/log/journal dir size
-echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf
-echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf
-systemctl restart systemd-journald
-
-# --- K3s Installation Logic ---
-export OCI_CLI_AUTH=instance_principal
-first_instance=$(oci compute instance list --compartment-id ${compartment_ocid} --availability-domain ${availability_domain} --lifecycle-state RUNNING --sort-by TIMECREATED | jq -r '.data[]|select(."display-name" | endswith("k3s-servers")) | .["display-name"]' | tail -n 1)
-instance_id=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance | jq -r '.displayName')
-
-# Build K3s installation parameters
-k3s_install_params=("--tls-san ${k3s_tls_san}")
-
-%{ if k3s_subnet != "default_route_table" }
-local_ip=$(ip -4 route ls ${k3s_subnet} | grep -Po '(?<=src )(\S+)')
-flannel_iface=$(ip -4 route ls ${k3s_subnet} | grep -Po '(?<=dev )(\S+)')
-
-k3s_install_params+=("--node-ip $local_ip")
-k3s_install_params+=("--advertise-address $local_ip")
-k3s_install_params+=("--flannel-iface $flannel_iface")
-%{ endif }
-
-%{ if disable_ingress }
-k3s_install_params+=("--disable traefik")
-%{ endif }
-
-%{ if ! disable_ingress }
-%{ if ingress_controller != "default" }
-k3s_install_params+=("--disable traefik")
-%{ endif }
-%{ endif }
-
-%{ if expose_kubeapi }
-k3s_install_params+=("--tls-san ${k3s_tls_san_public}")
-%{ endif }
-
-# Correctly join array elements into a single string.
-# The $$ is intentional to escape Terraform interpolation.
-INSTALL_PARAMS="$${k3s_install_params[*]}"
-
-# Determine K3s version
-%{ if k3s_version == "latest" }
-K3S_VERSION=$(curl --silent https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name')
-%{ else }
-K3S_VERSION="${k3s_version}"
-%{ endif }
-echo "---> Installing K3s Version: $K3S_VERSION"
-
-# --- Run K3s Installer (Cluster Init or Join) ---
-if [[ "$first_instance" == "$instance_id" ]]; then
-  echo "---> This is the FIRST SERVER. Initializing K3s cluster..."
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN=${k3s_token} sh -s - --cluster-init $INSTALL_PARAMS); do
-    echo "!!! k3s cluster-init failed, retrying in 5 seconds..."
+if [[ -n "${FIRST_NAME}" && "${FIRST_NAME}" == "${THIS_NAME}" ]]; then
+  echo "This is the FIRST server. Initializing cluster..."
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" K3S_TOKEN="${T_K3S_TOKEN}" sh -s - server --cluster-init ${INSTALL_PARAMS}); do
+    echo "k3s cluster-init failed, retrying..."
     sleep 5
   done
 else
-  echo "---> This is a JOINING SERVER. Waiting for cluster to be ready..."
-  wait_lb
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN=${k3s_token} sh -s - --server "https://${k3s_url}:6443" $INSTALL_PARAMS); do
-    echo "!!! k3s server join failed, retrying in 5 seconds..."
+  echo "This server is JOINING an existing cluster..."
+  # wait for API via private LB
+  wait_for_api_lb
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" K3S_TOKEN="${T_K3S_TOKEN}" K3S_URL="${T_K3S_URL}" sh -s - server ${INSTALL_PARAMS}); do
+    echo "k3s server join failed, retrying..."
     sleep 5
   done
 fi
 
-# --- Post-Installation Tasks (Run only on servers) ---
-%{ if is_k3s_server }
-echo "---> Waiting for K3s pods to be in 'Running' state..."
-until kubectl get pods -A | grep 'Running'; do
-  echo "     Still waiting for k3s startup..."
+# Wait for k3s to be usable
+echo "Waiting for pods to be Running..."
+until kubectl get pods -A | grep -q 'Running'; do
   sleep 5
 done
-echo "---> K3s is up and running."
 
-# --- First Server Tasks: Install Helm, Longhorn, and Ingress ---
-if [[ "$first_instance" == "$instance_id" ]]; then
-  echo "---> Performing post-install tasks on the first server..."
-
-  # Install Helm CLI
-  install_helm
-
-  %{ if install_longhorn }
-  echo "---> Installing Longhorn storage..."
-  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
-  systemctl enable --now iscsid.service
-  kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/${longhorn_release}/deploy/longhorn.yaml
-  echo "---> Longhorn installation initiated."
-  %{ endif }
-
-  %{ if ! disable_ingress }
-  %{ if ingress_controller != "default" }
-    install_ingress ${ingress_controller}
-  %{ endif }
-  %{ endif }
+# First-server only post steps
+if [[ -n "${FIRST_NAME}" && "${FIRST_NAME}" == "${THIS_NAME}" ]]; then
+  install_longhorn_if_first
+  if [[ "${T_DISABLE_INGRESS}" != "true" && "${T_INGRESS_CONTROLLER}" == "nginx" ]]; then
+    install_ingress_nginx_nodeport
+  fi
 fi
-%{ endif }
 
-echo "---> Node configuration complete! ✨"
+echo "K3s server setup complete."
