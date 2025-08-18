@@ -1,13 +1,14 @@
+# modules/cluster/nodes.tf
+
 # =================== 1. Control Plane (Master) Node ===================
 resource "oci_core_instance" "control_plane" {
   display_name        = "${var.cluster_name}-control-plane"
   compartment_id      = var.compartment_ocid
   availability_domain = var.availability_domain
   shape               = var.compute_shape
-
   shape_config {
-    ocpus         = 1
-    memory_in_gbs = 6
+    ocpus         = "1"
+    memory_in_gbs = "6"
   }
 
   create_vnic_details {
@@ -19,7 +20,7 @@ resource "oci_core_instance" "control_plane" {
 
   source_details {
     source_type = "image"
-    source_id   = var.os_image_id  # fixed: was image_id
+    source_id    = var.os_image_id
   }
 
   metadata = {
@@ -28,6 +29,7 @@ resource "oci_core_instance" "control_plane" {
     user_data = data.cloudinit_config.k3s_server_tpl.rendered
   }
 }
+
 # =================== 2. Application Worker Nodes (node-1, node-2) ===================
 resource "oci_core_instance" "app_workers" {
   # Create two app nodes using a map for iteration
@@ -40,10 +42,9 @@ resource "oci_core_instance" "app_workers" {
   compartment_id      = var.compartment_ocid
   availability_domain = var.availability_domain
   shape               = var.compute_shape
-
   shape_config {
-    ocpus         = 1
-    memory_in_gbs = 6
+    ocpus         = "1"
+    memory_in_gbs = "6"
   }
 
   create_vnic_details {
@@ -54,12 +55,12 @@ resource "oci_core_instance" "app_workers" {
 
   source_details {
     source_type = "image"
-    source_id   = var.os_image_id  # fixed: was image_id
+    source_id    = var.os_image_id
   }
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data           = base64encode(each.value.cloud_init)
+    user_data           = each.value.cloud_init
   }
 
   # Ensure the server is ready before workers try to join
@@ -72,10 +73,9 @@ resource "oci_core_instance" "db_worker" {
   compartment_id      = var.compartment_ocid
   availability_domain = var.availability_domain
   shape               = var.compute_shape
-
   shape_config {
-    ocpus         = 1
-    memory_in_gbs = 6
+    ocpus         = "1"
+    memory_in_gbs = "6"
   }
 
   create_vnic_details {
@@ -86,12 +86,12 @@ resource "oci_core_instance" "db_worker" {
 
   source_details {
     source_type = "image"
-    source_id   = var.os_image_id  # fixed: was image_id
+    source_id    = var.os_image_id
   }
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data           = base64encode(data.cloudinit_config.k3s_worker_tpl_db.rendered)
+    user_data           = data.cloudinit_config.k3s_worker_tpl_db.rendered
   }
 
   depends_on = [oci_core_instance.control_plane]
