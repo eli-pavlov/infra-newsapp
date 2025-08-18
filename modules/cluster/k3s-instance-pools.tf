@@ -11,20 +11,22 @@ resource "oci_core_instance_pool" "k3s_servers" {
 
   size = var.k3s_server_pool_size
 
+  # Point NLB backends to the NodePorts (Option B)
   load_balancers {
     backend_set_name = "k3s_http_backend"
     load_balancer_id = var.public_nlb_id
-    port             = 80
+    port             = var.ingress_controller_http_nodeport
     vnic_selection   = "PrimaryVnic"
   }
 
   load_balancers {
     backend_set_name = "k3s_https_backend"
     load_balancer_id = var.public_nlb_id
-    port             = 443
+    port             = var.ingress_controller_https_nodeport
     vnic_selection   = "PrimaryVnic"
   }
 
+  # Public kubeapi (restricted by admin CIDR at the NLB listener)
   load_balancers {
     backend_set_name = "k3s_kubeapi_backend"
     port             = 6443
@@ -32,6 +34,7 @@ resource "oci_core_instance_pool" "k3s_servers" {
     vnic_selection   = "PrimaryVnic"
   }
 
+  # Private kubeapi (internal LB)
   load_balancers {
     backend_set_name = "K3s__kube_api_backend_set"
     port             = 6443
@@ -53,17 +56,18 @@ resource "oci_core_instance_pool" "k3s_workers" {
 
   size = var.k3s_worker_pool_size
 
+  # Point NLB backends to the NodePorts (Option B)
   load_balancers {
     backend_set_name = "k3s_http_backend"
     load_balancer_id = var.public_nlb_id
-    port             = 80
+    port             = var.ingress_controller_http_nodeport
     vnic_selection   = "PrimaryVnic"
   }
 
   load_balancers {
     backend_set_name = "k3s_https_backend"
     load_balancer_id = var.public_nlb_id
-    port             = 443
+    port             = var.ingress_controller_https_nodeport
     vnic_selection   = "PrimaryVnic"
   }
 

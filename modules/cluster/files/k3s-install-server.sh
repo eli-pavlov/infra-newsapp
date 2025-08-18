@@ -1,4 +1,4 @@
-:#!/bin/bash
+#!/bin/bash
 set -e
 
 #
@@ -42,6 +42,7 @@ install_helm() {
   echo "---> Helm installation complete."
 }
 
+# Render NodePort Service + ConfigMap for ingress-nginx (NO proxy-protocol in Option B)
 render_nginx_config(){
 cat << EOF > "$NGINX_RESOURCES_FILE"
 ---
@@ -69,12 +70,6 @@ spec:
   type: NodePort
 ---
 apiVersion: v1
-data:
-  allow-snippet-annotations: "true"
-  enable-real-ip: "true"
-  proxy-real-ip-cidr: "0.0.0.0/0"
-  proxy-body-size: "20m"
-  use-proxy-protocol: "true"
 kind: ConfigMap
 metadata:
   labels:
@@ -87,6 +82,13 @@ metadata:
     helm.sh/chart: ingress-nginx-4.0.16
   name: ingress-nginx-controller
   namespace: ingress-nginx
+data:
+  allow-snippet-annotations: "true"
+  use-forwarded-headers: "true"
+  compute-full-forwarded-for: "true"
+  enable-real-ip: "true"
+  forwarded-for-header: "X-Forwarded-For"
+  proxy-real-ip-cidr: "0.0.0.0/0"
 EOF
 }
 
@@ -225,68 +227,4 @@ if [[ "$first_instance" == "$instance_id" ]]; then
 fi
 %{ endif }
 
-echo "---> Node configuration complete! ✨" 
-
-### --- ADDED: PostgreSQL installation & backend env exposure (runs last) ---
-%{ if is_k3s_server }
-if [[ "$first_instance" == "$instance_id" ]]; then
-  echo "---> Installing PostgreSQL (Bitnami) and preparing backend DB env..."
-
-  # Ensure Helm is available
-  if ! command -v helm >/dev/null 2>&1; then
-    install_helm
-  fi
-
-  # Add Bitnami repo and update (idempotent)
-  helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
-  helm repo update || true
-
-  # Discover default StorageClass (if any)
-  DEFAULT_SC=$(kubectl get sc -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' 2>/dev/null || true)
-  PG_STORAGE_SIZE="20Gi"
-
-  # Generate credentials
-  PG_APP_USER="appuser"
-  PG_APP_DB="appdb"
-  PG_ROOT_PASSWORD="$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)"
-  PG_APP_PWD="$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)"
-
-  # Namespace for PostgreSQL
-  kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
-
-  # Install/upgrade PostgreSQL (StatefulSet). Use stable DNS via fullnameOverride.
-  HELM_ARGS=(upgrade --install postgresql bitnami/postgresql
-    --namespace databases --create-namespace
-    --set fullnameOverride=postgresql
-    --set auth.enablePostgresUser=true
-    --set auth.postgresPassword="$${PG_ROOT_PASSWORD}"
-    --set auth.username="$${PG_APP_USER}"
-    --set auth.password="$${PG_APP_PWD}"
-    --set auth.database="$${PG_APP_DB}"
-    --set primary.persistence.enabled=true
-    --set primary.persistence.size="$${PG_STORAGE_SIZE}"
-    --wait --timeout 20m
-  )
-  if [[ -n "$${DEFAULT_SC}" ]]; then
-    HELM_ARGS+=(--set "primary.persistence.storageClass=$${DEFAULT_SC}")
-  fi
-  helm "$${HELM_ARGS[@]}"
-
-  # Build DB URI and publish as Secret in backend namespaces
-  PG_HOST="postgresql.databases.svc.cluster.local"
-  DB_URI="postgres://$${PG_APP_USER}:$${PG_APP_PWD}@$${PG_HOST}:5432/$${PG_APP_DB}"
-
-  for NS in development default; do
-    kubectl create namespace "$${NS}" --dry-run=client -o yaml | kubectl apply -f -
-    kubectl -n "$${NS}" create secret generic backend-db-env \
-      --from-literal=DB_ENGINE_TYPE=POSTGRES \
-      --from-literal=DB_URI="$${DB_URI}" \
-      --dry-run=client -o yaml | kubectl apply -f -
-  done
-
-  echo "---> PostgreSQL ready. Secret 'backend-db-env' created in namespaces: development, default."
-  echo "      DB_ENGINE_TYPE=POSTGRES"
-  echo "      DB_URI=$${DB_URI}"
-fi
-%{ endif }
-
+echo "---> Node configuration complete! ✨"
