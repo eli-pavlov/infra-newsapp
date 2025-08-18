@@ -1,5 +1,3 @@
-# modules/cluster/data.tf
-
 # K3s token for cluster join authentication
 resource "random_password" "k3s_token" {
   length  = 55
