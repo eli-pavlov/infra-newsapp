@@ -24,20 +24,20 @@ module "network" {
 }
 
 module "cluster" {
-  source                 = "./modules/cluster"
-  region                 = var.region
-  availability_domain    = var.availability_domain
-  compartment_ocid       = var.compartment_ocid
-  cluster_name           = var.cluster_name
-  public_key_content     = var.public_key_content
-  os_image_id            = var.os_image_id
-  public_nlb_id          = module.network.public_nlb_id
-  public_nlb_ip_address  = module.network.public_nlb_ip_address
-  private_lb_id          = module.network.private_lb_id
-  private_lb_ip_address  = module.network.private_lb_ip_address
-  workers_subnet_id      = module.network.workers_subnet_id
-  workers_http_nsg_id    = module.network.private_lb_security_group
-  servers_kubeapi_nsg_id = module.network.public_nlb_security_group
+  source                   = "./modules/cluster"
+  region                   = var.region
+  availability_domain      = var.availability_domain
+  compartment_ocid         = var.compartment_ocid
+  cluster_name             = var.cluster_name
+  public_key_content       = var.public_key_content
+  os_image_id              = var.os_image_id
+  public_nlb_id            = module.network.public_nlb_id
+  public_nlb_ip_address    = module.network.public_nlb_ip_address
+  private_lb_id            = module.network.private_lb_id
+  private_lb_ip_address    = module.network.private_lb_ip_address
+  workers_subnet_id        = module.network.workers_subnet_id
+  workers_http_nsg_id      = module.network.private_lb_security_group
+  servers_kubeapi_nsg_id   = module.network.public_nlb_security_group
   first_server_instance_id = oci_core_instance.k3s_server[0].id
 
 }

@@ -2,19 +2,19 @@ locals {
   # Split listener (public) ports from backend (node) ports
   public_ingress_rules = {
     http = {
-      source         = "0.0.0.0/0"
-      listener_port  = 80
-      backend_port   = 30080
+      source        = "0.0.0.0/0"
+      listener_port = 80
+      backend_port  = 30080
     }
     https = {
-      source         = "0.0.0.0/0"
-      listener_port  = 443
-      backend_port   = 30443
+      source        = "0.0.0.0/0"
+      listener_port = 443
+      backend_port  = 30443
     }
     kubeapi = {
-      source         = var.my_public_ip_cidr
-      listener_port  = 6443
-      backend_port   = 6443
+      source        = var.my_public_ip_cidr
+      listener_port = 6443
+      backend_port  = 6443
     }
   }
 }
@@ -41,7 +41,7 @@ resource "oci_network_load_balancer_backend_set" "this" {
   health_checker {
     protocol = "TCP"
     # IMPORTANT: health check the backend NodePort, not the listener port
-    port     = each.value.backend_port
+    port = each.value.backend_port
   }
 }
 

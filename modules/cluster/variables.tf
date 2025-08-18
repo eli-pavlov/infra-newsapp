@@ -200,5 +200,5 @@ variable "db_mount_path" {
 # Provide the actual instance OCID of the FIRST server from your compute resources
 variable "first_server_instance_id" {
   type        = string
-  description = "OCID of the first (control-plane) server instance to attach the DB volume to."
+  description = "OCID of the first server instance to attach the DB volume to."
 }
