@@ -19,7 +19,7 @@ jobs:
       run:
         working-directory: ./terraform
     env:
-      # ✅ FIX: Full environment variables for the plan job
+      # FIX: Full environment variables for the plan job
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
       TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
@@ -68,7 +68,7 @@ jobs:
     environment: production 
 
     env:
-      # ✅ FIX: Provider credentials for the apply job
+      # FIX: Provider credentials for the apply job
       TF_VAR_tenancy_ocid:     ${{ secrets.OCI_TENANCY_OCID }}
       TF_VAR_user_ocid:        ${{ secrets.OCI_USER_OCID }}
       TF_VAR_fingerprint:      ${{ secrets.OCI_FINGERPRINT }}
