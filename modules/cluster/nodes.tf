@@ -24,11 +24,10 @@ resource "oci_core_instance" "control_plane" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    # OCI expects base64-encoded user_data
-    user_data = base64encode(data.cloudinit_config.k3s_server_tpl.rendered)
+    # The cloudinit_config data source already handles base64 encoding
+    user_data = data.cloudinit_config.k3s_server_tpl.rendered
   }
 }
-
 # =================== 2. Application Worker Nodes (node-1, node-2) ===================
 resource "oci_core_instance" "app_workers" {
   # Create two app nodes using a map for iteration
