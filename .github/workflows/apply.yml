@@ -14,31 +14,31 @@ jobs:
   plan_for_apply:
     name: 'Terraform Plan'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./terraform
+    # ✅ FIX: Removed incorrect working-directory from defaults. All commands run from the root.
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      TF_VAR_tenancy_ocid:          ${{ secrets.OCI_TENANCY_OCID }}
-      TF_VAR_user_ocid:             ${{ secrets.OCI_USER_OCID }}
-      TF_VAR_fingerprint:           ${{ secrets.OCI_FINGERPRINT }}
-      TF_VAR_region:                ${{ secrets.OCI_REGION }}
-      TF_VAR_private_key_pem:       ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-      TF_VAR_compartment_ocid:      ${{ secrets.COMPARTMENT_OCID }}
-      TF_VAR_availability_domain:   ${{ secrets.AVAILABILITY_DOMAIN }}
-      TF_VAR_os_image_id:           ${{ secrets.OS_IMAGE_ID }}
-      TF_VAR_cluster_name:          ${{ secrets.CLUSTER_NAME }}
-      TF_VAR_admin_cidrs:           ${{ secrets.ADMIN_CIDRS }}
-      TF_VAR_cloudflare_cidrs:      ${{ secrets.CLOUDFLARE_CIDRS }}
-      TF_VAR_public_key_content:    ${{ secrets.SSH_PUBLIC_KEY }}
+      TF_VAR_tenancy_ocid:         ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid:            ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint:          ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_region:               ${{ secrets.OCI_REGION }}
+      TF_VAR_private_key_pem:      ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+      TF_VAR_compartment_ocid:     ${{ secrets.COMPARTMENT_OCID }}
+      TF_VAR_availability_domain:  ${{ secrets.AVAILABILITY_DOMAIN }}
+      TF_VAR_os_image_id:          ${{ secrets.OS_IMAGE_ID }}
+      TF_VAR_cluster_name:         ${{ secrets.CLUSTER_NAME }}
+      TF_VAR_admin_cidrs:          ${{ secrets.ADMIN_CIDRS }}
+      TF_VAR_cloudflare_cidrs:     ${{ secrets.CLOUDFLARE_CIDRS }}
+      TF_VAR_public_key_content:   ${{ secrets.SSH_PUBLIC_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.5
+
       - name: Terraform Init
         run: |
           terraform init \
@@ -46,51 +46,55 @@ jobs:
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}"
+
       - name: Terraform Plan
         run: terraform plan -out=tfplan -input=false
+
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
-          path: terraform/tfplan
+          # ✅ FIX: Path is now relative to the root of the repo.
+          path: tfplan
 
   apply:
     name: 'Terraform Apply'
     runs-on: ubuntu-latest
     needs: plan_for_apply
     environment: production
-    defaults:
-      run:
-        working-directory: ./terraform
+    # ✅ FIX: Removed incorrect working-directory from defaults.
     env:
       # ✅ FIX: Added full set of environment variables to match the plan job.
-      # This is required for the provider to authenticate during init and apply.
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      TF_VAR_tenancy_ocid:          ${{ secrets.OCI_TENANCY_OCID }}
-      TF_VAR_user_ocid:             ${{ secrets.OCI_USER_OCID }}
-      TF_VAR_fingerprint:           ${{ secrets.OCI_FINGERPRINT }}
-      TF_VAR_region:                ${{ secrets.OCI_REGION }}
-      TF_VAR_private_key_pem:       ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-      TF_VAR_compartment_ocid:      ${{ secrets.COMPARTMENT_OCID }}
-      TF_VAR_availability_domain:   ${{ secrets.AVAILABILITY_DOMAIN }}
-      TF_VAR_os_image_id:           ${{ secrets.OS_IMAGE_ID }}
-      TF_VAR_cluster_name:          ${{ secrets.CLUSTER_NAME }}
-      TF_VAR_admin_cidrs:           ${{ secrets.ADMIN_CIDRS }}
-      TF_VAR_cloudflare_cidrs:      ${{ secrets.CLOUDFLARE_CIDRS }}
-      TF_VAR_public_key_content:    ${{ secrets.SSH_PUBLIC_KEY }}
+      TF_VAR_tenancy_ocid:         ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid:            ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint:          ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_region:               ${{ secrets.OCI_REGION }}
+      TF_VAR_private_key_pem:      ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+      TF_VAR_compartment_ocid:     ${{ secrets.COMPARTMENT_OCID }}
+      TF_VAR_availability_domain:  ${{ secrets.AVAILABILITY_DOMAIN }}
+      TF_VAR_os_image_id:          ${{ secrets.OS_IMAGE_ID }}
+      TF_VAR_cluster_name:         ${{ secrets.CLUSTER_NAME }}
+      TF_VAR_admin_cidrs:          ${{ secrets.ADMIN_CIDRS }}
+      TF_VAR_cloudflare_cidrs:     ${{ secrets.CLOUDFLARE_CIDRS }}
+      TF_VAR_public_key_content:   ${{ secrets.SSH_PUBLIC_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.5
+
       - name: Download plan artifact
         uses: actions/download-artifact@v4
         with:
           name: tfplan
-          path: terraform/
+          # ✅ FIX: Path is now relative to the root of the repo.
+          path: .
+
       - name: Terraform Init
         run: |
           terraform init \
@@ -98,5 +102,6 @@ jobs:
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}"
+
       - name: Terraform Apply
         run: terraform apply -input=false tfplan
