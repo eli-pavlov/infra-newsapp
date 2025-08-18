@@ -11,7 +11,6 @@ resource "oci_network_load_balancer_backend" "http" {
   ip_address               = each.value
   port                     = var.ingress_controller_http_nodeport
   is_backup = false
-  is_draining = false
   is_offline = false
   weight = 1
 }
@@ -23,7 +22,6 @@ resource "oci_network_load_balancer_backend" "https" {
   ip_address               = each.value
   port                     = var.ingress_controller_https_nodeport
   is_backup = false
-  is_draining = false
   is_offline = false
   weight = 1
 }
