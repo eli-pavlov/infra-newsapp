@@ -165,7 +165,8 @@ k3s_install_params+=("--disable traefik")
 k3s_install_params+=("--tls-san ${k3s_tls_san_public}")
 %{ endif }
 
-# Correctly join array elements into a single string
+# Correctly join array elements into a single string.
+# The $$ is intentional to escape Terraform interpolation.
 INSTALL_PARAMS="$${k3s_install_params[*]}"
 
 # Determine K3s version
@@ -179,14 +180,14 @@ echo "---> Installing K3s Version: $K3S_VERSION"
 # --- Run K3s Installer (Cluster Init or Join) ---
 if [[ "$first_instance" == "$instance_id" ]]; then
   echo "---> This is the FIRST SERVER. Initializing K3s cluster..."
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - --cluster-init $INSTALL_PARAMS); do
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN=${k3s_token} sh -s - --cluster-init $INSTALL_PARAMS); do
     echo "!!! k3s cluster-init failed, retrying in 5 seconds..."
     sleep 5
   done
 else
   echo "---> This is a JOINING SERVER. Waiting for cluster to be ready..."
   wait_lb
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - --server "https://${k3s_url}:6443" $INSTALL_PARAMS); do
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN=${k3s_token} sh -s - --server "https://${k3s_url}:6443" $INSTALL_PARAMS); do
     echo "!!! k3s server join failed, retrying in 5 seconds..."
     sleep 5
   done
