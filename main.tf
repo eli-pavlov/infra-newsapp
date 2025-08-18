@@ -21,9 +21,8 @@ module "network" {
   compartment_ocid = var.compartment_ocid
   tenancy_ocid     = var.tenancy_ocid
 
-  # NEW vars
-  admin_cidrs      = var.admin_cidrs
-  cloudflare_cidrs = var.cloudflare_cidrs
+  admin_cidrs      = var.admin_cidrs       # <-- list
+  cloudflare_cidrs = var.cloudflare_cidrs  # <-- list
 }
 
 module "cluster" {

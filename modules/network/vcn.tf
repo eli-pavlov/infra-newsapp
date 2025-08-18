@@ -52,29 +52,30 @@ resource "oci_core_default_security_list" "default_security_list" {
     protocol    = "all"
   }
 
-  # ICMP from your admin CIDRs
-  dynamic "ingress_security_rules" {
-    for_each = var.admin_cidrs
-    content {
-      protocol    = 1 # icmp
-      source      = ingress_security_rules.value
-      description = "Allow ICMP from ${ingress_security_rules.value}"
-    }
+# ICMP from your admin CIDRs
+dynamic "ingress_security_rules" {
+  for_each = var.admin_cidrs
+  content {
+    protocol    = 1 # icmp (IPv4)
+    source      = ingress_security_rules.value
+    description = "Allow ICMP from ${ingress_security_rules.value}"
   }
+}
 
-  # SSH from your admin CIDRs
-  dynamic "ingress_security_rules" {
-    for_each = var.admin_cidrs
-    content {
-      protocol    = 6 # tcp
-      source      = ingress_security_rules.value
-      description = "Allow SSH from ${ingress_security_rules.value}"
-      tcp_options {
-        min = 22
-        max = 22
-      }
+# SSH from your admin CIDRs
+dynamic "ingress_security_rules" {
+  for_each = var.admin_cidrs
+  content {
+    protocol    = 6 # tcp
+    source      = ingress_security_rules.value
+    description = "Allow SSH from ${ingress_security_rules.value}"
+    tcp_options {
+      min = 22
+      max = 22
     }
   }
+}
+
 
   # Intra-VCN free-for-all
   ingress_security_rules {

@@ -40,7 +40,7 @@ variable "oci_core_subnet_cidr11" {
 # NEW: your personal IP ranges (SSH + kubeapi)
 variable "admin_cidrs" {
   type        = list(string)
-  description = "Personal/public IP CIDRs allowed to SSH to instances and reach kubeapi on the public NLB."
+  description = "Admin/public IP CIDRs (SSH/ICMP to instances)."
 }
 
 # NEW: Cloudflare IP ranges (public site via 80/443)

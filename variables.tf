@@ -47,11 +47,6 @@ variable "public_key_content" {
   sensitive   = true
 }
 
-variable "admin_cidr" {
-  description = "The IP CIDR of the admin network to allow SSH access. Must be provided as a secret."
-  type        = string
-  # The default value has been removed to make this a required variable.
-}
 
 variable "private_key_pem" {
   description = "The content of the OCI private key in PEM format."
