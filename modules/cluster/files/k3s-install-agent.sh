@@ -1,16 +1,16 @@
 #!/bin/bash
-# K3s AGENT install (joins via PRIVATE LB). ASCII-only; Terraform only fills the top vars.
+# K3s AGENT install (joins via PRIVATE LB).
 set -euo pipefail
 
-# ------- Vars injected by Terraform (strings only) -------
-T_K3S_VERSION="${k3s_version}"                # e.g. "latest" or "v1.29.5+k3s1"
-T_K3S_SUBNET="${k3s_subnet}"                  # e.g. "default_route_table" or a CIDR selector
+# ------- Vars injected by Terraform -------
+T_K3S_VERSION="${k3s_version}"
+T_K3S_SUBNET="${k3s_subnet}"
 T_K3S_TOKEN="${k3s_token}"
-T_K3S_URL="https://${k3s_url}:6443"           # Private LB IP for server API
-T_INSTALL_LONGHORN="${install_longhorn}"      # "true" or "false"
-T_NODE_NAME="${node_name}"     # e.g. node-1 / node-2 / node-3
-T_NODE_ROLE="${node_role}"     # "app" or "db"
-
+T_K3S_URL="https://${k3s_url}:6443"
+T_NODE_NAME="${node_name}" # e.g., node-1, node-2, node-3
+T_NODE_ROLE="${node_role}" # "app" or "db"
+T_DB_VOLUME_DEVICE="${db_volume_device}"
+T_DB_MOUNT_PATH="${db_mount_path}"
 
 # ---------------------- Helpers --------------------------
 detect_os() {
@@ -67,43 +67,63 @@ resolve_k3s_version() {
   echo "Using K3s version: $K3S_VERSION"
 }
 
-install_longhorn_bits_if_needed() {
-  if [[ "$T_INSTALL_LONGHORN" == "true" ]]; then
-    if [[ "$OS_FAMILY" == "ubuntu" ]]; then
-      DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
-      systemctl enable --now iscsid.service || true
-    elif [[ "$OS_FAMILY" == "oraclelinux" ]]; then
-      dnf -y install iscsi-initiator-utils util-linux || true
-      systemctl enable --now iscsid.service || true
+mount_db_volume_if_needed() {
+  if [[ "$T_NODE_ROLE" == "db" ]]; then
+    echo "This is a DB node. Setting up block volume mount..."
+    DB_DEV="$T_DB_VOLUME_DEVICE"
+    DB_MNT="$T_DB_MOUNT_PATH"
+    echo "Waiting for DB device $DB_DEV ..."
+    for i in {1..120}; do
+      [ -b "$DB_DEV" ] && break
+      sleep 1
+    done
+    if [ ! -b "$DB_DEV" ]; then
+      echo "::error:: Block device $DB_DEV not found on DB node!"
+      exit 1
     fi
+    if ! blkid "$DB_DEV" >/dev/null 2>&1; then
+      echo "Formatting $DB_DEV as ext4..."
+      mkfs.ext4 -F "$DB_DEV"
+    fi
+    mkdir -p "$DB_MNT"
+    UUID=$(blkid -s UUID -o value "$DB_DEV")
+    if ! grep -q "$UUID" /etc/fstab; then
+      echo "UUID=$UUID $DB_MNT ext4 defaults,nofail 0 2" >> /etc/fstab
+    fi
+    mount -a
+    echo "Block volume mounted at $DB_MNT."
   fi
 }
 
 # --------------------- Main logic ------------------------
 detect_os
 base_setup
+mount_db_volume_if_needed
 
-# Build K3s install params (use a simple string to avoid $${params[*]})
-PARAMS=""
+# Build K3s agent install parameters
+PARAMS="--node-name $T_NODE_NAME --node-label=node.role=$T_NODE_ROLE"
+
+# Taint the DB node so only DB-specific pods can be scheduled there
+if [[ "$T_NODE_ROLE" == "db" ]]; then
+  PARAMS="$PARAMS --kubelet-arg=register-with-taints=role=db:NoSchedule"
+fi
+
 if [[ "$T_K3S_SUBNET" != "default_route_table" ]]; then
   local_ip=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=src )(\S+)' || true)
   flannel_iface=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=dev )(\S+)' || true)
-  if [[ -n "$${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip"; fi
-  if [[ -n "$${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
+  if [[ -n "${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip"; fi
+  if [[ -n "${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
 fi
 if [[ "$OS_FAMILY" == "oraclelinux" ]]; then PARAMS="$PARAMS --selinux"; fi
 
 resolve_k3s_version
 wait_for_api_lb
 
-# Install K3s as AGENT (explicit)
+# Install K3s as an AGENT
+echo "Installing K3s agent with params: $PARAMS"
 until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" K3S_URL="$T_K3S_URL" sh -s - agent $PARAMS); do
   echo "k3s agent did not install correctly, retrying..."
   sleep 3
 done
 
-install_longhorn_bits_if_needed
-
-# Best-effort info
-kubectl get nodes -o wide || true
-echo "K3s agent setup complete."
+echo "K3s agent setup complete for node $T_NODE_NAME."

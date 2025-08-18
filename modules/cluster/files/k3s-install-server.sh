@@ -1,32 +1,21 @@
 #!/bin/bash
-# K3s SERVER install (cluster-init on first server, others join via PRIVATE LB).
-# ASCII-only; Terraform only fills the top vars.
+# K3s SERVER install (cluster-init on the control-plane node).
 set -euo pipefail
 
 # ------- Vars injected by Terraform (strings only) -------
-T_K3S_VERSION="${k3s_version}"                     # "latest" or explicit version
+T_K3S_VERSION="${k3s_version}"
 T_K3S_SUBNET="${k3s_subnet}"
 T_K3S_TOKEN="${k3s_token}"
-T_COMPARTMENT_OCID="${compartment_ocid}"
-T_AVAILABILITY_DOMAIN="${availability_domain}"
-
-T_K3S_URL="https://${k3s_url}:6443"                # Private LB IP for API
-T_TLS_SAN_PRIV="${k3s_tls_san}"                    # Usually the private LB IP
-T_TLS_SAN_PUB="${k3s_tls_san_public}"              # Public NLB IP (if expose_kubeapi true)
-
-T_DISABLE_INGRESS="${disable_ingress}"             # "true"/"false"
-T_INGRESS_CONTROLLER="${ingress_controller}"       # "default" or "nginx"
-T_NGINX_INGRESS_RELEASE="${nginx_ingress_release}" # e.g. v1.5.1
-T_INSTALL_LONGHORN="${install_longhorn}"           # "true"/"false"
-T_LONGHORN_RELEASE="${longhorn_release}"           # e.g. v1.4.2
-T_EXPOSE_KUBEAPI="${expose_kubeapi}"               # "true"/"false"
-
-T_HTTP_NODEPORT="${ingress_controller_http_nodeport}"   # 30080
-T_HTTPS_NODEPORT="${ingress_controller_https_nodeport}" # 30443
-
-# Durable DB volume vars (injected by Terraform)
-T_DB_VOLUME_DEVICE="${db_volume_device}"           # e.g. /dev/oracleoci/oraclevdb
-T_DB_MOUNT_PATH="${db_mount_path}"                 # e.g. /var/lib/postgresql/data
+T_K3S_URL="https://${k3s_url}:6443"
+T_TLS_SAN_PRIV="${k3s_tls_san}"
+T_TLS_SAN_PUB="${k3s_tls_san_public}"
+T_DISABLE_INGRESS="${disable_ingress}"
+T_INGRESS_CONTROLLER="${ingress_controller}"
+T_NGINX_INGRESS_RELEASE="${nginx_ingress_release}"
+T_HTTP_NODEPORT="${ingress_controller_http_nodeport}"
+T_HTTPS_NODEPORT="${ingress_controller_https_nodeport}"
+T_DB_MOUNT_PATH="${db_mount_path}"
+T_DB_NODE_NAME="${node3_name}" # The name of the dedicated DB node
 
 # ---------------------- Helpers --------------------------
 detect_os() {
@@ -51,22 +40,14 @@ base_setup() {
     /usr/sbin/netfilter-persistent flush || true
     systemctl disable --now netfilter-persistent.service || true
     apt-get update
-    apt-get install -y jq curl software-properties-common python3 python3-pip
+    apt-get install -y jq curl software-properties-common
     DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-    pip3 install --no-cache-dir oci-cli
   elif [[ "$OS_FAMILY" == "oraclelinux" ]]; then
     systemctl disable --now firewalld || true
     echo '(allow iptables_t cgroup_t (dir (ioctl)))' > /root/local_iptables.cil
     semodule -i /root/local_iptables.cil || true
     dnf -y update
-    if [[ "$OS_MAJOR" -eq 9 ]]; then
-      dnf -y install oraclelinux-developer-release-el9
-      dnf -y install jq curl python39-oci-cli
-    else
-      dnf -y install oraclelinux-developer-release-el8
-      dnf -y module enable python36:3.6
-      dnf -y install jq curl python36-oci-cli
-    fi
+    dnf -y install jq curl
   fi
   echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf || true
   echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf || true
@@ -74,22 +55,11 @@ base_setup() {
 }
 
 install_helm() {
-  if command -v helm >/dev/null 2>&1; then
-    return
-  fi
+  if command -v helm >/dev/null 2>&1; then return; fi
   echo "Installing Helm..."
   curl -fsSL -o /root/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
   chmod +x /root/get_helm.sh
   /root/get_helm.sh
-}
-
-wait_for_api_lb() {
-  echo "Waiting for LB $T_K3S_URL ..."
-  while true; do
-    curl --output /dev/null --silent -k "$T_K3S_URL" && break
-    sleep 5
-    echo "  still waiting..."
-  done
 }
 
 resolve_k3s_version() {
@@ -101,38 +71,8 @@ resolve_k3s_version() {
   echo "Using K3s version: $K3S_VERSION"
 }
 
-first_server_name() {
-  export OCI_CLI_AUTH=instance_principal
-  oci compute instance list \
-    --compartment-id "$T_COMPARTMENT_OCID" \
-    --availability-domain "$T_AVAILABILITY_DOMAIN" \
-    --lifecycle-state RUNNING \
-    --sort-by TIMECREATED |
-    jq -r '.data[] | select(."display-name" | endswith("k3s-servers")) | .["display-name"]' |
-    head -n 1
-}
-
-this_server_name() {
-  curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance | jq -r '.displayName'
-}
-
-install_longhorn_if_first() {
-  if [[ "$T_INSTALL_LONGHORN" == "true" ]]; then
-    if [[ "$OS_FAMILY" == "ubuntu" ]]; then
-      DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
-    elif [[ "$OS_FAMILY" == "oraclelinux" ]]; then
-      dnf -y install iscsi-initiator-utils util-linux || true
-    fi
-    systemctl enable --now iscsid.service || true
-    kubectl apply -f "https://raw.githubusercontent.com/longhorn/longhorn/$T_LONGHORN_RELEASE/deploy/longhorn.yaml"
-  fi
-}
-
 install_ingress_nginx_nodeport() {
-  # Deploy controller (baremetal manifest)
   kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-$T_NGINX_INGRESS_RELEASE/deploy/static/provider/baremetal/deploy.yaml"
-
-  # Create a NodePort service + ConfigMap (no PROXY protocol; trust forwarded headers)
   cat > /root/nginx-ingress-nodeport.yaml <<YAML
 ---
 apiVersion: v1
@@ -163,203 +103,76 @@ kind: ConfigMap
 metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
-  labels:
-    app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: ingress-nginx
-    app.kubernetes.io/name: ingress-nginx
 data:
   allow-snippet-annotations: "true"
   use-forwarded-headers: "true"
-  compute-full-forwarded-for: "true"
-  enable-real-ip: "true"
-  proxy-real-ip-cidr: "0.0.0.0/0"
-  proxy-body-size: "20m"
-  use-proxy-protocol: "false"
 YAML
   kubectl apply -f /root/nginx-ingress-nodeport.yaml
 }
+
+install_argocd() {
+  echo "Installing Argo CD..."
+  kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  # Wait for Argo CD server to be ready
+  kubectl -n argocd rollout status deployment/argocd-server --timeout=600s || true
+}
+
+install_prometheus_stack() {
+  echo "Installing Kube Prometheus Stack (Prometheus + Grafana)..."
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+  helm repo update || true
+  helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+    --namespace monitoring --create-namespace \
+    --wait --timeout 20m
+}
+
+save_credentials() {
+  echo "Saving credentials to /root/credentials.txt..."
+  # Clear existing file to ensure it's fresh on each run
+  > /root/credentials.txt
+  chmod 600 /root/credentials.txt
+
+  # --- Argo CD ---
+  # The initial password is the name of the server pod
+  ARGO_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+  echo "--- Argo CD ---" >> /root/credentials.txt
+  echo "Username: admin" >> /root/credentials.txt
+  echo "Password: $ARGO_PASS" >> /root/credentials.txt
+  echo "" >> /root/credentials.txt
+
+  # --- Grafana ---
+  GRAFANA_PASS=$(kubectl -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 -d)
+  echo "--- Grafana ---" >> /root/credentials.txt
+  echo "Username: admin" >> /root/credentials.txt
+  echo "Password: $GRAFANA_PASS" >> /root/credentials.txt
+  echo "" >> /root/credentials.txt
+
+  echo "Credentials saved successfully."
+}
+
 
 # --------------------- Main logic ------------------------
 detect_os
 base_setup
 resolve_k3s_version
 
-# Build server params (use a simple string to avoid $${params[*]})
-PARAMS="--tls-san $T_TLS_SAN_PRIV"
+# Build K3s server install parameters
+PARAMS="--tls-san $T_TLS_SAN_PRIV --tls-san $T_TLS_SAN_PUB"
 if [[ "$T_K3S_SUBNET" != "default_route_table" ]]; then
   local_ip=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=src )(\S+)' || true)
   flannel_iface=$(ip -4 route ls "$T_K3S_SUBNET" | grep -Po '(?<=dev )(\S+)' || true)
-  if [[ -n "$${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip --advertise-address $local_ip"; fi
-  if [[ -n "$${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
+  if [[ -n "${local_ip:-}" ]]; then PARAMS="$PARAMS --node-ip $local_ip --advertise-address $local_ip"; fi
+  if [[ -n "${flannel_iface:-}" ]]; then PARAMS="$PARAMS --flannel-iface $flannel_iface"; fi
 fi
-# Disable the default traefik if we will use nginx (or if explicitly disabled)
-if [[ "$T_DISABLE_INGRESS" == "true" ]]; then
+if [[ "$T_DISABLE_INGRESS" == "true" || "$T_INGRESS_CONTROLLER" == "nginx" ]]; then
   PARAMS="$PARAMS --disable traefik"
-else
-  if [[ "$T_INGRESS_CONTROLLER" != "default" ]]; then
-    PARAMS="$PARAMS --disable traefik"
-  fi
-fi
-if [[ "$T_EXPOSE_KUBEAPI" == "true" ]]; then
-  PARAMS="$PARAMS --tls-san $T_TLS_SAN_PUB"
 fi
 if [[ "$OS_FAMILY" == "oraclelinux" ]]; then
   PARAMS="$PARAMS --selinux"
 fi
 
-FIRST_NAME=$(first_server_name || true)
-THIS_NAME=$(this_server_name || true)
-
-if [[ -n "$${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
-  echo "This is the FIRST server. Initializing cluster..."
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" sh -s - server --cluster-init $PARAMS); do
-    echo "k3s cluster-init failed, retrying..."
-    sleep 5
-  done
-else
-  echo "This server is JOINING an existing cluster..."
-  # wait for API via private LB
-  wait_for_api_lb
-  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" K3S_URL="$T_K3S_URL" sh -s - server $PARAMS); do
-    echo "k3s server join failed, retrying..."
-    sleep 5
-  done
-fi
-
-# Wait for k3s to be usable
-echo "Waiting for pods to be Running..."
-until kubectl get pods -A | grep -q 'Running'; do
-  sleep 5
-done
-
-# First-server only post steps
-if [[ -n "$${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
-  install_longhorn_if_first
-  if [[ "$T_DISABLE_INGRESS" != "true" && "$T_INGRESS_CONTROLLER" == "nginx" ]]; then
-    install_ingress_nginx_nodeport
-  fi
-fi
-
-echo "K3s server setup complete."
-
-# ---------------- PostgreSQL + durable block volume (LAST STEP) ----------------
-# First server only: mount OCI block volume, create hostPath PV/PVC, install Bitnami PostgreSQL,
-# and publish DB env to backend namespaces.
-if [[ -n "$${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
-  echo "Setting up PostgreSQL with durable OCI Block Volume..."
-
-  install_helm
-
-  # Mount OCI block volume to known path
-  DB_DEV="$T_DB_VOLUME_DEVICE"
-  DB_MNT="$T_DB_MOUNT_PATH"
-  echo "Waiting for DB device $DB_DEV ..."
-  for i in {1..120}; do
-    if [ -b "$DB_DEV" ]; then break; fi
-    sleep 1
-  done
-  if [ ! -b "$DB_DEV" ]; then
-    echo "Block device $DB_DEV not found; skipping format/mount"
-  else
-    if ! blkid "$DB_DEV" >/dev/null 2>&1; then
-      echo "Formatting $DB_DEV as ext4 ..."
-      mkfs.ext4 -F "$DB_DEV"
-    fi
-    mkdir -p "$DB_MNT"
-    UUID=$(blkid -s UUID -o value "$DB_DEV")
-    if ! grep -q "$UUID" /etc/fstab; then
-      echo "UUID=$UUID $DB_MNT ext4 defaults,nofail 0 2" >> /etc/fstab
-    fi
-    mount -a
-  fi
-
-  # Helm repo (idempotent)
-  helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
-  helm repo update || true
-
-  # DB credentials and defaults
-  PG_STORAGE_SIZE="30Gi"
-  PG_APP_USER="appuser"
-  PG_APP_DB="appdb"
-  PG_ROOT_PASSWORD="$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)"
-  PG_APP_PWD="$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)"
-
-  # Namespace for PostgreSQL
-  kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
-
-  # Determine this control-plane node name (for PV nodeAffinity)
-  NODE_NAME="$(kubectl get nodes -l node-role.kubernetes.io/control-plane= -o jsonpath='{.items[0].metadata.name}')"
-  if [ -z "$NODE_NAME" ]; then
-    NODE_NAME="$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')"
-  fi
-
-  # Create hostPath PV pointing to the mounted block volume (Retain policy)
-  cat <<PV | kubectl apply -f -
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: pg-hostpath-pv
-spec:
-  capacity:
-    storage: $PG_STORAGE_SIZE
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  volumeMode: Filesystem
-  storageClassName: ""
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-      - matchExpressions:
-        - key: kubernetes.io/hostname
-          operator: In
-          values:
-          - $NODE_NAME
-  hostPath:
-    path: $DB_MNT
-PV
-
-  # Create PVC in 'databases' namespace bound to that PV
-  cat <<PVC | kubectl -n databases apply -f -
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pg-hostpath-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: $PG_STORAGE_SIZE
-  storageClassName: ""
-  volumeName: pg-hostpath-pv
-PVC
-
-  # Install/upgrade Bitnami PostgreSQL using the existing PVC
-  helm upgrade --install postgresql bitnami/postgresql \
-    --namespace databases --create-namespace \
-    --set fullnameOverride=postgresql \
-    --set auth.enablePostgresUser=true \
-    --set auth.postgresPassword="$PG_ROOT_PASSWORD" \
-    --set auth.username="$PG_APP_USER" \
-    --set auth.password="$PG_APP_PWD" \
-    --set auth.database="$PG_APP_DB" \
-    --set primary.persistence.enabled=true \
-    --set primary.persistence.existingClaim=pg-hostpath-pvc \
-    --wait --timeout 20m
-
-  # Build DB URI and publish as Secret in backend namespaces
-  PG_HOST="postgresql.databases.svc.cluster.local"
-  DB_URI="postgres://$PG_APP_USER:$PG_APP_PWD@$PG_HOST:5432/$PG_APP_DB"
-
-  for NS in development default; do
-    kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-    kubectl -n "$NS" create secret generic backend-db-env \
-      --from-literal=DB_ENGINE_TYPE=POSTGRES \
-      --from-literal=DB_URI="$DB_URI" \
-      --dry-run=client -o yaml | kubectl apply -f -
-  done
-
-  echo "PostgreSQL ready with durable block volume."
-  echo "DB_URI=$DB_URI"
-fi
+# This is the first and only server, so we always do --cluster-init
+echo "Initializing K3s cluster on control-plane..."
+until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" K3S_TOKEN="$T_K3S_TOKEN" sh -s - server --cluster-init $PARAMS); do
+  echo "k3s clust
