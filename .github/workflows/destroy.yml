@@ -34,13 +34,23 @@ jobs:
         with:
           terraform_version: 1.9.5
 
-      - name: Terraform init
+      - name: Create backend.oci.hcl
         run: |
-          terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
-            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
-            -backend-config="region=${{ secrets.OCI_REGION }}"
+          cat > backend.oci.hcl <<'HCL'
+          tenancy_ocid        = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid           = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint         = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem     = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket              = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace           = "${{ secrets.OS_NAMESPACE }}"
+          region              = "${{ secrets.OCI_REGION }}"
+          key                 = "${{ secrets.TF_STATE_KEY }}"
+          workspace_key_prefix = "envs/"
+          HCL
+
+      - name: Terraform init
+        run: terraform init -backend-config=backend.oci.hcl
+
 
       - name: Terraform destroy
         run: terraform destroy -auto-approve -input=false
