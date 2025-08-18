@@ -40,11 +40,12 @@ module "cluster" {
   private_lb_ip_address  = module.network.private_lb_ip_address
   workers_subnet_id      = module.network.workers_subnet_id
 
+
   # unchanged
   workers_http_nsg_id    = module.network.private_lb_security_group
 
   # CHANGED: use the dedicated servers' kubeapi NSG (not the NLB's NSG)
-  servers_kubeapi_nsg_id = module.network.servers_kubeapi_security_group
+  servers_kubeapi_nsg_id   = module.network.servers_kubeapi_security_group
 }
 
 

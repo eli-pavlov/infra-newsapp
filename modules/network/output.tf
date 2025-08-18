@@ -30,3 +30,4 @@ output "public_nlb_security_group" {
 output "servers_kubeapi_security_group" {
   value = oci_core_network_security_group.servers_kubeapi.id
 }
+

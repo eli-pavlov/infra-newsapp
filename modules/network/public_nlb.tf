@@ -1,5 +1,5 @@
 locals {
-  # Listener ports (what the NLB exposes) and backend NodePorts (on workers)
+  # Only HTTP/HTTPS are public. No public kubeapi.
   public_ingress_rules = {
     http = {
       listener_port = 80
@@ -8,10 +8,6 @@ locals {
     https = {
       listener_port = 443
       backend_port  = 30443
-    }
-    kubeapi = {
-      listener_port = 6443
-      backend_port  = 6443
     }
   }
 }
@@ -51,7 +47,7 @@ resource "oci_network_load_balancer_listener" "this" {
   protocol                 = "TCP"
 }
 
-# NSG for the public NLB (ingress from the Internet to the NLB listener ports)
+# NSG for the public NLB (ingress from Internet)
 resource "oci_core_network_security_group" "public_nlb" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.default_oci_core_vcn.id
@@ -71,7 +67,10 @@ resource "oci_core_network_security_group_security_rule" "public_http" {
   stateless   = false
 
   tcp_options {
-    destination_port_range { min = 80, max = 80 }
+    destination_port_range {
+      min = 80
+      max = 80
+    }
   }
 }
 
@@ -88,46 +87,35 @@ resource "oci_core_network_security_group_security_rule" "public_https" {
   stateless   = false
 
   tcp_options {
-    destination_port_range { min = 443, max = 443 }
+    destination_port_range {
+      min = 443
+      max = 443
+    }
   }
 }
 
-# Restrict kubeapi (6443) to your admin CIDRs
-resource "oci_core_network_security_group_security_rule" "public_kubeapi" {
-  for_each                  = toset(var.admin_cidrs)
-  network_security_group_id = oci_core_network_security_group.public_nlb.id
-  direction                 = "INGRESS"
-  protocol                  = 6 # tcp
+# ---- Servers' NSG (only allow kubeapi from the PRIVATE LB) ----
 
-  description = "Allow kubeapi (6443) from ${each.key}"
-  source      = each.key
-  source_type = "CIDR_BLOCK"
-  stateless   = false
-
-  tcp_options {
-    destination_port_range { min = 6443, max = 6443 }
-  }
-}
-
-# NEW: Dedicated NSG for servers' kubeapi VNICs (do NOT attach the public NLB NSG to servers)
 resource "oci_core_network_security_group" "servers_kubeapi" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.default_oci_core_vcn.id
   display_name   = "K3S Servers kubeapi Security Group"
 }
 
-# Allow NLB to reach servers on 6443 via NSG→NSG reference
-resource "oci_core_network_security_group_security_rule" "servers_allow_from_nlb_6443" {
+resource "oci_core_network_security_group_security_rule" "servers_allow_from_private_lb_6443" {
   network_security_group_id = oci_core_network_security_group.servers_kubeapi.id
   direction                 = "INGRESS"
   protocol                  = 6 # tcp
 
-  description = "Allow kubeapi (6443) from Public NLB"
+  description = "Allow kubeapi (6443) from Private LB"
   source_type = "NETWORK_SECURITY_GROUP"
-  source      = oci_core_network_security_group.public_nlb.id
+  source      = oci_core_network_security_group.private_lb.id
   stateless   = false
 
   tcp_options {
-    destination_port_range { min = 6443, max = 6443 }
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
   }
 }

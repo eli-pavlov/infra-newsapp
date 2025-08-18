@@ -11,7 +11,7 @@ resource "oci_core_instance_pool" "k3s_servers" {
 
   size = var.k3s_server_pool_size
 
-  # Point NLB backends to the NodePorts (Option B)
+  # Public NLB backends for NodePorts only (HTTP/HTTPS)
   load_balancers {
     backend_set_name = "k3s_http_backend"
     load_balancer_id = var.public_nlb_id
@@ -26,15 +26,7 @@ resource "oci_core_instance_pool" "k3s_servers" {
     vnic_selection   = "PrimaryVnic"
   }
 
-  # Public kubeapi (restricted by admin CIDR at the NLB listener)
-  load_balancers {
-    backend_set_name = "k3s_kubeapi_backend"
-    port             = 6443
-    load_balancer_id = var.public_nlb_id
-    vnic_selection   = "PrimaryVnic"
-  }
-
-  # Private kubeapi (internal LB)
+  # Private kubeapi (internal LB only)
   load_balancers {
     backend_set_name = "K3s__kube_api_backend_set"
     port             = 6443
@@ -56,7 +48,7 @@ resource "oci_core_instance_pool" "k3s_workers" {
 
   size = var.k3s_worker_pool_size
 
-  # Point NLB backends to the NodePorts (Option B)
+  # Public NLB backends for NodePorts
   load_balancers {
     backend_set_name = "k3s_http_backend"
     load_balancer_id = var.public_nlb_id
@@ -71,7 +63,5 @@ resource "oci_core_instance_pool" "k3s_workers" {
     vnic_selection   = "PrimaryVnic"
   }
 
-  depends_on = [
-    oci_core_instance_pool.k3s_servers
-  ]
+  depends_on = [oci_core_instance_pool.k3s_servers]
 }

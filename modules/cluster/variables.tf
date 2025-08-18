@@ -175,8 +175,9 @@ variable "longhorn_release" {
 
 variable "expose_kubeapi" {
   type    = bool
-  default = true
+  default = false
 }
+
 
 # Durable DB volume settings
 variable "db_volume_size_gb" {
