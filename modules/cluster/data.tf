@@ -102,10 +102,6 @@ data "cloudinit_config" "k3s_worker_tpl_db" {
   }
 }
 
-data "oci_core_instance_pool_instances" "k3s_workers_instances" {
-  compartment_id   = var.compartment_ocid
-  instance_pool_id = oci_core_instance_pool.k3s_workers.id
-}
 
 data "oci_core_instance" "k3s_workers_instances_ips" {
   count       = var.k3s_worker_pool_size
