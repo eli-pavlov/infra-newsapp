@@ -1,46 +1,46 @@
 #!/bin/bash
-set -e
 
-#
-# Helper Functions
-#
+check_os() {
+  name=$(cat /etc/os-release | grep ^NAME= | sed 's/"//g')
+  clean_name=$${name#*=}
 
-verify_os() {
-  # Source the os-release file and verify the OS is Ubuntu
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
+  version=$(cat /etc/os-release | grep ^VERSION_ID= | sed 's/"//g')
+  clean_version=$${version#*=}
+  major=$${clean_version%.*}
+  minor=$${clean_version#*.}
+  
+  if [[ "$clean_name" == "Ubuntu" ]]; then
+    operating_system="ubuntu"
+  elif [[ "$clean_name" == "Oracle Linux Server" ]]; then
+    operating_system="oraclelinux"
   else
-    echo "!!! Cannot find /etc/os-release" >&2
-    exit 1
+    operating_system="undef"
   fi
 
-  if [[ "$NAME" != "Ubuntu" ]]; then
-    echo "!!! This script is designed for Ubuntu only. Detected OS: $NAME" >&2
-    exit 1
-  fi
-
-  echo "---> Verified OS: Ubuntu"
+  echo "K3S install process running on: "
+  echo "OS: $operating_system"
+  echo "OS Major Release: $major"
+  echo "OS Minor Release: $minor"
 }
 
 wait_lb() {
-  echo "---> Waiting for the load balancer at https://${k3s_url}:6443 to be available..."
-  while true; do
-    if curl --output /dev/null --silent -k "https://${k3s_url}:6443"; then
-      echo "---> Load balancer is responsive. Proceeding."
-      break
-    fi
-    sleep 5
-    echo "     Still waiting for LB..."
-  done
+while [ true ]
+do
+  curl --output /dev/null --silent -k https://${k3s_url}:6443
+  if [[ "$?" -eq 0 ]]; then
+    break
+  fi
+  sleep 5
+  echo "wait for LB"
+done
 }
 
 install_helm() {
-  echo "---> Installing Helm..."
-  curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-  chmod +x get_helm.sh
-  ./get_helm.sh
-  echo "---> Helm installation complete."
+  curl -fsSL -o /root/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+  chmod 700 /root/get_helm.sh
+  /root/get_helm.sh
 }
+
 
 render_nginx_config(){
 cat << EOF > "$NGINX_RESOURCES_FILE"
@@ -91,58 +91,74 @@ EOF
 }
 
 install_and_configure_nginx(){
-  echo "---> Installing and configuring NGINX Ingress Controller..."
   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-${nginx_ingress_release}/deploy/static/provider/baremetal/deploy.yaml
   NGINX_RESOURCES_FILE=/root/nginx-ingress-resources.yaml
   render_nginx_config
   kubectl apply -f $NGINX_RESOURCES_FILE
-  echo "---> NGINX Ingress Controller installation complete."
 }
 
 install_ingress(){
-  local INGRESS_CONTROLLER=$1
+  INGRESS_CONTROLLER=$1
   if [[ "$INGRESS_CONTROLLER" == "nginx" ]]; then
     install_and_configure_nginx
   else
-    echo "!!! Ingress controller '$INGRESS_CONTROLLER' not supported."
+    echo "Ingress controller not supported"
   fi
 }
 
-#
-# Main Execution Logic
-#
+check_os
 
-verify_os
+if [[ "$operating_system" == "ubuntu" ]]; then
+  echo "Canonical Ubuntu"
+  # Disable firewall 
+  /usr/sbin/netfilter-persistent stop
+  /usr/sbin/netfilter-persistent flush
 
-# --- Ubuntu Specific Configuration ---
-echo "---> Configuring Ubuntu..."
-# Disable firewall
-/usr/sbin/netfilter-persistent stop
-/usr/sbin/netfilter-persistent flush
-systemctl stop netfilter-persistent.service
-systemctl disable netfilter-persistent.service
+  systemctl stop netfilter-persistent.service
+  systemctl disable netfilter-persistent.service
+  # END Disable firewall
 
-# Install packages
-apt-get update
-apt-get install -y software-properties-common jq
-DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y python3 python3-pip
-pip install oci-cli
+  apt-get update
+  apt-get install -y software-properties-common jq
+  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y  python3 python3-pip
+  pip install oci-cli
 
-# Fix /var/log/journal dir size
-echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf
-echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf
-systemctl restart systemd-journald
+  # Fix /var/log/journal dir size
+  echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf
+  echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf
+  systemctl restart systemd-journald
+fi
 
-# --- K3s Installation Logic ---
+if [[ "$operating_system" == "oraclelinux" ]]; then
+  echo "Oracle Linux"
+  # Disable firewall
+  systemctl disable --now firewalld
+  # END Disable firewall
+
+  # Fix iptables/SELinux bug
+  echo '(allow iptables_t cgroup_t (dir (ioctl)))' > /root/local_iptables.cil
+  semodule -i /root/local_iptables.cil
+
+  dnf -y update
+
+  if [[ $major -eq 9 ]]; then
+    dnf -y install oraclelinux-developer-release-el9
+    dnf -y install jq python39-oci-cli curl
+  else
+    dnf -y install oraclelinux-developer-release-el8
+    dnf -y module enable python36:3.6
+    dnf -y install jq python36-oci-cli curl
+  fi
+fi
+
 export OCI_CLI_AUTH=instance_principal
-first_instance=$(oci compute instance list --compartment-id ${compartment_ocid} --availability-domain ${availability_domain} --lifecycle-state RUNNING --sort-by TIMECREATED | jq -r '.data[]|select(."display-name" | endswith("k3s-servers")) | .["display-name"]' | tail -n 1)
+first_instance=$(oci compute instance list --compartment-id ${compartment_ocid} --availability-domain ${availability_domain} --lifecycle-state RUNNING --sort-by TIMECREATED  | jq -r '.data[]|select(."display-name" | endswith("k3s-servers")) | .["display-name"]' | tail -n 1)
 instance_id=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance | jq -r '.displayName')
 
-# Build K3s installation parameters
 k3s_install_params=("--tls-san ${k3s_tls_san}")
 
-%{ if k3s_subnet != "default_route_table" }
+%{ if k3s_subnet != "default_route_table" } 
 local_ip=$(ip -4 route ls ${k3s_subnet} | grep -Po '(?<=src )(\S+)')
 flannel_iface=$(ip -4 route ls ${k3s_subnet} | grep -Po '(?<=dev )(\S+)')
 
@@ -165,63 +181,56 @@ k3s_install_params+=("--disable traefik")
 k3s_install_params+=("--tls-san ${k3s_tls_san_public}")
 %{ endif }
 
-# Correctly join array elements into a single string
-INSTALL_PARAMS="${k3s_install_params[*]}"
+if [[ "$operating_system" == "oraclelinux" ]]; then
+  k3s_install_params+=("--selinux")
+fi
 
-# Determine K3s version
+INSTALL_PARAMS="$${k3s_install_params[*]}"
+
 %{ if k3s_version == "latest" }
 K3S_VERSION=$(curl --silent https://api.github.com/repos/k3s-io/k3s/releases/latest | jq -r '.name')
 %{ else }
 K3S_VERSION="${k3s_version}"
 %{ endif }
-echo "---> Installing K3s Version: $K3S_VERSION"
 
-# --- Run K3s Installer (Cluster Init or Join) ---
 if [[ "$first_instance" == "$instance_id" ]]; then
-  echo "---> This is the FIRST SERVER. Initializing K3s cluster..."
-  until (curl -sfL https://get.k3s.io | ... sh -s - --cluster-init $INSTALL_PARAMS); do
-    echo "!!! k3s cluster-init failed, retrying in 5 seconds..."
-    sleep 5
+  echo "I'm the first yeeee: Cluster init!"
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=$K3S_VERSION K3S_TOKEN=${k3s_token} sh -s - --cluster-init $INSTALL_PARAMS); do
+    echo 'k3s did not install correctly'
+    sleep 2
   done
 else
-  echo "---> This is a JOINING SERVER. Waiting for cluster to be ready..."
+  echo ":( Cluster join"
   wait_lb
-  until (curl -sfL https://get.k3s.io | ... sh -s - --server https://... $INSTALL_PARAMS); do
-    echo "!!! k3s server join failed, retrying in 5 seconds..."
-    sleep 5
+  until (curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=$K3S_VERSION K3S_TOKEN=${k3s_token} sh -s - --server https://${k3s_url}:6443 $INSTALL_PARAMS); do
+    echo 'k3s did not install correctly'
+    sleep 2
   done
 fi
 
-# --- Post-Installation Tasks (Run only on servers) ---
 %{ if is_k3s_server }
-echo "---> Waiting for K3s pods to be in 'Running' state..."
 until kubectl get pods -A | grep 'Running'; do
-  echo "     Still waiting for k3s startup..."
+  echo 'Waiting for k3s startup'
   sleep 5
 done
-echo "---> K3s is up and running."
 
-# --- First Server Tasks: Install Helm, Longhorn, and Ingress ---
+%{ if install_longhorn }
 if [[ "$first_instance" == "$instance_id" ]]; then
-  echo "---> Performing post-install tasks on the first server..."
+  if [[ "$operating_system" == "ubuntu" ]]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y  open-iscsi curl util-linux
+  fi
 
-  # Install Helm CLI
-  install_helm
-
-  %{ if install_longhorn }
-  echo "---> Installing Longhorn storage..."
-  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y open-iscsi curl util-linux
   systemctl enable --now iscsid.service
   kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/${longhorn_release}/deploy/longhorn.yaml
-  echo "---> Longhorn installation initiated."
-  %{ endif }
-
-  %{ if ! disable_ingress }
-  %{ if ingress_controller != "default" }
-    install_ingress ${ingress_controller}
-  %{ endif }
-  %{ endif }
 fi
 %{ endif }
 
-echo "---> Node configuration complete! ✨"
+%{ if ! disable_ingress }
+%{ if ingress_controller != "default" }
+if [[ "$first_instance" == "$instance_id" ]]; then
+  install_ingress ${ingress_controller}
+fi
+%{ endif }
+%{ endif }
+
+%{ endif }
