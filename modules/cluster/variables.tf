@@ -165,7 +165,7 @@ variable "nginx_ingress_release" {
 
 variable "install_longhorn" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "longhorn_release" {
@@ -196,4 +196,23 @@ variable "db_mount_path" {
   type        = string
   default     = "/var/lib/postgresql/data"
   description = "Mount point for the DB volume on the first server."
+}
+
+# Add stable node names (used inside Kubernetes)
+variable "node1_name" {
+  type        = string
+  default     = "node-1"
+  description = "Stable Kubernetes node name for node #1."
+}
+
+variable "node2_name" {
+  type        = string
+  default     = "node-2"
+  description = "Stable Kubernetes node name for node #2."
+}
+
+variable "node3_name" {
+  type        = string
+  default     = "node-3"
+  description = "Stable Kubernetes node name for node #3."
 }

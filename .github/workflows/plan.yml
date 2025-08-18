@@ -2,7 +2,7 @@ name: plan
 on:
   workflow_dispatch: {}
   push:
-    branches: [ main, master ]
+    branches: [ main, master, development ]
 
 permissions:
   contents: read

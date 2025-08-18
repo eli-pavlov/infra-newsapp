@@ -33,24 +33,71 @@ data "cloudinit_config" "k3s_server_tpl" {
   }
 }
 
-data "cloudinit_config" "k3s_worker_tpl" {
+# =================== APP node #1 cloud-init ===================
+data "cloudinit_config" "k3s_worker_tpl_app1" {
   gzip          = true
   base64_encode = true
 
   part {
     content_type = "text/x-shellscript"
     content = templatefile("${path.module}/files/k3s-install-agent.sh", {
-      k3s_version                       = var.k3s_version,
-      k3s_subnet                        = var.k3s_subnet,
-      k3s_token                         = random_password.k3s_token.result,
-      is_k3s_server                     = false,
-      disable_ingress                   = var.disable_ingress,
-      k3s_url                           = var.private_lb_ip_address,
-      install_longhorn                  = var.install_longhorn,
-      ingress_controller_http_nodeport  = var.ingress_controller_http_nodeport,
-      ingress_controller_https_nodeport = var.ingress_controller_https_nodeport,
-      db_volume_device                  = var.db_volume_device,
-      db_mount_path                     = var.db_mount_path,
+      k3s_version                         = var.k3s_version
+      k3s_subnet                          = var.k3s_subnet
+      k3s_token                           = random_password.k3s_token.result
+      k3s_url                             = var.private_lb_ip_address
+      install_longhorn                    = var.install_longhorn
+      ingress_controller_http_nodeport    = var.ingress_controller_http_nodeport
+      ingress_controller_https_nodeport   = var.ingress_controller_https_nodeport
+      db_volume_device                    = var.db_volume_device
+      db_mount_path                       = var.db_mount_path
+      node_name                           = var.node1_name
+      node_role                           = "app"
+    })
+  }
+}
+
+# =================== APP node #2 cloud-init ===================
+data "cloudinit_config" "k3s_worker_tpl_app2" {
+  gzip          = true
+  base64_encode = true
+
+  part {
+    content_type = "text/x-shellscript"
+    content = templatefile("${path.module}/files/k3s-install-agent.sh", {
+      k3s_version                         = var.k3s_version
+      k3s_subnet                          = var.k3s_subnet
+      k3s_token                           = random_password.k3s_token.result
+      k3s_url                             = var.private_lb_ip_address
+      install_longhorn                    = var.install_longhorn
+      ingress_controller_http_nodeport    = var.ingress_controller_http_nodeport
+      ingress_controller_https_nodeport   = var.ingress_controller_https_nodeport
+      db_volume_device                    = var.db_volume_device
+      db_mount_path                       = var.db_mount_path
+      node_name                           = var.node2_name
+      node_role                           = "app"
+    })
+  }
+}
+
+# =================== DB node cloud-init ===================
+data "cloudinit_config" "k3s_worker_tpl_db" {
+  gzip          = true
+  base64_encode = true
+
+  part {
+    content_type = "text/x-shellscript"
+    content = templatefile("${path.module}/files/k3s-install-agent.sh", {
+      k3s_version                         = var.k3s_version
+      k3s_subnet                          = var.k3s_subnet
+      k3s_token                           = random_password.k3s_token.result
+      k3s_url                             = var.private_lb_ip_address
+      install_longhorn                    = var.install_longhorn
+      ingress_controller_http_nodeport    = var.ingress_controller_http_nodeport
+      ingress_controller_https_nodeport   = var.ingress_controller_https_nodeport
+      db_volume_device                    = var.db_volume_device
+      db_mount_path                       = var.db_mount_path
+      node_name                           = var.node3_name
+      node_role                           = "db"
     })
   }
 }

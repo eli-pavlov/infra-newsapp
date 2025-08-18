@@ -8,6 +8,9 @@ T_K3S_SUBNET="${k3s_subnet}"                  # e.g. "default_route_table" or a 
 T_K3S_TOKEN="${k3s_token}"
 T_K3S_URL="https://${k3s_url}:6443"           # Private LB IP for server API
 T_INSTALL_LONGHORN="${install_longhorn}"      # "true" or "false"
+T_NODE_NAME="${node_name}"     # e.g. node-1 / node-2 / node-3
+T_NODE_ROLE="${node_role}"     # "app" or "db"
+
 
 # ---------------------- Helpers --------------------------
 detect_os() {
