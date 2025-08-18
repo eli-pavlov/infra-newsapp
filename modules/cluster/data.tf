@@ -27,6 +27,8 @@ data "cloudinit_config" "k3s_server_tpl" {
       longhorn_release                  = var.longhorn_release,
       ingress_controller_http_nodeport  = var.ingress_controller_http_nodeport,
       ingress_controller_https_nodeport = var.ingress_controller_https_nodeport,
+      db_volume_device                  = var.db_volume_device,
+      db_mount_path                     = var.db_mount_path,
     })
   }
 }

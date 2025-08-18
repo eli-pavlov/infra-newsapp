@@ -38,5 +38,7 @@ module "cluster" {
   workers_subnet_id      = module.network.workers_subnet_id
   workers_http_nsg_id    = module.network.private_lb_security_group
   servers_kubeapi_nsg_id = module.network.public_nlb_security_group
+  first_server_instance_id = oci_core_instance.k3s_server[0].id
+
 }
 

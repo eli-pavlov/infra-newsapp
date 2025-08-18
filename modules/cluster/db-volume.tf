@@ -5,9 +5,9 @@ resource "oci_core_volume" "db" {
   display_name        = "k3s-db-volume"
 }
 
-resource "oci_core_volume_attachment" "db_to_server0" {
+resource "oci_core_volume_attachment" "db_to_first_server" {
   compartment_id  = var.compartment_ocid
-  instance_id     = oci_core_instance.k3s_servers[0].id  # <-- adjust if your instance resource name differs
+  instance_id     = var.first_server_instance_id
   volume_id       = oci_core_volume.db.id
   attachment_type = "paravirtualized"
   device          = var.db_volume_device

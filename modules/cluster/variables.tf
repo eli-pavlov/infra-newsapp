@@ -194,5 +194,11 @@ variable "db_volume_device" {
 variable "db_mount_path" {
   type        = string
   default     = "/var/lib/postgresql/data"
-  description = "Mount point where the DB volume will be mounted on the first server."
+  description = "Mount point for the DB volume on the first server."
+}
+
+# Provide the actual instance OCID of the FIRST server from your compute resources
+variable "first_server_instance_id" {
+  type        = string
+  description = "OCID of the first (control-plane) server instance to attach the DB volume to."
 }
