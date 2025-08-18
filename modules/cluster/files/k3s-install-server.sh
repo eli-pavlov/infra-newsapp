@@ -166,7 +166,7 @@ k3s_install_params+=("--tls-san ${k3s_tls_san_public}")
 %{ endif }
 
 # Correctly join array elements into a single string
-INSTALL_PARAMS="${k3s_install_params[*]}"
+INSTALL_PARAMS="$${k3s_install_params[*]}"
 
 # Determine K3s version
 %{ if k3s_version == "latest" }
