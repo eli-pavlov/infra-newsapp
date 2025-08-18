@@ -24,6 +24,10 @@ T_EXPOSE_KUBEAPI="${expose_kubeapi}"               # "true"/"false"
 T_HTTP_NODEPORT="${ingress_controller_http_nodeport}"   # 30080
 T_HTTPS_NODEPORT="${ingress_controller_https_nodeport}" # 30443
 
+# Durable DB volume vars (injected by Terraform)
+T_DB_VOLUME_DEVICE="${db_volume_device}"           # e.g. /dev/oracleoci/oraclevdb
+T_DB_MOUNT_PATH="${db_mount_path}"                 # e.g. /var/lib/postgresql/data
+
 # ---------------------- Helpers --------------------------
 detect_os() {
   local name version clean_name clean_version
@@ -67,6 +71,16 @@ base_setup() {
   echo "SystemMaxUse=100M" >> /etc/systemd/journald.conf || true
   echo "SystemMaxFileSize=100M" >> /etc/systemd/journald.conf || true
   systemctl restart systemd-journald || true
+}
+
+install_helm() {
+  if command -v helm >/dev/null 2>&1; then
+    return
+  fi
+  echo "Installing Helm..."
+  curl -fsSL -o /root/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+  chmod +x /root/get_helm.sh
+  /root/get_helm.sh
 }
 
 wait_for_api_lb() {
@@ -227,3 +241,125 @@ if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
 fi
 
 echo "K3s server setup complete."
+
+# ---------------- PostgreSQL + durable block volume (LAST STEP) ----------------
+# First server only: mount OCI block volume, create hostPath PV/PVC, install Bitnami PostgreSQL,
+# and publish DB env to backend namespaces.
+if [[ -n "${FIRST_NAME:-}" && "$FIRST_NAME" == "$THIS_NAME" ]]; then
+  echo "Setting up PostgreSQL with durable OCI Block Volume..."
+
+  install_helm
+
+  # Mount OCI block volume to known path
+  DB_DEV="$T_DB_VOLUME_DEVICE"
+  DB_MNT="$T_DB_MOUNT_PATH"
+  echo "Waiting for DB device $DB_DEV ..."
+  for i in {1..120}; do
+    if [ -b "$DB_DEV" ]; then break; fi
+    sleep 1
+  done
+  if [ ! -b "$DB_DEV" ]; then
+    echo "Block device $DB_DEV not found; skipping format/mount"
+  else
+    if ! blkid "$DB_DEV" >/dev/null 2>&1; then
+      echo "Formatting $DB_DEV as ext4 ..."
+      mkfs.ext4 -F "$DB_DEV"
+    fi
+    mkdir -p "$DB_MNT"
+    UUID=$(blkid -s UUID -o value "$DB_DEV")
+    if ! grep -q "$UUID" /etc/fstab; then
+      echo "UUID=$UUID $DB_MNT ext4 defaults,nofail 0 2" >> /etc/fstab
+    fi
+    mount -a
+  fi
+
+  # Helm repo (idempotent)
+  helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
+  helm repo update || true
+
+  # DB credentials and defaults
+  PG_STORAGE_SIZE="30Gi"
+  PG_APP_USER="appuser"
+  PG_APP_DB="appdb"
+  PG_ROOT_PASSWORD="$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)"
+  PG_APP_PWD="$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)"
+
+  # Namespace for PostgreSQL
+  kubectl create namespace databases --dry-run=client -o yaml | kubectl apply -f -
+
+  # Determine this control-plane node name (for PV nodeAffinity)
+  NODE_NAME="$(kubectl get nodes -l node-role.kubernetes.io/control-plane= -o jsonpath='{.items[0].metadata.name}')"
+  if [ -z "$NODE_NAME" ]; then
+    NODE_NAME="$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')"
+  fi
+
+  # Create hostPath PV pointing to the mounted block volume (Retain policy)
+  cat <<PV | kubectl apply -f -
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pg-hostpath-pv
+spec:
+  capacity:
+    storage: $PG_STORAGE_SIZE
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+  storageClassName: ""
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - $NODE_NAME
+  hostPath:
+    path: $DB_MNT
+PV
+
+  # Create PVC in 'databases' namespace bound to that PV
+  cat <<PVC | kubectl -n databases apply -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pg-hostpath-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: $PG_STORAGE_SIZE
+  storageClassName: ""
+  volumeName: pg-hostpath-pv
+PVC
+
+  # Install/upgrade Bitnami PostgreSQL using the existing PVC
+  helm upgrade --install postgresql bitnami/postgresql \
+    --namespace databases --create-namespace \
+    --set fullnameOverride=postgresql \
+    --set auth.enablePostgresUser=true \
+    --set auth.postgresPassword="$PG_ROOT_PASSWORD" \
+    --set auth.username="$PG_APP_USER" \
+    --set auth.password="$PG_APP_PWD" \
+    --set auth.database="$PG_APP_DB" \
+    --set primary.persistence.enabled=true \
+    --set primary.persistence.existingClaim=pg-hostpath-pvc \
+    --wait --timeout 20m
+
+  # Build DB URI and publish as Secret in backend namespaces
+  PG_HOST="postgresql.databases.svc.cluster.local"
+  DB_URI="postgres://$PG_APP_USER:$PG_APP_PWD@$PG_HOST:5432/$PG_APP_DB"
+
+  for NS in development default; do
+    kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+    kubectl -n "$NS" create secret generic backend-db-env \
+      --from-literal=DB_ENGINE_TYPE=POSTGRES \
+      --from-literal=DB_URI="$DB_URI" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  done
+
+  echo "PostgreSQL ready with durable block volume."
+  echo "DB_URI=$DB_URI"
+fi

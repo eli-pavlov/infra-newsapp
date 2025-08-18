@@ -47,6 +47,8 @@ data "cloudinit_config" "k3s_worker_tpl" {
       install_longhorn                  = var.install_longhorn,
       ingress_controller_http_nodeport  = var.ingress_controller_http_nodeport,
       ingress_controller_https_nodeport = var.ingress_controller_https_nodeport,
+      db_volume_device                 = var.db_volume_device,
+      db_mount_path                    = var.db_mount_path,
     })
   }
 }

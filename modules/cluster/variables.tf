@@ -177,3 +177,22 @@ variable "expose_kubeapi" {
   type    = bool
   default = true
 }
+
+# Durable DB volume settings
+variable "db_volume_size_gb" {
+  type        = number
+  default     = 30
+  description = "Size of the OCI block volume for PostgreSQL (GB)."
+}
+
+variable "db_volume_device" {
+  type        = string
+  default     = "/dev/oracleoci/oraclevdb"
+  description = "Linux device path for the attached block volume."
+}
+
+variable "db_mount_path" {
+  type        = string
+  default     = "/var/lib/postgresql/data"
+  description = "Mount point where the DB volume will be mounted on the first server."
+}
