@@ -26,7 +26,8 @@ jobs:
       TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
       TF_VAR_os_image_id:         ${{ secrets.OS_IMAGE_ID }}
       TF_VAR_cluster_name:        ${{ secrets.CLUSTER_NAME }}
-      TF_VAR_admin_cidr:          ${{ secrets.ADMIN_CIDR }}
+      TF_VAR_admin_cidrs:        ${{ secrets.ADMIN_CIDRS }}           # e.g. '["203.0.113.10/32","198.51.100.0/24"]'
+      TF_VAR_cloudflare_cidrs:   ${{ secrets.CLOUDFLARE_CIDRS }}      # e.g. '["173.245.48.0/20", ...]'
       TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
       
     steps:

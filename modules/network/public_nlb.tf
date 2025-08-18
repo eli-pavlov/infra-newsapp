@@ -1,18 +1,15 @@
 locals {
-  # Split listener (public) ports from backend (node) ports
+  # Listener ports (what the NLB exposes) and backend NodePorts (on workers)
   public_ingress_rules = {
     http = {
-      source        = "0.0.0.0/0"
       listener_port = 80
       backend_port  = 30080
     }
     https = {
-      source        = "0.0.0.0/0"
       listener_port = 443
       backend_port  = 30443
     }
     kubeapi = {
-      source        = var.my_public_ip_cidr
       listener_port = 6443
       backend_port  = 6443
     }
@@ -30,7 +27,7 @@ resource "oci_network_load_balancer_network_load_balancer" "k3s_public_lb" {
   is_preserve_source_destination = false
 }
 
-# Backend Sets
+# Backend sets (health check the backend NodePort, not the listener port)
 resource "oci_network_load_balancer_backend_set" "this" {
   for_each                 = local.public_ingress_rules
   name                     = "k3s_${each.key}_backend"
@@ -40,8 +37,7 @@ resource "oci_network_load_balancer_backend_set" "this" {
 
   health_checker {
     protocol = "TCP"
-    # IMPORTANT: health check the backend NodePort, not the listener port
-    port = each.value.backend_port
+    port     = each.value.backend_port
   }
 }
 
@@ -55,30 +51,83 @@ resource "oci_network_load_balancer_listener" "this" {
   protocol                 = "TCP"
 }
 
-# Security Group for the NLB (ingress from the Internet to the NLB listener ports)
+# NSG for the public NLB (ingress from the Internet to the NLB listener ports)
 resource "oci_core_network_security_group" "public_nlb" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.default_oci_core_vcn.id
   display_name   = "K3S Public Network Load Balancer Security Group"
 }
 
-# Allow Internet to hit the listener ports (80/443) and admin CIDR to hit 6443
-resource "oci_core_network_security_group_security_rule" "public" {
-  for_each                  = local.public_ingress_rules
+# Restrict 80 to Cloudflare IPs
+resource "oci_core_network_security_group_security_rule" "public_http" {
+  for_each                  = toset(var.cloudflare_cidrs)
   network_security_group_id = oci_core_network_security_group.public_nlb.id
   direction                 = "INGRESS"
   protocol                  = 6 # tcp
 
-  description = "Allow ${each.key} from ${each.value.source}"
-
-  source      = each.value.source
+  description = "Allow HTTP (80) from ${each.key}"
+  source      = each.key
   source_type = "CIDR_BLOCK"
   stateless   = false
 
   tcp_options {
-    destination_port_range {
-      max = each.value.listener_port
-      min = each.value.listener_port
-    }
+    destination_port_range { min = 80, max = 80 }
+  }
+}
+
+# Restrict 443 to Cloudflare IPs
+resource "oci_core_network_security_group_security_rule" "public_https" {
+  for_each                  = toset(var.cloudflare_cidrs)
+  network_security_group_id = oci_core_network_security_group.public_nlb.id
+  direction                 = "INGRESS"
+  protocol                  = 6 # tcp
+
+  description = "Allow HTTPS (443) from ${each.key}"
+  source      = each.key
+  source_type = "CIDR_BLOCK"
+  stateless   = false
+
+  tcp_options {
+    destination_port_range { min = 443, max = 443 }
+  }
+}
+
+# Restrict kubeapi (6443) to your admin CIDRs
+resource "oci_core_network_security_group_security_rule" "public_kubeapi" {
+  for_each                  = toset(var.admin_cidrs)
+  network_security_group_id = oci_core_network_security_group.public_nlb.id
+  direction                 = "INGRESS"
+  protocol                  = 6 # tcp
+
+  description = "Allow kubeapi (6443) from ${each.key}"
+  source      = each.key
+  source_type = "CIDR_BLOCK"
+  stateless   = false
+
+  tcp_options {
+    destination_port_range { min = 6443, max = 6443 }
+  }
+}
+
+# NEW: Dedicated NSG for servers' kubeapi VNICs (do NOT attach the public NLB NSG to servers)
+resource "oci_core_network_security_group" "servers_kubeapi" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.default_oci_core_vcn.id
+  display_name   = "K3S Servers kubeapi Security Group"
+}
+
+# Allow NLB to reach servers on 6443 via NSG→NSG reference
+resource "oci_core_network_security_group_security_rule" "servers_allow_from_nlb_6443" {
+  network_security_group_id = oci_core_network_security_group.servers_kubeapi.id
+  direction                 = "INGRESS"
+  protocol                  = 6 # tcp
+
+  description = "Allow kubeapi (6443) from Public NLB"
+  source_type = "NETWORK_SECURITY_GROUP"
+  source      = oci_core_network_security_group.public_nlb.id
+  stateless   = false
+
+  tcp_options {
+    destination_port_range { min = 6443, max = 6443 }
   }
 }

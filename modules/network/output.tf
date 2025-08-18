@@ -25,3 +25,8 @@ output "private_lb_security_group" {
 output "public_nlb_security_group" {
   value = oci_core_network_security_group.public_nlb.id
 }
+
+# NEW: servers' kubeapi NSG id (attach to servers VNICs)
+output "servers_kubeapi_security_group" {
+  value = oci_core_network_security_group.servers_kubeapi.id
+}

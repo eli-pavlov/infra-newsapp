@@ -46,40 +46,45 @@ resource "oci_core_default_security_list" "default_security_list" {
   manage_default_resource_id = oci_core_vcn.default_oci_core_vcn.default_security_list_id
 
   display_name = "Default security list"
+
   egress_security_rules {
     destination = "0.0.0.0/0"
     protocol    = "all"
   }
 
-  ingress_security_rules {
-    protocol = 1 # icmp
-    source   = var.my_public_ip_cidr
-
-    description = "Allow icmp from  ${var.my_public_ip_cidr}"
-
-  }
-
-  ingress_security_rules {
-    protocol = 6 # tcp
-    source   = var.my_public_ip_cidr
-
-    description = "Allow SSH from ${var.my_public_ip_cidr}"
-
-    tcp_options {
-      min = 22
-      max = 22
+  # ICMP from your admin CIDRs
+  dynamic "ingress_security_rules" {
+    for_each = var.admin_cidrs
+    content {
+      protocol    = 1 # icmp
+      source      = ingress_security_rules.value
+      description = "Allow ICMP from ${ingress_security_rules.value}"
     }
   }
 
-  ingress_security_rules {
-    protocol = "all"
-    source   = var.oci_core_vcn_cidr
-
-    description = "Allow all from vcn subnet"
+  # SSH from your admin CIDRs
+  dynamic "ingress_security_rules" {
+    for_each = var.admin_cidrs
+    content {
+      protocol    = 6 # tcp
+      source      = ingress_security_rules.value
+      description = "Allow SSH from ${ingress_security_rules.value}"
+      tcp_options {
+        min = 22
+        max = 22
+      }
+    }
   }
 
+  # Intra-VCN free-for-all
+  ingress_security_rules {
+    protocol    = "all"
+    source      = var.oci_core_vcn_cidr
+    description = "Allow all from VCN"
+  }
 }
 
+# Dynamic group and policy unchanged
 resource "oci_identity_dynamic_group" "compute_dynamic_group" {
   compartment_id = var.tenancy_ocid
   description    = "Dynamic group which contains all instance in this compartment"

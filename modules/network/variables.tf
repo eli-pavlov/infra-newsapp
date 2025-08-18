@@ -1,14 +1,6 @@
-variable "region" {
-  type = string
-}
-
-variable "tenancy_ocid" {
-  type = string
-}
-
-variable "compartment_ocid" {
-  type = string
-}
+variable "region" { type = string }
+variable "tenancy_ocid" { type = string }
+variable "compartment_ocid" { type = string }
 
 variable "environment" {
   type    = string
@@ -45,7 +37,14 @@ variable "oci_core_subnet_cidr11" {
   default = "10.0.1.0/24"
 }
 
-variable "my_public_ip_cidr" {
-  type        = string
-  description = "My public ip CIDR"
+# NEW: your personal IP ranges (SSH + kubeapi)
+variable "admin_cidrs" {
+  type        = list(string)
+  description = "Personal/public IP CIDRs allowed to SSH to instances and reach kubeapi on the public NLB."
+}
+
+# NEW: Cloudflare IP ranges (public site via 80/443)
+variable "cloudflare_cidrs" {
+  type        = list(string)
+  description = "Cloudflare IP CIDRs allowed to reach the public NLB on ports 80/443."
 }

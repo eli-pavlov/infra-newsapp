@@ -58,3 +58,13 @@ variable "private_key_pem" {
   type        = string
   sensitive   = true
 }
+
+variable "admin_cidrs" {
+  description = "Personal/public CIDRs allowed to SSH and reach kubeapi."
+  type        = list(string)
+}
+
+variable "cloudflare_cidrs" {
+  description = "Cloudflare CIDRs allowed to reach 80/443 on the public NLB."
+  type        = list(string)
+}
