@@ -6,107 +6,101 @@ on:
 
 permissions:
   contents: read
+env:
+  # Where to store in your bucket (adjust if you want a different bucket/key prefix)
+  BUCKET_NAME: ${{ secrets.TF_STATE_BUCKET }}
+  KEY_PREFIX: diagnostics/vars
 
 jobs:
-  bootstrap-and-debug:
-    name: Bootstrap and Upload Debug Info
+  export:
     runs-on: ubuntu-latest
+    env:
+     TF_IN_AUTOMATION: "1"
+     TF_INPUT: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Guard required secrets
+        # The correct way to check for multiple secrets is to list them explicitly.
+        # Shell loops cannot be used inside GitHub Actions expressions.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ]; then
+            
+            echo "::error::One or more required secrets are missing. Check your repository secrets for OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_REGION, OCI_PRIVATE_KEY_PEM, TF_STATE_BUCKET."
+            exit 1
+          fi
+      - name: Install OCI CLI (quiet)
+        shell: bash
+        run: |
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet oci-cli
+          # Ensure the oci binary (installed under ~/.local/bin) is on PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          oci --version
+      - name: Configure OCI CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.oci"
+          umask 077
+          # write key
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          # write config (absolute path for key_file is required)
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          CFG
+      - name: Write OCI key (PEM) to runner
+        shell: bash
+        run: |
+          umask 077
+          printf '%s' "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.5
+          terraform_wrapper: false
 
-      - name: Terraform Apply (Create State Bucket)
+      - name: Verify Terraform
+        run: terraform -version
+
+      - name: Terraform init (bootstrap/state-bucket)
         working-directory: bootstrap/state-bucket
         env:
-          TF_VAR_region: ${{ secrets.OCI_REGION }}
-          TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-          TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_bucket_name: ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
-        run: |
-          terraform init -upgrade
-          terraform apply -auto-approve
-
-      # ================== NEW "NO FILES" DEBUGGING STEP ==================
-      - name: Upload Debug Secrets File via Terraform
-        env:
-          TF_VAR_oci_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_oci_user_ocid: ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_oci_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-          TF_VAR_oci_region: ${{ secrets.OCI_REGION }}
-          TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
-          TF_VAR_bucket_name: ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_admin_cidrs: ${{ secrets.ADMIN_CIDRS }}
-          TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_bastion_image: ${{ secrets.BASTION_IMAGE }}
-          TF_VAR_cloudflare_cidrs: ${{ secrets.CLOUDFLARE_CIDRS }}
-          TF_VAR_cluster_name: ${{ secrets.CLUSTER_NAME }}
-          TF_VAR_os_image_id: ${{ secrets.OS_IMAGE_ID }}
-          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-          TF_VAR_tailscale_key: ${{ secrets.TAILSCALE_KEY }}
-          TF_VAR_tf_state_key: ${{ secrets.TF_STATE_KEY }}
-        run: |
-          echo "☢️ WARNING: Saving sensitive secrets to a file using an in-line Terraform script."
-
-          # 1. Dynamically create a temporary Terraform file
-          cat <<'EOF' > debug-upload.tf
-          terraform {
-            required_providers {
-              oci = {
-                source  = "oracle/oci"
-                version = "~> 6.0"
-              }
-            }
-          }
-
-          provider "oci" {
-            tenancy_ocid = var.oci_tenancy_ocid
-            user_ocid    = var.oci_user_ocid
-            fingerprint  = var.oci_fingerprint
-            private_key  = var.oci_private_key_pem
-            region       = var.oci_region
-          }
-
-          variable "os_namespace" { type = string; sensitive = true }
-          variable "bucket_name" { type = string; sensitive = true }
-          variable "admin_cidrs" { type = string; sensitive = true }
-          variable "availability_domain" { type = string; sensitive = true }
-          variable "bastion_image" { type = string; sensitive = true }
-          variable "cloudflare_cidrs" { type = string; sensitive = true }
-          variable "cluster_name" { type = string; sensitive = true }
-          variable "compartment_ocid" { type = string; sensitive = true }
-          variable "oci_fingerprint" { type = string; sensitive = true }
-          variable "oci_private_key_pem" { type = string; sensitive = true }
-          variable "oci_region" { type = string; sensitive = true }
-          variable "oci_tenancy_ocid" { type = string; sensitive = true }
-          variable "oci_user_ocid" { type = string; sensitive = true }
-          variable "os_image_id" { type = string; sensitive = true }
-          variable "ssh_public_key" { type = string; sensitive = true }
-          variable "tailscale_key" { type = string; sensitive = true }
-          variable "tf_state_key" { type = string; sensitive = true }
-
-          resource "oci_objectstorage_object" "debug_secrets" {
-            namespace    = var.os_namespace
-            bucket_name  = var.bucket_name
-            object_name  = "debug-secrets-via-terraform.txt"
-            content_type = "text/plain"
-            content      = "GitHub Secrets:\nADMIN_CIDRS: ${var.admin_cidrs}\nAVAILABILITY_DOMAIN: ${var.availability_domain}\nBASTION_IMAGE: ${var.bastion_image}\nCLOUDFLARE_CIDRS: ${var.cloudflare_cidrs}\nCLUSTER_NAME: ${var.cluster_name}\nCOMPARTMENT_OCID: ${var.compartment_ocid}\n..."
-          }
-          EOF
-
-          # 2. Run Terraform using the temporary file
-          terraform init -upgrade
-          terraform apply -auto-approve
+          TF_VAR_region:            ${{ secrets.OCI_REGION }}
+          TF_VAR_tenancy_ocid:      ${{ secrets.OCI_TENANCY_OCID }}
+          TF_VAR_user_ocid:         ${{ secrets.OCI_USER_OCID }}
+          TF_VAR_fingerprint:       ${{ secrets.OCI_FINGERPRINT }}         
+          TF_VAR_private_key_pem:   ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+          TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}         
+          TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}        
+          TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
           
-          echo "✅ Debug file uploaded. REMEMBER TO DELETE IT FROM THE BUCKET."
-      # ========================================================================
+        run: terraform init -upgrade
+
+
+      - name: Terraform apply (bootstrap/state-bucket)
+        working-directory: bootstrap/state-bucket
+        env:
+          TF_VAR_region:            ${{ secrets.OCI_REGION }}
+          TF_VAR_tenancy_ocid:      ${{ secrets.OCI_TENANCY_OCID }}
+          TF_VAR_user_ocid:         ${{ secrets.OCI_USER_OCID }}
+          TF_VAR_fingerprint:       ${{ secrets.OCI_FINGERPRINT }}         
+          TF_VAR_private_key_pem:   ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+          TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}         
+          TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}        
+          TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
+   
+        run: terraform apply -auto-approve
