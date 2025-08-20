@@ -113,9 +113,7 @@ jobs:
 
       - name: Save Secrets to OCI Bucket for Debugging
         shell: bash
-        run: |
-          echo "☢️ WARNING: Saving sensitive secrets to a file for debugging."
-          
+        run: |          
           # Create the debug file
           (
             printf "ADMIN_CIDRS='%s'\\n" "${{ secrets.ADMIN_CIDRS }}"
@@ -125,7 +123,6 @@ jobs:
             printf "CLUSTER_NAME='%s'\\n" "${{ secrets.CLUSTER_NAME }}"
             printf "COMPARTMENT_OCID='%s'\\n" "${{ secrets.COMPARTMENT_OCID }}"
             printf "OCI_FINGERPRINT='%s'\\n" "${{ secrets.OCI_FINGERPRINT }}"
-            printf "OCI_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\\n%s\\n-----END PRIVATE KEY-----'\\n" "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
             printf "OCI_REGION='%s'\\n" "${{ secrets.OCI_REGION }}"
             printf "OCI_TENANCY_OCID='%s'\\n" "${{ secrets.OCI_TENANCY_OCID }}"
             printf "OCI_USER_OCID='%s'\\n" "${{ secrets.OCI_USER_OCID }}"
