@@ -35,5 +35,6 @@ output "private_lb_id" {
 
 output "private_lb_ip_address" {
   # The first private IP address assigned to the LB.
-  value = oci_load_balancer_load_balancer.private_lb.ip_addresses[0].ip_address
+  # THIS IS THE FIX: Changed from ip_addresses to ip_address_details
+  value = oci_load_balancer_load_balancer.private_lb.ip_address_details[0].ip_address
 }

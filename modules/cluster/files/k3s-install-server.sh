@@ -6,7 +6,6 @@ exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/consol
 # --- Vars injected by Terraform ---
 T_K3S_VERSION="${k3s_version}"
 T_K3S_TOKEN="${k3s_token}"
-# T_K3S_URL_IP is now determined at runtime below
 T_DB_USER="${db_user}"
 T_DB_NAME_DEV="${db_name_dev}"
 T_DB_NAME_PROD="${db_name_prod}"
@@ -22,11 +21,8 @@ install_base_tools() {
     dnf -y install curl jq git
 }
 
-# --- THIS IS THE NEW PART ---
-# Get the instance's private IP from OCI metadata service
 get_private_ip() {
     echo "Fetching instance private IP from metadata..."
-    # The jq command gets the privateIp from the first VNIC object
     PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
     if [ -z "$PRIVATE_IP" ]; then
         echo "❌ Failed to fetch private IP."
@@ -34,12 +30,9 @@ get_private_ip() {
     fi
     echo "✅ Instance private IP is $PRIVATE_IP"
 }
-# --- END NEW PART ---
-
 
 install_k3s_server() {
     echo "Installing K3s server..."
-    # Use the dynamically discovered PRIVATE_IP variable
     local PARAMS="--write-kubeconfig-mode 644 --node-ip $PRIVATE_IP --advertise-address $PRIVATE_IP --disable traefik --kubelet-arg=register-with-taints=node-role.kubernetes.io/master=true:NoSchedule"
     export INSTALL_K3S_EXEC="$PARAMS"
     export K3S_TOKEN="$T_K3S_TOKEN"
@@ -57,12 +50,10 @@ install_k3s_server() {
 wait_for_all_nodes() {
     echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
     
-    # Timeout after 15 minutes
     local timeout=900
     local start_time=$(date +%s)
 
     while true; do
-        # Get count of nodes that are in the "Ready" state
         local ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || true)
         
         if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
@@ -115,7 +106,7 @@ generate_secrets_and_credentials() {
     cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD} # <-- THIS IS THE FIX
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
@@ -150,7 +141,7 @@ bootstrap_argocd_apps() {
 
 # --- Main Execution ---
 install_base_tools
-get_private_ip # Run the new function
+get_private_ip
 install_k3s_server
 wait_for_all_nodes
 install_helm
