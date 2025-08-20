@@ -35,9 +35,10 @@ jobs:
           mkdir -p "$HOME/.oci"
           umask 077
           
-          # This command writes the multi-line secret to a file.
-          # The format of the secret in GitHub settings is CRITICAL.
-          echo "${{ env.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          # This 'cat <<EOF' method is the most reliable way to write a multi-line secret
+          cat <<'EOF' > "$HOME/.oci/oci_api_key.pem"
+          ${{ env.OCI_PRIVATE_KEY_PEM }}
+          EOF
           
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
@@ -48,17 +49,12 @@ jobs:
           region=${{ env.OCI_REGION }}
           CFG
 
-      # ================== NEW DEBUGGING STEP ==================
       - name: Validate Private Key Format
         shell: bash
         run: |
-          echo "--- Checking key file content with visible line endings ($) ---"
-          cat -A "$HOME/.oci/oci_api_key.pem"
-          echo
           echo "--- Validating key format with OpenSSL ---"
           openssl rsa -in "$HOME/.oci/oci_api_key.pem" -check -noout
           echo "✅ OpenSSL validation successful. The key format is correct."
-      # ==========================================================
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
