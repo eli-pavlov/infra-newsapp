@@ -4,15 +4,16 @@ set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
 # --- Vars injected by Terraform ---
-T_K3S_VERSION="${k3s_version}"
-T_K3S_TOKEN="${k3s_token}"
-T_DB_USER="${db_user}"
-T_DB_NAME_DEV="${db_name_dev}"
-T_DB_NAME_PROD="${db_name_prod}"
-T_DB_SERVICE_NAME_DEV="${db_service_name_dev}"
-T_DB_SERVICE_NAME_PROD="${db_service_name_prod}"
-T_MANIFESTS_REPO_URL="${manifests_repo_url}"
-T_EXPECTED_NODE_COUNT="${expected_total_node_count}"
+# THIS BLOCK IS NOW CONSISTENT WITH data.tf
+T_K3S_VERSION="${T_K3S_VERSION}"
+T_K3S_TOKEN="${T_K3S_TOKEN}"
+T_DB_USER="${T_DB_USER}"
+T_DB_NAME_DEV="${T_DB_NAME_DEV}"
+T_DB_NAME_PROD="${T_DB_NAME_PROD}"
+T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
+T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 
 # --- Helpers ---
 install_base_tools() {
@@ -106,7 +107,7 @@ generate_secrets_and_credentials() {
     cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: $${ARGO_PASSWORD} # <-- THIS IS THE FIX
+Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
