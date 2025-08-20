@@ -17,7 +17,14 @@ variable "cluster_name" {
 }
 
 variable "os_image_id" {
-  type = string
+  description = "The OCID of the OS image for the K8s nodes (control plane and workers)."
+  type        = string
+}
+
+# --- NEW VARIABLE ---
+variable "bastion_os_image_id" {
+  description = "The OCID of the OS image specifically for the bastion host."
+  type        = string
 }
 
 variable "public_key_content" {
@@ -125,10 +132,6 @@ variable "k3s_version" {
   default     = "v1.28.8+k3s1"
 }
 
-variable "private_lb_ip_address" {
-  type = string
-}
-
 variable "public_nlb_id" {
   description = "The OCID of the public Network Load Balancer."
   type        = string
@@ -137,11 +140,6 @@ variable "public_nlb_id" {
 variable "public_nlb_ip_address" {
   description = "The public IP address of the Network Load Balancer."
   type        = string
-}
-
-variable "ingress_controller_https_nodeport" {
-  type    = number
-  default = 30443
 }
 
 variable "private_lb_id" {

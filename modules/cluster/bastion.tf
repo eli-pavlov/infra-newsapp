@@ -13,7 +13,7 @@ resource "oci_core_instance" "bastion" {
 
   source_details {
     source_type = "image"
-    source_id   = var.os_image_id
+    source_id   = var.bastion_os_image_id # --- THIS LINE IS CHANGED ---
   }
 
   metadata = {

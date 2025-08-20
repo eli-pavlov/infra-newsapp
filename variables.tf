@@ -1,3 +1,5 @@
+# variables.tf
+
 variable "tenancy_ocid" {
   description = "The OCID of the tenancy."
   type        = string
@@ -32,7 +34,13 @@ variable "availability_domain" {
 }
 
 variable "os_image_id" {
-  description = "The OCID of the base OS image for the compute instances."
+  description = "The OCID of the base OS image for the K8s compute instances."
+  type        = string
+}
+
+# --- NEW VARIABLE ---
+variable "bastion_os_image_id" {
+  description = "The OCID of the OS image specifically for the bastion host."
   type        = string
 }
 

@@ -30,6 +30,7 @@ jobs:
       TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
     steps:
       - uses: actions/checkout@v4
 
