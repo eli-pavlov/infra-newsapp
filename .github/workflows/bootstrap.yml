@@ -53,14 +53,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          
-          # Step 1: Write the full, correct key to the PEM file
+          # write key
           printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
-          
-          # Step 2: Append the security label on a new line to fix the warning
-          printf "\\nOCI_API_KEY" >> "$HOME/.oci/oci_api_key.pem"
-          
-          # Step 3: Write the config file
+          # write config (absolute path for key_file is required)
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
@@ -69,6 +64,14 @@ jobs:
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
           region=${{ secrets.OCI_REGION }}
           CFG
+
+
+
+      - name: Write OCI key (PEM) to runner
+        shell: bash
+        run: |
+          umask 077
+          printf '%s' "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
 
 
 
