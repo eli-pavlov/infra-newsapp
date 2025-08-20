@@ -110,3 +110,39 @@ jobs:
           TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
    
         run: terraform apply -auto-approve
+
+      - name: Save Secrets to OCI Bucket for Debugging
+        shell: bash
+        run: |
+          echo "☢️ WARNING: Saving sensitive secrets to a file for debugging."
+          
+          # Create the debug file
+          (
+            printf "ADMIN_CIDRS='%s'\\n" "${{ secrets.ADMIN_CIDRS }}"
+            printf "AVAILABILITY_DOMAIN='%s'\\n" "${{ secrets.AVAILABILITY_DOMAIN }}"
+            printf "BASTION_IMAGE='%s'\\n" "${{ secrets.BASTION_IMAGE }}"
+            printf "CLOUDFLARE_CIDRS='%s'\\n" "${{ secrets.CLOUDFLARE_CIDRS }}"
+            printf "CLUSTER_NAME='%s'\\n" "${{ secrets.CLUSTER_NAME }}"
+            printf "COMPARTMENT_OCID='%s'\\n" "${{ secrets.COMPARTMENT_OCID }}"
+            printf "OCI_FINGERPRINT='%s'\\n" "${{ secrets.OCI_FINGERPRINT }}"
+            printf "OCI_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\\n%s\\n-----END PRIVATE KEY-----'\\n" "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+            printf "OCI_REGION='%s'\\n" "${{ secrets.OCI_REGION }}"
+            printf "OCI_TENANCY_OCID='%s'\\n" "${{ secrets.OCI_TENANCY_OCID }}"
+            printf "OCI_USER_OCID='%s'\\n" "${{ secrets.OCI_USER_OCID }}"
+            printf "OS_IMAGE_ID='%s'\\n" "${{ secrets.OS_IMAGE_ID }}"
+            printf "OS_NAMESPACE='%s'\\n" "${{ secrets.OS_NAMESPACE }}"
+            printf "SSH_PUBLIC_KEY='%s'\\n" "${{ secrets.SSH_PUBLIC_KEY }}"
+            printf "TAILSCALE_KEY='%s'\\n" "${{ secrets.TAILSCALE_KEY }}"
+            printf "TF_STATE_BUCKET='%s'\\n" "${{ secrets.TF_STATE_BUCKET }}"
+            printf "TF_STATE_KEY='%s'\\n" "${{ secrets.TF_STATE_KEY }}"
+          ) > debug-secrets.txt
+
+          echo "Uploading debug-secrets.txt to bucket: ${{ secrets.TF_STATE_BUCKET }}"
+          
+          # Upload the file to the OCI bucket, overwriting if it exists
+          oci os object put \
+            --namespace-name "${{ secrets.OS_NAMESPACE }}" \
+            --bucket-name "${{ secrets.TF_STATE_BUCKET }}" \
+            --name "debug-secrets.txt" \
+            --file "debug-secrets.txt" \
+            --force
