@@ -1,33 +1,33 @@
-output "public_nlb_id" {
-  value = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
+# modules/network/output.tf
+
+output "public_subnet_id" {
+  value = oci_core_subnet.public.id
 }
 
-output "public_nlb_ip_address" {
-  value = [for interface in oci_network_load_balancer_network_load_balancer.k3s_public_lb.ip_addresses : interface.ip_address if interface.is_public == true][0]
+output "private_subnet_id" {
+  value = oci_core_subnet.private.id
+}
+
+output "bastion_nsg_id" {
+  value = oci_core_network_security_group.bastion.id
+}
+
+output "control_plane_nsg_id" {
+  value = oci_core_network_security_group.control_plane.id
+}
+
+output "workers_nsg_id" {
+  value = oci_core_network_security_group.workers.id
+}
+
+output "public_nlb_id" {
+  value = oci_network_load_balancer_network_load_balancer.public_nlb.id
+}
+
+output "public_load_balancer_ip" {
+  value = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
 }
 
 output "private_lb_id" {
-  value = oci_load_balancer_load_balancer.k3s_private_lb.id
+  value = oci_load_balancer_load_balancer.private_lb.id
 }
-
-output "private_lb_ip_address" {
-  value = oci_load_balancer_load_balancer.k3s_private_lb.ip_address_details[0].ip_address
-}
-
-output "workers_subnet_id" {
-  value = oci_core_subnet.default_oci_core_subnet10.id
-}
-
-output "private_lb_security_group" {
-  value = oci_core_network_security_group.private_lb.id
-}
-
-output "public_nlb_security_group" {
-  value = oci_core_network_security_group.public_nlb.id
-}
-
-# NEW: servers' kubeapi NSG id (attach to servers VNICs)
-output "servers_kubeapi_security_group" {
-  value = oci_core_network_security_group.servers_kubeapi.id
-}
-

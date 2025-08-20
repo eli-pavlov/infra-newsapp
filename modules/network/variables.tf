@@ -1,50 +1,39 @@
-variable "region" { type = string }
-variable "tenancy_ocid" { type = string }
-variable "compartment_ocid" { type = string }
+# modules/network/variables.tf
 
-variable "environment" {
-  type    = string
-  default = "staging"
+variable "region" {
+  description = "The OCI region."
+  type        = string
 }
 
-variable "oci_core_vcn_dns_label" {
-  type    = string
-  default = "defaultvcn"
+variable "compartment_ocid" {
+  description = "The OCID of the compartment."
+  type        = string
 }
 
-variable "oci_core_subnet_dns_label10" {
-  type    = string
-  default = "defaultsubnet10"
+variable "vcn_cidr" {
+  description = "CIDR for the entire VCN."
+  type        = string
+  default     = "10.0.0.0/16"
 }
 
-variable "oci_core_subnet_dns_label11" {
-  type    = string
-  default = "defaultsubnet11"
+variable "public_subnet_cidr" {
+  description = "CIDR for the public subnet."
+  type        = string
+  default     = "10.0.1.0/24"
 }
 
-variable "oci_core_vcn_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
+variable "private_subnet_cidr" {
+  description = "CIDR for the private subnet."
+  type        = string
+  default     = "10.0.2.0/24"
 }
 
-variable "oci_core_subnet_cidr10" {
-  type    = string
-  default = "10.0.0.0/24"
-}
-
-variable "oci_core_subnet_cidr11" {
-  type    = string
-  default = "10.0.1.0/24"
-}
-
-# NEW: your personal IP ranges (SSH + kubeapi)
 variable "admin_cidrs" {
+  description = "A list of admin IP CIDRs for SSH access."
   type        = list(string)
-  description = "Admin/public IP CIDRs (SSH/ICMP to instances)."
 }
 
-# NEW: Cloudflare IP ranges (public site via 80/443)
 variable "cloudflare_cidrs" {
+  description = "A list of Cloudflare IP CIDRs for load balancer access."
   type        = list(string)
-  description = "Cloudflare IP CIDRs allowed to reach the public NLB on ports 80/443."
 }
