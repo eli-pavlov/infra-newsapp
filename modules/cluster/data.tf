@@ -13,17 +13,17 @@ data "cloudinit_config" "k3s_server_tpl" {
 
   part {
     content_type = "text/x-shellscript"
+    # THIS IS THE FIX: All keys now have a "T_" prefix to match the script
     content = templatefile("${path.module}/files/k3s-install-server.sh", {
-      k3s_version               = var.k3s_version,
-      k3s_token                 = random_password.k3s_token.result,
-      # k3s_url_ip              = oci_core_instance.control_plane.private_ip, # REMOVE THIS LINE
-      db_user                   = var.db_user,
-      db_name_dev               = var.db_name_dev,
-      db_name_prod              = var.db_name_prod,
-      db_service_name_dev       = var.db_service_name_dev,
-      db_service_name_prod      = var.db_service_name_prod,
-      manifests_repo_url        = var.manifests_repo_url,
-      expected_total_node_count = var.expected_total_node_count
+      T_K3S_VERSION               = var.k3s_version,
+      T_K3S_TOKEN                 = random_password.k3s_token.result,
+      T_DB_USER                   = var.db_user,
+      T_DB_NAME_DEV               = var.db_name_dev,
+      T_DB_NAME_PROD              = var.db_name_prod,
+      T_DB_SERVICE_NAME_DEV       = var.db_service_name_dev,
+      T_DB_SERVICE_NAME_PROD      = var.db_service_name_prod,
+      T_MANIFESTS_REPO_URL        = var.manifests_repo_url,
+      T_EXPECTED_NODE_COUNT       = var.expected_total_node_count
     })
   }
 }
