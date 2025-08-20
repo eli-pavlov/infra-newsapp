@@ -9,37 +9,25 @@ permissions:
 
 jobs:
   bootstrap-and-debug:
-    name: Bootstrap State Bucket and Save Secrets
+    name: Bootstrap State Bucket and Debug
     runs-on: ubuntu-latest
     env:
-      # Centralized credentials for all steps
-      TF_IN_AUTOMATION: "1"
-      TF_INPUT: "0"
       OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
       OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
       OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
       OCI_REGION: ${{ secrets.OCI_REGION }}
       OCI_PRIVATE_KEY_PEM: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-      TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
-      TF_VAR_bucket_name: ${{ secrets.TF_STATE_BUCKET }}
-      TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Guard required secrets
+      - name: Configure OCI CLI and Key File
         shell: bash
         run: |
-          set -euo pipefail
-          if [ -z "${{ env.OCI_TENANCY_OCID }}" ] || [ -z "${{ env.OCI_USER_OCID }}" ] || [ -z "${{ env.OCI_FINGERPRINT }}" ] || [ -z "${{ env.OCI_REGION }}" ] || [ -z "${{ env.OCI_PRIVATE_KEY_PEM }}" ] || [ -z "${{ env.TF_VAR_bucket_name }}" ]; then
-            echo "::error::One or more required OCI secrets are missing."
-            exit 1
-          fi
-
-      - name: Configure OCI CLI
-        shell: bash
-        run: |
+          echo "Setting up OCI CLI configuration..."
           python3 -m pip install --quiet --upgrade pip
           python3 -m pip install --quiet oci-cli
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -47,7 +35,8 @@ jobs:
           mkdir -p "$HOME/.oci"
           umask 077
           
-          # This command correctly writes the multi-line secret to a file
+          # This command writes the multi-line secret to a file.
+          # The format of the secret in GitHub settings is CRITICAL.
           echo "${{ env.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
           
           cat > "$HOME/.oci/config" <<CFG
@@ -59,6 +48,18 @@ jobs:
           region=${{ env.OCI_REGION }}
           CFG
 
+      # ================== NEW DEBUGGING STEP ==================
+      - name: Validate Private Key Format
+        shell: bash
+        run: |
+          echo "--- Checking key file content with visible line endings ($) ---"
+          cat -A "$HOME/.oci/oci_api_key.pem"
+          echo
+          echo "--- Validating key format with OpenSSL ---"
+          openssl rsa -in "$HOME/.oci/oci_api_key.pem" -check -noout
+          echo "✅ OpenSSL validation successful. The key format is correct."
+      # ==========================================================
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -67,48 +68,14 @@ jobs:
       - name: Terraform Init & Apply (bootstrap/state-bucket)
         working-directory: bootstrap/state-bucket
         env:
-          # Pass credentials directly to the provider for this step
           TF_VAR_region: ${{ env.OCI_REGION }}
           TF_VAR_tenancy_ocid: ${{ env.OCI_TENANCY_OCID }}
           TF_VAR_user_ocid: ${{ env.OCI_USER_OCID }}
           TF_VAR_fingerprint: ${{ env.OCI_FINGERPRINT }}
           TF_VAR_private_key_pem: ${{ env.OCI_PRIVATE_KEY_PEM }}
+          TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
+          TF_VAR_bucket_name: ${{ env.TF_STATE_BUCKET }}
+          TF_VAR_os_namespace: ${{ env.OS_NAMESPACE }}
         run: |
           terraform init -upgrade
           terraform apply -auto-approve
-
-      - name: Save Secrets to OCI Bucket for Debugging
-        shell: bash
-        run: |
-          
-          # Create the debug file
-          (
-            printf "ADMIN_CIDRS='%s'\\n" "${{ secrets.ADMIN_CIDRS }}"
-            printf "AVAILABILITY_DOMAIN='%s'\\n" "${{ secrets.AVAILABILITY_DOMAIN }}"
-            printf "BASTION_IMAGE='%s'\\n" "${{ secrets.BASTION_IMAGE }}"
-            printf "CLOUDFLARE_CIDRS='%s'\\n" "${{ secrets.CLOUDFLARE_CIDRS }}"
-            printf "CLUSTER_NAME='%s'\\n" "${{ secrets.CLUSTER_NAME }}"
-            printf "COMPARTMENT_OCID='%s'\\n" "${{ env.TF_VAR_compartment_ocid }}"
-            printf "OCI_FINGERPRINT='%s'\\n" "${{ env.OCI_FINGERPRINT }}"
-            printf "OCI_PRIVATE_KEY_PEM='\\n%s'\\n" "${{ env.OCI_PRIVATE_KEY_PEM }}"
-            printf "OCI_REGION='%s'\\n" "${{ env.OCI_REGION }}"
-            printf "OCI_TENANCY_OCID='%s'\\n" "${{ env.OCI_TENANCY_OCID }}"
-            printf "OCI_USER_OCID='%s'\\n" "${{ env.OCI_USER_OCID }}"
-            printf "OS_IMAGE_ID='%s'\\n" "${{ secrets.OS_IMAGE_ID }}"
-            printf "OS_NAMESPACE='%s'\\n" "${{ env.TF_VAR_os_namespace }}"
-            printf "SSH_PUBLIC_KEY='%s'\\n" "${{ secrets.SSH_PUBLIC_KEY }}"
-            printf "TAILSCALE_KEY='%s'\\n" "${{ secrets.TAILSCALE_KEY }}"
-            printf "TF_STATE_BUCKET='%s'\\n" "${{ env.TF_VAR_bucket_name }}"
-            printf "TF_STATE_KEY='%s'\\n" "${{ secrets.TF_STATE_KEY }}"
-          ) > debug-secrets.txt
-
-          echo "Uploading debug-secrets.txt to bucket: ${{ env.TF_VAR_bucket_name }}"
-          
-          # Upload the file to the OCI bucket
-          oci os object put \
-            --namespace-name "${{ env.TF_VAR_os_namespace }}" \
-            --bucket-name "${{ env.TF_VAR_bucket_name }}" \
-            --name "debug-secrets.txt" \
-            --file "debug-secrets.txt" \
-            --force
-            
