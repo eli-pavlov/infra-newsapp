@@ -8,11 +8,11 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  bootstrap-and-debug:
+    name: Bootstrap State Bucket and Save Secrets
     runs-on: ubuntu-latest
-    # =================== THIS IS THE MAIN CHANGE ===================
-    # All secrets are now centralized here for consistency
     env:
+      # Centralized credentials for all steps
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
       OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
@@ -23,7 +23,7 @@ jobs:
       TF_VAR_compartment_ocid: ${{ secrets.COMPARTMENT_OCID }}
       TF_VAR_bucket_name: ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
-    # ===============================================================
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,28 +32,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${{ env.OCI_TENANCY_OCID }}" ] || \
-             [ -z "${{ env.OCI_USER_OCID }}" ] || \
-             [ -z "${{ env.OCI_FINGERPRINT }}" ] || \
-             [ -z "${{ env.OCI_REGION }}" ] || \
-             [ -z "${{ env.OCI_PRIVATE_KEY_PEM }}" ] || \
-             [ -z "${{ env.TF_VAR_bucket_name }}" ]; then
-            echo "::error::One or more required secrets are missing."
+          if [ -z "${{ env.OCI_TENANCY_OCID }}" ] || [ -z "${{ env.OCI_USER_OCID }}" ] || [ -z "${{ env.OCI_FINGERPRINT }}" ] || [ -z "${{ env.OCI_REGION }}" ] || [ -z "${{ env.OCI_PRIVATE_KEY_PEM }}" ] || [ -z "${{ env.TF_VAR_bucket_name }}" ]; then
+            echo "::error::One or more required OCI secrets are missing."
             exit 1
           fi
 
       - name: Configure OCI CLI
         shell: bash
         run: |
-          # This step is still needed for the 'oci os object put' command below
           python3 -m pip install --quiet --upgrade pip
           python3 -m pip install --quiet oci-cli
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           
           mkdir -p "$HOME/.oci"
           umask 077
-          printf "%s" "${{ env.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
-          printf "\\nOCI_API_KEY" >> "$HOME/.oci/oci_api_key.pem"
+          
+          # This command correctly writes the multi-line secret to a file
+          echo "${{ env.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
           
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
@@ -71,7 +66,6 @@ jobs:
 
       - name: Terraform Init & Apply (bootstrap/state-bucket)
         working-directory: bootstrap/state-bucket
-        # No 'env' block needed here anymore; it inherits from the job
         env:
           # Pass credentials directly to the provider for this step
           TF_VAR_region: ${{ env.OCI_REGION }}
@@ -85,14 +79,16 @@ jobs:
 
       - name: Save Secrets to OCI Bucket for Debugging
         shell: bash
-        run: |          
+        run: |
+          
+          # Create the debug file
           (
             printf "ADMIN_CIDRS='%s'\\n" "${{ secrets.ADMIN_CIDRS }}"
             printf "AVAILABILITY_DOMAIN='%s'\\n" "${{ secrets.AVAILABILITY_DOMAIN }}"
             printf "BASTION_IMAGE='%s'\\n" "${{ secrets.BASTION_IMAGE }}"
             printf "CLOUDFLARE_CIDRS='%s'\\n" "${{ secrets.CLOUDFLARE_CIDRS }}"
             printf "CLUSTER_NAME='%s'\\n" "${{ secrets.CLUSTER_NAME }}"
-            printf "COMPARTMENT_OCID='%s'\\n" "${{ secrets.COMPARTMENT_OCID }}"
+            printf "COMPARTMENT_OCID='%s'\\n" "${{ env.TF_VAR_compartment_ocid }}"
             printf "OCI_FINGERPRINT='%s'\\n" "${{ env.OCI_FINGERPRINT }}"
             printf "OCI_PRIVATE_KEY_PEM='\\n%s'\\n" "${{ env.OCI_PRIVATE_KEY_PEM }}"
             printf "OCI_REGION='%s'\\n" "${{ env.OCI_REGION }}"
@@ -108,6 +104,7 @@ jobs:
 
           echo "Uploading debug-secrets.txt to bucket: ${{ env.TF_VAR_bucket_name }}"
           
+          # Upload the file to the OCI bucket
           oci os object put \
             --namespace-name "${{ env.TF_VAR_os_namespace }}" \
             --bucket-name "${{ env.TF_VAR_bucket_name }}" \
