@@ -16,7 +16,7 @@ data "cloudinit_config" "k3s_server_tpl" {
     content = templatefile("${path.module}/files/k3s-install-server.sh", {
       k3s_version               = var.k3s_version,
       k3s_token                 = random_password.k3s_token.result,
-      k3s_url_ip                = oci_core_instance.control_plane.private_ip,
+      # k3s_url_ip              = oci_core_instance.control_plane.private_ip, # REMOVE THIS LINE
       db_user                   = var.db_user,
       db_name_dev               = var.db_name_dev,
       db_name_prod              = var.db_name_prod,
@@ -27,8 +27,3 @@ data "cloudinit_config" "k3s_server_tpl" {
     })
   }
 }
-
-# =================== WORKER cloud-init (Used by all workers) ===================
-# This data source is no longer explicitly defined here.
-# Instead, the template is called directly from nodes.tf to pass in
-# the correct labels and taints for each worker type.
