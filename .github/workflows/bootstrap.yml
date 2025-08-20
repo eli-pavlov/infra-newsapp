@@ -53,9 +53,14 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          # write key
+          
+          # Step 1: Write the full, correct key to the PEM file
           printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
-          # write config (absolute path for key_file is required)
+          
+          # Step 2: Append the security label on a new line to fix the warning
+          printf "\\nOCI_API_KEY" >> "$HOME/.oci/oci_api_key.pem"
+          
+          # Step 3: Write the config file
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
