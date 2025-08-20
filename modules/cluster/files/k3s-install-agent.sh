@@ -4,11 +4,12 @@ set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
 # --- Vars injected by Terraform ---
-T_K3S_VERSION="${k3s_version}"
-T_K3S_TOKEN="${k3s_token}"
-T_K3S_URL_IP="${k3s_url_ip}"
-T_NODE_LABELS="${node_labels}" # e.g., "role=application"
-T_NODE_TAINTS="${node_taints}" # e.g., "role=database:NoSchedule"
+# THIS BLOCK IS NOW CONSISTENT
+T_K3S_VERSION="${T_K3S_VERSION}"
+T_K3S_TOKEN="${T_K3S_TOKEN}"
+T_K3S_URL_IP="${T_K3S_URL_IP}"
+T_NODE_LABELS="${T_NODE_LABELS}"
+T_NODE_TAINTS="${T_NODE_TAINTS}"
 
 # --- Main Logic ---
 echo "Joining K3s cluster at https://${T_K3S_URL_IP}:6443"

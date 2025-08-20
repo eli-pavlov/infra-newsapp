@@ -54,13 +54,14 @@ resource "oci_core_instance" "app_workers" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data           = templatefile("${path.module}/files/k3s-install-agent.sh", {
-      k3s_version = var.k3s_version,
-      k3s_token   = random_password.k3s_token.result,
-      k3s_url_ip  = oci_core_instance.control_plane.private_ip,
-      node_labels = "role=application",
-      node_taints = ""
-    })
+    # THIS BLOCK IS NOW CONSISTENT
+    user_data           = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
+      T_K3S_VERSION = var.k3s_version,
+      T_K3S_TOKEN   = random_password.k3s_token.result,
+      T_K3S_URL_IP  = oci_core_instance.control_plane.private_ip,
+      T_NODE_LABELS = "role=application",
+      T_NODE_TAINTS = ""
+    }))
   }
 
   depends_on = [oci_core_instance.control_plane]
@@ -90,13 +91,14 @@ resource "oci_core_instance" "db_worker" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data           = templatefile("${path.module}/files/k3s-install-agent.sh", {
-      k3s_version = var.k3s_version,
-      k3s_token   = random_password.k3s_token.result,
-      k3s_url_ip  = oci_core_instance.control_plane.private_ip,
-      node_labels = "role=database",
-      node_taints = "role=database:NoSchedule"
-    })
+    # THIS BLOCK IS NOW CONSISTENT
+    user_data           = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
+      T_K3S_VERSION = var.k3s_version,
+      T_K3S_TOKEN   = random_password.k3s_token.result,
+      T_K3S_URL_IP  = oci_core_instance.control_plane.private_ip,
+      T_NODE_LABELS = "role=database",
+      T_NODE_TAINTS = "role=database:NoSchedule"
+    }))
   }
 
   depends_on = [oci_core_instance.control_plane]
