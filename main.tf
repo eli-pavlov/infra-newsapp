@@ -28,7 +28,7 @@ provider "oci" {
 module "network" {
   source           = "./modules/network"
   compartment_ocid = var.compartment_ocid
-  region = var.region
+  region           = var.region
   admin_cidrs      = var.admin_cidrs
   cloudflare_cidrs = var.cloudflare_cidrs
 }
@@ -42,7 +42,7 @@ module "cluster" {
   cluster_name          = var.cluster_name
   public_key_content    = var.public_key_content
   os_image_id           = var.os_image_id
-  bastion_os_image_id   = var.bastion_os_image_id # --- ADDED THIS LINE ---
+  bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
 
   # network wiring
