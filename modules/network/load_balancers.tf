@@ -1,6 +1,4 @@
-# modules/network/load_balancers.tf
-
-# === Public Network Load Balancer (for NGINX Ingress) ===
+# Public Network Load Balancer (for NGINX Ingress)
 resource "oci_network_load_balancer_network_load_balancer" "public_nlb" {
   compartment_id             = var.compartment_ocid
   display_name               = "k8s-public-nlb"
@@ -10,7 +8,6 @@ resource "oci_network_load_balancer_network_load_balancer" "public_nlb" {
   network_security_group_ids = [oci_core_network_security_group.public_lb.id]
 }
 
-# Backend sets for the public NLB
 resource "oci_network_load_balancer_backend_set" "public_nlb_backends" {
   for_each                 = { for p in ["http", "https"] : p => p }
   name                     = "k8s_${each.key}_backend_set"
@@ -23,7 +20,6 @@ resource "oci_network_load_balancer_backend_set" "public_nlb_backends" {
   }
 }
 
-# Listeners for the public NLB
 resource "oci_network_load_balancer_listener" "public_nlb_listeners" {
   for_each                 = { for p in ["http", "https"] : p => p }
   name                     = "k8s_${each.key}_listener"
@@ -33,7 +29,7 @@ resource "oci_network_load_balancer_listener" "public_nlb_listeners" {
   protocol                 = "TCP"
 }
 
-# === Private Standard Load Balancer (for Kube API) ===
+# Private Standard Load Balancer (for Kube API)
 resource "oci_load_balancer_load_balancer" "private_lb" {
   compartment_id = var.compartment_ocid
   display_name   = "k8s-private-lb-api"
@@ -42,12 +38,11 @@ resource "oci_load_balancer_load_balancer" "private_lb" {
     minimum_bandwidth_in_mbps = 10
     maximum_bandwidth_in_mbps = 10
   }
-  is_private = true
-  subnet_ids = [oci_core_subnet.public.id] # LBs live in the public subnet
+  is_private                 = true
+  subnet_ids                 = [oci_core_subnet.public.id]
   network_security_group_ids = [oci_core_network_security_group.private_lb.id]
 }
 
-# Backend set for the private LB
 resource "oci_load_balancer_backend_set" "private_lb_backendset" {
   name             = "k8s_kube_api_backend_set"
   load_balancer_id = oci_load_balancer_load_balancer.private_lb.id
@@ -58,7 +53,6 @@ resource "oci_load_balancer_backend_set" "private_lb_backendset" {
   }
 }
 
-# Listener for the private LB
 resource "oci_load_balancer_listener" "private_lb_listener" {
   name                     = "k8s_kube_api_listener"
   load_balancer_id         = oci_load_balancer_load_balancer.private_lb.id

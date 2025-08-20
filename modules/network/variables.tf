@@ -1,13 +1,17 @@
 # modules/network/variables.tf
-
-variable "region" {
-  description = "The OCI region."
-  type        = string
-}
-
 variable "compartment_ocid" {
   description = "The OCID of the compartment."
   type        = string
+}
+
+variable "admin_cidrs" {
+  description = "A list of admin IP CIDRs for SSH access."
+  type        = list(string)
+}
+
+variable "cloudflare_cidrs" {
+  description = "A list of Cloudflare IP CIDRs for load balancer access."
+  type        = list(string)
 }
 
 variable "vcn_cidr" {
@@ -26,14 +30,4 @@ variable "private_subnet_cidr" {
   description = "CIDR for the private subnet."
   type        = string
   default     = "10.0.2.0/24"
-}
-
-variable "admin_cidrs" {
-  description = "A list of admin IP CIDRs for SSH access."
-  type        = list(string)
-}
-
-variable "cloudflare_cidrs" {
-  description = "A list of Cloudflare IP CIDRs for load balancer access."
-  type        = list(string)
 }

@@ -1,28 +1,29 @@
 # main.tf
-
 module "network" {
   source = "./modules/network"
 
-  compartment_id   = var.compartment_ocid
-  region           = var.region
+  compartment_ocid   = var.compartment_ocid
   admin_cidrs      = var.admin_cidrs
   cloudflare_cidrs = var.cloudflare_cidrs
 }
 
 module "cluster" {
   source = "./modules/cluster"
+  region = var.region
+  public_nlb_ip_address = module.network.public_load_balancer_ip
+  private_lb_ip_address = module.network.private_load_balancer_ip
+  compartment_ocid      = var.compartment_ocid
 
-  # General OCI Variables
-  compartment_id      = var.compartment_ocid
+
+  # General OCI Configuration
   availability_domain = var.availability_domain
-  region              = var.region
 
-  # Naming and Image Variables
+  # Naming, Image, and Access
   cluster_name       = var.cluster_name
   os_image_id        = var.os_image_id
   public_key_content = var.public_key_content
 
-  # Argo CD and Script Variables
+  # Argo CD Configuration
   manifests_repo_url = var.manifests_repo_url
 
   # Network Inputs from the 'network' module
@@ -37,10 +38,10 @@ module "cluster" {
 
 # Upload a JSON file with key IPs to the OCI bucket after creation
 resource "oci_objectstorage_object" "infra_outputs" {
-  namespace    = var.os_namespace
-  bucket_name  = var.tf_state_bucket
-  object       = "infrastructure-outputs.json"
-  content_type = "application/json"
+  namespace = var.os_namespace    # CORRECTED from 'namespace'
+  bucket         = var.tf_state_bucket # CORRECTED from 'bucket_name'
+  object         = "infrastructure-outputs.json"
+  content_type   = "application/json"
 
   content = jsonencode({
     bastion_public_ip       = module.cluster.bastion_public_ip

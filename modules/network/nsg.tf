@@ -1,3 +1,5 @@
+# modules/network/nsg.tf
+
 # === NSG Definitions ===
 resource "oci_core_network_security_group" "bastion" {
   compartment_id = var.compartment_ocid
@@ -31,58 +33,98 @@ resource "oci_core_network_security_group" "private_lb" {
 
 # === NSG Rules ===
 
-# 1. Bastion Rules
-#    - Ingress: Allow SSH from admin IPs.
+# 1. Bastion: Allow SSH from your admin IPs.
 resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
   network_security_group_id = oci_core_network_security_group.bastion.id
   direction                 = "INGRESS"
   protocol                  = "6" # TCP
   source_type               = "CIDR_BLOCK"
   source                    = var.admin_cidrs[0]
-  tcp_options { destination_port_range { min = 22, max = 22 } }
+
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
+  }
 }
 
-# 2. Control Plane Rules
-#    - Ingress: Allow SSH (22) from the Bastion NSG.
-#    - Ingress: Allow Kube API (6443) from the Private LB NSG.
+# 2. Control Plane: Allow SSH from bastion and Kube API from private LB.
 resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_bastion" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6"
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.bastion.id
-  tcp_options { destination_port_range { min = 22, max = 22 } }
+
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
+  }
 }
+
 resource "oci_core_network_security_group_security_rule" "cp_api_in_from_privatelb" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6"
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.private_lb.id
-  tcp_options { destination_port_range { min = 6443, max = 6443 } }
+
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
+  }
 }
 
-# 3. Worker Node Rules
-#    - Ingress: Allow NodePorts (30000-32767) from the Public LB NSG.
+# 3. Workers: Allow Ingress NodePorts from the public LB.
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6"
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.public_lb.id
-  tcp_options { destination_port_range { min = 30000, max = 32767 } }
+
+  tcp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
+  }
 }
 
-# 4. Public LB Rules
-#    - Ingress: Allow HTTP/S from Cloudflare CIDRs.
-resource "oci_core_network_security_group_security_rule" "public_lb_ingress" {
+# 4. Public LB: Allow HTTP/S from Cloudflare CIDRs.
+resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
   for_each                  = toset(var.cloudflare_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6"
   source_type               = "CIDR_BLOCK"
   source                    = each.value
+
+  tcp_options {
+    destination_port_range {
+      min = 443
+      max = 443
+    }
+  }
 }
 
-# 5. Private LB Rules
-#    (No ingress rules needed as it only receives traffic from within the VCN, which is allowed by the Default Security List)
+resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
+  for_each                  = toset(var.cloudflare_cidrs)
+  network_security_group_id = oci_core_network_security_group.public_lb.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source_type               = "CIDR_BLOCK"
+  source                    = each.value
+
+  tcp_options {
+    destination_port_range {
+      min = 80
+      max = 80
+    }
+  }
+}
