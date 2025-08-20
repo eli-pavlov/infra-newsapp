@@ -1,3 +1,5 @@
+# modules/cluster/variables.tf
+
 variable "region" {
   type = string
 }
@@ -10,11 +12,6 @@ variable "compartment_ocid" {
   type = string
 }
 
-variable "environment" {
-  type    = string
-  default = "staging"
-}
-
 variable "cluster_name" {
   type = string
 }
@@ -23,82 +20,123 @@ variable "os_image_id" {
   type = string
 }
 
-variable "k3s_version" {
-  type    = string
-  default = "latest"
-}
-
-variable "k3s_subnet" {
-  type    = string
-  default = "default_route_table"
-}
-
-variable "fault_domains" {
-  type    = list(any)
-  default = ["FAULT-DOMAIN-1", "FAULT-DOMAIN-2", "FAULT-DOMAIN-3"]
-}
-
 variable "public_key_content" {
-  description = "The content of the public SSH key."
+  description = "The content of the public SSH key for the compute instances."
   type        = string
   sensitive   = true
 }
 
-variable "compute_shape" {
-  type    = string
-  default = "VM.Standard.A1.Flex"
-}
-
-variable "public_lb_shape" {
-  type    = string
-  default = "flexible"
-}
-
-variable "oci_identity_dynamic_group_name" {
+variable "manifests_repo_url" {
+  description = "The HTTPS URL of the Kubernetes manifests repository for Argo CD to clone."
   type        = string
-  default     = "Compute_Dynamic_Group"
-  description = "Dynamic group which contains all instance in this compartment"
 }
 
-variable "oci_identity_policy_name" {
+# --- SHAPE AND RESOURCE VARIABLES ---
+
+variable "node_shape" {
+  description = "The base shape for all Kubernetes nodes. Must be a Flex shape."
   type        = string
-  default     = "Compute_To_Oci_Api_Policy"
-  description = "Policy to allow dynamic group, to read OCI api without auth"
+  default     = "VM.Standard.A1.Flex" # OCI's ARM-based Free Tier eligible shape
 }
 
-variable "oci_core_vcn_dns_label" {
-  type    = string
-  default = "defaultvcn"
+variable "node_ocpus" {
+  description = "The number of OCPUs to allocate to each Kubernetes node."
+  type        = number
+  default     = 1
 }
 
-variable "oci_core_subnet_dns_label10" {
-  type    = string
-  default = "defaultsubnet10"
+variable "node_memory_gb" {
+  description = "The amount of memory in GB to allocate to each Kubernetes node."
+  type        = number
+  default     = 6
 }
 
-variable "oci_core_subnet_dns_label11" {
-  type    = string
-  default = "defaultsubnet11"
+# --- NETWORKING & NODE COUNT ---
+
+variable "public_subnet_id" {
+  type = string
 }
 
-variable "oci_core_vcn_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
+variable "private_subnet_id" {
+  type = string
 }
 
-variable "oci_core_subnet_cidr10" {
-  type    = string
-  default = "10.0.0.0/24"
+variable "bastion_nsg_id" {
+  type = string
 }
 
-variable "oci_core_subnet_cidr11" {
-  type    = string
-  default = "10.0.1.0/24"
+variable "control_plane_nsg_id" {
+  type = string
 }
 
-variable "ingress_controller_http_nodeport" {
-  type    = number
-  default = 30080
+variable "workers_nsg_id" {
+  type = string
+}
+
+variable "expected_total_node_count" {
+  description = "The total number of nodes (control plane + all workers) expected in the cluster."
+  type        = number
+  default     = 4 # 1 master + 2 app + 1 db
+}
+
+# --- DATABASE & SECRET VARIABLES ---
+
+variable "db_user" {
+  description = "The username for the PostgreSQL database."
+  type        = string
+  default     = "news_user"
+}
+
+variable "db_name_dev" {
+  description = "The database name for the development environment."
+  type        = string
+  default     = "newsdb_dev"
+}
+
+variable "db_name_prod" {
+  description = "The database name for the production environment."
+  type        = string
+  default     = "newsdb_prod"
+}
+
+variable "db_service_name_dev" {
+  description = "The Kubernetes service name for the dev database."
+  type        = string
+  default     = "postgresql-dev"
+}
+
+variable "db_service_name_prod" {
+  description = "The Kubernetes service name for the prod database."
+  type        = string
+  default     = "postgresql-prod"
+}
+
+variable "db_volume_size_gb" {
+  description = "The total size of the shared block volume for databases."
+  type        = number
+  default     = 50 # OCI Free Tier includes 2 block volumes, totaling 200 GB.
+}
+
+# --- K3S VARIABLES ---
+
+variable "k3s_version" {
+  description = "The version of K3s to install."
+  type        = string
+  default     = "v1.28.8+k3s1"
+}
+
+variable "private_lb_ip_address" {
+  type = string
+}
+
+variable "public_nlb_id" {
+  description = "The OCID of the public Network Load Balancer."
+  type        = string
+}
+
+variable "public_nlb_ip_address" {
+  description = "The public IP address of the Network Load Balancer."
+  type        = string
 }
 
 variable "ingress_controller_https_nodeport" {
@@ -107,112 +145,10 @@ variable "ingress_controller_https_nodeport" {
 }
 
 variable "private_lb_id" {
-  type = string
+  description = "The OCID of the private Load Balancer for the Kube API."
+  type        = string
 }
 
 variable "private_lb_ip_address" {
   type = string
-}
-
-variable "public_nlb_id" {
-  type = string
-}
-
-variable "public_nlb_ip_address" {
-  type = string
-}
-
-variable "workers_subnet_id" {
-  type = string
-}
-
-variable "workers_http_nsg_id" {
-  type = string
-}
-
-variable "servers_kubeapi_nsg_id" {
-  type = string
-}
-
-variable "k3s_server_pool_size" {
-  type    = number
-  default = 1
-}
-
-variable "k3s_worker_pool_size" {
-  type    = number
-  default = 3
-}
-
-variable "disable_ingress" {
-  type    = bool
-  default = false
-}
-
-variable "ingress_controller" {
-  type    = string
-  default = "default"
-  validation {
-    condition     = contains(["default", "nginx"], var.ingress_controller)
-    error_message = "Supported ingress controllers are: default, nginx"
-  }
-}
-
-variable "nginx_ingress_release" {
-  type    = string
-  default = "v1.5.1"
-}
-
-variable "install_longhorn" {
-  type    = bool
-  default = false
-}
-
-variable "longhorn_release" {
-  type    = string
-  default = "v1.4.2"
-}
-
-variable "expose_kubeapi" {
-  type    = bool
-  default = false
-}
-
-
-# Durable DB volume settings
-variable "db_volume_size_gb" {
-  type        = number
-  default     = 30
-  description = "Size of the OCI block volume for PostgreSQL (GB)."
-}
-
-variable "db_volume_device" {
-  type        = string
-  default     = "/dev/oracleoci/oraclevdb"
-  description = "Linux device path for the attached block volume."
-}
-
-variable "db_mount_path" {
-  type        = string
-  default     = "/var/lib/postgresql/data"
-  description = "Mount point for the DB volume on the first server."
-}
-
-# Add stable node names (used inside Kubernetes)
-variable "node1_name" {
-  type        = string
-  default     = "node-1"
-  description = "Stable Kubernetes node name for node #1."
-}
-
-variable "node2_name" {
-  type        = string
-  default     = "node-2"
-  description = "Stable Kubernetes node name for node #2."
-}
-
-variable "node3_name" {
-  type        = string
-  default     = "node-3"
-  description = "Stable Kubernetes node name for node #3."
 }

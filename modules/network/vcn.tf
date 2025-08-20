@@ -1,104 +1,81 @@
-resource "oci_core_vcn" "default_oci_core_vcn" {
-  cidr_block     = var.oci_core_vcn_cidr
+# modules/network/vcn.tf
+resource "oci_core_vcn" "main" {
+  cidr_block     = var.vcn_cidr
   compartment_id = var.compartment_ocid
-  display_name   = "Default OCI core vcn"
-  dns_label      = var.oci_core_vcn_dns_label
+  display_name   = "k8s-vcn"
+  dns_label      = "k8svcn"
 }
 
-resource "oci_core_subnet" "default_oci_core_subnet10" {
-  cidr_block        = var.oci_core_subnet_cidr10
+# === Public Subnet (for Bastion and LBs) ===
+resource "oci_core_subnet" "public" {
+  cidr_block        = var.public_subnet_cidr
   compartment_id    = var.compartment_ocid
-  display_name      = "${var.oci_core_subnet_cidr10} (default) OCI core subnet"
-  dns_label         = var.oci_core_subnet_dns_label10
-  route_table_id    = oci_core_vcn.default_oci_core_vcn.default_route_table_id
-  vcn_id            = oci_core_vcn.default_oci_core_vcn.id
-  security_list_ids = [oci_core_default_security_list.default_security_list.id]
+  display_name      = "Public Subnet"
+  dns_label         = "public"
+  route_table_id    = oci_core_vcn.main.default_route_table_id
+  security_list_ids = [oci_core_vcn.main.default_security_list_id]
+  vcn_id            = oci_core_vcn.main.id
 }
 
-resource "oci_core_subnet" "oci_core_subnet11" {
-  cidr_block        = var.oci_core_subnet_cidr11
-  compartment_id    = var.compartment_ocid
-  display_name      = "${var.oci_core_subnet_cidr11} OCI core subnet"
-  dns_label         = var.oci_core_subnet_dns_label11
-  route_table_id    = oci_core_vcn.default_oci_core_vcn.default_route_table_id
-  vcn_id            = oci_core_vcn.default_oci_core_vcn.id
-  security_list_ids = [oci_core_default_security_list.default_security_list.id]
+# === Private Subnet (for Kubernetes Nodes) ===
+resource "oci_core_subnet" "private" {
+  cidr_block                 = var.private_subnet_cidr
+  compartment_id             = var.compartment_ocid
+  display_name               = "Private Subnet (K8s Nodes)"
+  dns_label                  = "private"
+  prohibit_public_ip_on_vnic = true
+  route_table_id             = oci_core_route_table.private.id
+  security_list_ids          = [oci_core_vcn.main.default_security_list_id]
+  vcn_id                     = oci_core_vcn.main.id
 }
 
-resource "oci_core_internet_gateway" "default_oci_core_internet_gateway" {
+# === Gateways ===
+resource "oci_core_internet_gateway" "main" {
   compartment_id = var.compartment_ocid
-  display_name   = "Internet Gateway Default OCI core vcn"
-  enabled        = "true"
-  vcn_id         = oci_core_vcn.default_oci_core_vcn.id
+  display_name   = "k8s-igw"
+  vcn_id         = oci_core_vcn.main.id
 }
 
-resource "oci_core_default_route_table" "default_oci_core_default_route_table" {
+resource "oci_core_nat_gateway" "main" {
+  compartment_id = var.compartment_ocid
+  display_name   = "k8s-nat-gw"
+  vcn_id         = oci_core_vcn.main.id
+}
+
+# === Route Tables ===
+resource "oci_core_default_route_table" "public" {
+  manage_default_resource_id = oci_core_vcn.main.default_route_table_id
   route_rules {
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
-    network_entity_id = oci_core_internet_gateway.default_oci_core_internet_gateway.id
+    network_entity_id = oci_core_internet_gateway.main.id
   }
-  manage_default_resource_id = oci_core_vcn.default_oci_core_vcn.default_route_table_id
 }
 
-resource "oci_core_default_security_list" "default_security_list" {
-  compartment_id             = var.compartment_ocid
-  manage_default_resource_id = oci_core_vcn.default_oci_core_vcn.default_security_list_id
+resource "oci_core_route_table" "private" {
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_vcn.main.id
+  display_name   = "Private Route Table"
+  route_rules {
+    destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
+    network_entity_id = oci_core_nat_gateway.main.id
+  }
+}
 
-  display_name = "Default security list"
+# === Default Security List (Basic Rules) ===
+resource "oci_core_default_security_list" "main" {
+  manage_default_resource_id = oci_core_vcn.main.default_security_list_id
+  compartment_id             = var.compartment_ocid
+  display_name               = "Default Security List"
 
   egress_security_rules {
+    protocol    = "all"
     destination = "0.0.0.0/0"
-    protocol    = "all"
   }
 
-# ICMP from your admin CIDRs
-dynamic "ingress_security_rules" {
-  for_each = var.admin_cidrs
-  content {
-    protocol    = 1 # icmp (IPv4)
-    source      = ingress_security_rules.value
-    description = "Allow ICMP from ${ingress_security_rules.value}"
-  }
-}
-
-# SSH from your admin CIDRs
-dynamic "ingress_security_rules" {
-  for_each = var.admin_cidrs
-  content {
-    protocol    = 6 # tcp
-    source      = ingress_security_rules.value
-    description = "Allow SSH from ${ingress_security_rules.value}"
-    tcp_options {
-      min = 22
-      max = 22
-    }
-  }
-}
-
-
-  # Intra-VCN free-for-all
   ingress_security_rules {
-    protocol    = "all"
-    source      = var.oci_core_vcn_cidr
-    description = "Allow all from VCN"
+    protocol = "all"
+    source   = var.vcn_cidr
   }
-}
-
-# Dynamic group and policy unchanged
-resource "oci_identity_dynamic_group" "compute_dynamic_group" {
-  compartment_id = var.tenancy_ocid
-  description    = "Dynamic group which contains all instance in this compartment"
-  matching_rule  = "All {instance.compartment.id = '${var.compartment_ocid}'}"
-  name           = "Compute_Dynamic_Group"
-}
-
-resource "oci_identity_policy" "compute_dynamic_group_policy" {
-  compartment_id = var.compartment_ocid
-  description    = "Policy to allow dynamic group ${oci_identity_dynamic_group.compute_dynamic_group.name} to read instance-family and compute-management-family in the compartment"
-  name           = "Compute_To_Oci_Api_Policy"
-  statements = [
-    "allow dynamic-group ${oci_identity_dynamic_group.compute_dynamic_group.name} to read instance-family in compartment id ${var.compartment_ocid}",
-    "allow dynamic-group ${oci_identity_dynamic_group.compute_dynamic_group.name} to read compute-management-family in compartment id ${var.compartment_ocid}"
-  ]
 }
