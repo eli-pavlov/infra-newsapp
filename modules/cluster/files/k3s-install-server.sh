@@ -1,3 +1,4 @@
+// modules/cluster/files/k3s-install-server.sh
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, and Argo CD bootstrapping.
 set -euo pipefail
@@ -52,17 +53,20 @@ wait_for_all_nodes() {
     echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
     
     local timeout=900
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
 
     while true; do
-        local ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || true)
+        local ready_nodes
+        ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || true)
         
         if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
             echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
             break
         fi
 
-        local current_time=$(date +%s)
+        local current_time
+        current_time=$(date +%s)
         local elapsed_time=$((current_time - start_time))
 
         if [ "$elapsed_time" -gt "$timeout" ]; then
@@ -91,7 +95,7 @@ install_argo_cd() {
     kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
     
     for deploy in argocd-server argocd-repo-server argocd-dex-server argocd-application-controller; do
-        kubectl -n argocd patch deployment $deploy --type='json' -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"key": "node-role.kubernetes.io/master", "operator": "Exists", "effect": "NoSchedule"}]}]'
+        kubectl -n argocd patch deployment "$deploy" --type='json' -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"key": "node-role.kubernetes.io/master", "operator": "Exists", "effect": "NoSchedule"}]}]'
     done
 
     echo "Waiting for Argo CD to be ready..."
@@ -111,7 +115,7 @@ Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
     chmod 600 /root/credentials.txt
     echo "Credentials saved to /root/credentials.txt"
@@ -124,10 +128,10 @@ EOF
         --dry-run=client -o yaml | kubectl apply -f -
     done
 
-    DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+    DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
     kubectl -n development create secret generic backend-db-connection --from-literal=DB_URI="$DB_URI_DEV" --dry-run=client -o yaml | kubectl apply -f -
 
-    DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+    DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
     kubectl -n default create secret generic backend-db-connection --from-literal=DB_URI="$DB_URI_PROD" --dry-run=client -o yaml | kubectl apply -f -
 
     echo "Kubernetes secrets for database created."
