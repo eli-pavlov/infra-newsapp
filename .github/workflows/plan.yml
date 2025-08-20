@@ -14,7 +14,6 @@ jobs:
       run:
         shell: bash
     env:
-      # These variables are now available to all steps in the job
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
       TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
@@ -26,12 +25,11 @@ jobs:
       TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
       TF_VAR_os_image_id:         ${{ secrets.OS_IMAGE_ID }}
       TF_VAR_cluster_name:        ${{ secrets.CLUSTER_NAME }}
-      TF_VAR_admin_cidrs:        ${{ secrets.ADMIN_CIDRS }}           # e.g. '["203.0.113.10/32","198.51.100.0/24"]'
-      TF_VAR_cloudflare_cidrs:   ${{ secrets.CLOUDFLARE_CIDRS }}      # e.g. '["173.245.48.0/20", ...]'
+      TF_VAR_admin_cidrs:         ${{ secrets.ADMIN_CIDRS }}
+      TF_VAR_cloudflare_cidrs:    ${{ secrets.CLOUDFLARE_CIDRS }}
       TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
-      
     steps:
       - uses: actions/checkout@v4
 
@@ -42,16 +40,15 @@ jobs:
 
       - name: Create backend.oci.hcl
         run: |
-          # This file now includes authentication details to ensure 'init' succeeds
           cat > backend.oci.hcl <<'HCL'
-          tenancy_ocid     = "${{ secrets.OCI_TENANCY_OCID }}"
-          user_ocid        = "${{ secrets.OCI_USER_OCID }}"
-          fingerprint      = "${{ secrets.OCI_FINGERPRINT }}"
-          private_key_pem  = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
-          bucket           = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace        = "${{ secrets.OS_NAMESPACE }}"
-          region           = "${{ secrets.OCI_REGION }}"
-          key              = "${{ secrets.TF_STATE_KEY }}"
+          tenancy_ocid         = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid            = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint          = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem      = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket               = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace            = "${{ secrets.OS_NAMESPACE }}"
+          region               = "${{ secrets.OCI_REGION }}"
+          key                  = "${{ secrets.TF_STATE_KEY }}"
           workspace_key_prefix = "envs/"
           HCL
 

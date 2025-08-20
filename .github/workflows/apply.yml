@@ -1,4 +1,4 @@
-name: 'Terraform Apply to Main'
+name: 'Apply'
 
 on:
   workflow_dispatch: {}
@@ -29,8 +29,8 @@ jobs:
       TF_VAR_admin_cidrs:          ${{ secrets.ADMIN_CIDRS }}
       TF_VAR_cloudflare_cidrs:     ${{ secrets.CLOUDFLARE_CIDRS }}
       TF_VAR_public_key_content:   ${{ secrets.SSH_PUBLIC_KEY }}
-      TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
-      TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_tf_state_bucket:      ${{ secrets.TF_STATE_BUCKET }}
+      TF_VAR_os_namespace:         ${{ secrets.OS_NAMESPACE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,20 +43,19 @@ jobs:
       - name: Create backend.oci.hcl
         run: |
           cat > backend.oci.hcl <<'HCL'
-          tenancy_ocid        = "${{ secrets.OCI_TENANCY_OCID }}"
-          user_ocid           = "${{ secrets.OCI_USER_OCID }}"
-          fingerprint         = "${{ secrets.OCI_FINGERPRINT }}"
-          private_key_pem     = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
-          bucket              = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace           = "${{ secrets.OS_NAMESPACE }}"
-          region              = "${{ secrets.OCI_REGION }}"
-          key                 = "${{ secrets.TF_STATE_KEY }}"
+          tenancy_ocid         = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid            = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint          = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem      = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket               = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace            = "${{ secrets.OS_NAMESPACE }}"
+          region               = "${{ secrets.OCI_REGION }}"
+          key                  = "${{ secrets.TF_STATE_KEY }}"
           workspace_key_prefix = "envs/"
           HCL
 
       - name: Terraform Init
         run: terraform init -backend-config=backend.oci.hcl
-
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan -input=false
@@ -87,8 +86,8 @@ jobs:
       TF_VAR_admin_cidrs:          ${{ secrets.ADMIN_CIDRS }}
       TF_VAR_cloudflare_cidrs:     ${{ secrets.CLOUDFLARE_CIDRS }}
       TF_VAR_public_key_content:   ${{ secrets.SSH_PUBLIC_KEY }}
-      TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
-      TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_tf_state_bucket:      ${{ secrets.TF_STATE_BUCKET }}
+      TF_VAR_os_namespace:         ${{ secrets.OS_NAMESPACE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,16 +101,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan
-          # ✅ FIX: Path is now relative to the root of the repo.
           path: .
 
-      - name: Terraform Init
+      - name: Create backend.oci.hcl
         run: |
-          terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
-            -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
-            -backend-config="region=${{ secrets.OCI_REGION }}"
+          cat > backend.oci.hcl <<'HCL'
+          tenancy_ocid         = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid            = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint          = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem      = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket               = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace            = "${{ secrets.OS_NAMESPACE }}"
+          region               = "${{ secrets.OCI_REGION }}"
+          key                  = "${{ secrets.TF_STATE_KEY }}"
+          workspace_key_prefix = "envs/"
+          HCL
+
+      - name: Terraform Init
+        run: terraform init -backend-config=backend.oci.hcl
 
       - name: Terraform Apply
         run: terraform apply -input=false tfplan

@@ -1,4 +1,3 @@
-# modules/network/output.tf
 output "public_subnet_id" {
   value = oci_core_subnet.public.id
 }
@@ -12,7 +11,7 @@ output "bastion_nsg_id" {
 }
 
 output "control_plane_nsg_id" {
-  value = oci_core_network_security_group.control_plane.id
+  value = oci_core_network_security_group.servers_kubeapi.id
 }
 
 output "workers_nsg_id" {
@@ -20,13 +19,17 @@ output "workers_nsg_id" {
 }
 
 output "public_nlb_id" {
-  value = oci_network_load_balancer_network_load_balancer.public_nlb.id
+  value = oci_network_load_balancer_network_load_balancer.k3s_public_lb.id
 }
 
-output "public_load_balancer_ip" {
-  value = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
+output "public_nlb_ip_address" {
+  value = [for i in oci_network_load_balancer_network_load_balancer.k3s_public_lb.ip_addresses : i.ip_address if i.is_public][0]
 }
 
 output "private_lb_id" {
-  value = oci_load_balancer_load_balancer.private_lb.id
+  value = oci_load_balancer_load_balancer.k3s_private_lb.id
+}
+
+output "private_lb_ip_address" {
+  value = oci_load_balancer_load_balancer.k3s_private_lb.ip_address_details[0].ip_address
 }
