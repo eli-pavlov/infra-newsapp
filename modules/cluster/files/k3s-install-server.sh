@@ -1,11 +1,10 @@
-// modules/cluster/files/k3s-install-server.sh
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# --- Vars injected by Terraform (must match data.tf) ---
+# --- Vars injected by Terraform ---
 T_K3S_VERSION="${T_K3S_VERSION}"
 T_K3S_TOKEN="${T_K3S_TOKEN}"
 T_DB_USER="${T_DB_USER}"
@@ -13,8 +12,9 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_MANIFISTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
+T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
 install_base_tools() {
   echo "Installing base packages..."
@@ -34,11 +34,20 @@ get_private_ip() {
 
 install_k3s_server() {
   echo "Installing K3s server..."
-  local PARAMS="--write-kubeconfig-mode 644 --node-ip $PRIVATE_IP --advertise-address $PRIVATE_IP --disable traefik --kubelet-arg=register-with-taints=node-role.kubernetes.io/master=true:NoSchedule"
+  # Add TLS SANs for both the node's own IP and the private LB IP
+  local PARAMS="--write-kubeconfig-mode 644 \
+    --node-ip $PRIVATE_IP \
+    --advertise-address $PRIVATE_IP \
+    --disable traefik \
+    --tls-san $PRIVATE_IP \
+    --tls-san $T_PRIVATE_LB_IP \
+    --kubelet-arg=register-with-taints=node-role.kubernetes.io/master=true:NoSchedule"
+
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
   export INSTALL_K3S_VERSION="$T_K3S_VERSION"
   curl -sfL https://get.k3s.io | sh -
+
   echo "Waiting for K3s server node to be ready..."
   while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
   echo "K3s server node is running."
@@ -122,7 +131,6 @@ EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
 
-  # Postgres creds used by the Postgres chart
   for ns in default development; do
     kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
     kubectl -n "$ns" create secret generic postgres-credentials \
@@ -131,7 +139,6 @@ EOF
       --dry-run=client -o yaml | kubectl apply -f -
   done
 
-  # App connection strings (point to the "-client" ClusterIP service)
   DB_URI_DEV="postgresql://$T_DB_USER:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="$DB_URI_DEV" \
@@ -141,29 +148,19 @@ EOF
   kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$DB_URI_PROD" \
     --dry-run=client -o yaml | kubectl apply -f -
-
-  echo "Kubernetes secrets for database created."
 }
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
+  git clone "$T_MANIFISTS_REPO_URL" /tmp/manifests || git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
 
   # DEV
-  if [ -f /tmp/manifests/clusters/dev/project.yaml ]; then
-    kubectl apply -f /tmp/manifests/clusters/dev/project.yaml
-  fi
-  if [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]; then
-    kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
-  fi
+  [ -f /tmp/manifests/clusters/dev/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/project.yaml
+  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
 
   # PROD
-  if [ -f /tmp/manifests/clusters/prod/project.yaml ]; then
-    kubectl apply -f /tmp/manifests/clusters/prod/project.yaml
-  fi
-  if [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]; then
-    kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
-  fi
+  [ -f /tmp/manifests/clusters/prod/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/prod/project.yaml
+  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ] && kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
 
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
@@ -171,7 +168,6 @@ bootstrap_argocd_apps() {
 install_base_tools
 get_private_ip
 install_k3s_server
-wait_for_all_nodes
 install_helm
 install_ingress_nginx
 install_argo_cd
