@@ -13,7 +13,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"   # fixed name
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 
 install_base_tools() {
@@ -112,11 +112,11 @@ generate_secrets_and_credentials() {
 
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
-Username: admin
+Username: $T_DB_USER
 Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
-Username: ${T_DB_USER}
+Username: $T_DB_USER
 Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
@@ -127,17 +127,17 @@ EOF
     kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
     kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="$T_DB_USER" \
-      --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | kubectl apply -f -
   done
 
   # App connection strings (point to the "-client" ClusterIP service)
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  DB_URI_DEV="postgresql://$T_DB_USER:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="$DB_URI_DEV" \
     --dry-run=client -o yaml | kubectl apply -f -
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://$T_DB_USER:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$DB_URI_PROD" \
     --dry-run=client -o yaml | kubectl apply -f -
