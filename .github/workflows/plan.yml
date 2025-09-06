@@ -30,86 +30,37 @@ jobs:
       TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
-      TF_VAR_bastion_os_image_id: ${{ secrets.BASTION_IMAGE }}
-      TF_VAR_manifests_repo_url:  ${{ secrets.MANIFESTS_REPO_URL }}
+      TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
+      TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }} 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Terraform 1.9.5
+      - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.5
-          terraform_wrapper: false
 
-      - name: Install OCI CLI and configure
+      - name: Create backend.oci.hcl
         run: |
-          set -euo pipefail
-          python3 -m pip install --quiet --upgrade pip
-          python3 -m pip install --quiet oci-cli
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          mkdir -p "$HOME/.oci"
-          umask 077
-          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
-          cat > "$HOME/.oci/config" <<CFG
-          [DEFAULT]
-          user=${{ secrets.OCI_USER_OCID }}
-          fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          key_file=$HOME/.oci/oci_api_key.pem
-          tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          region=${{ secrets.OCI_REGION }}
-          CFG
-
-      - name: Compute namespace & state key
-        run: |
-          set -euo pipefail
-          KEY="${{ secrets.TF_STATE_KEY }}"
-          if [ -z "${KEY}" ]; then
-            KEY="${GITHUB_REPOSITORY//\//-}/${GITHUB_REF_NAME//\//-}.tfstate"
-          fi
-          echo "TF_STATE_KEY=$KEY" >> "$GITHUB_ENV"
-
-          NS="${{ secrets.OS_NAMESPACE }}"
-          if [ -z "${NS}" ]; then
-            NS="$(oci os ns get --query 'data' --raw-output)"
-          fi
-          echo "OS_NAMESPACE=$NS" >> "$GITHUB_ENV"
-
-      - name: Ensure state bucket exists (idempotent)
-        run: |
-          set -euo pipefail
-          NS="$OS_NAMESPACE"
-          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
-          if ! oci os bucket get -ns "$NS" --name "$BUCKET" >/dev/null 2>&1; then
-            oci os bucket create -ns "$NS" --name "$BUCKET" \
-              --compartment-id "${{ secrets.COMPARTMENT_OCID }}" >/dev/null
-          fi
-
-      - name: Create backend.s3.hcl (OCI S3-compatible)
-        run: |
-          cat > backend.s3.hcl <<HCL
-          bucket                  = "${{ secrets.TF_STATE_BUCKET }}"
-          key                     = "${TF_STATE_KEY}"
-          region                  = "${{ secrets.OCI_REGION }}"
-          endpoint                = "https://${OS_NAMESPACE}.compat.objectstorage.${{ secrets.OCI_REGION }}.oraclecloud.com"
-          access_key              = "${{ secrets.OCI_S3_ACCESS_KEY_ID }}"
-          secret_key              = "${{ secrets.OCI_S3_SECRET_ACCESS_KEY }}"
-          skip_region_validation  = true
-          skip_credentials_validation = true
-          skip_requesting_account_id = true
-          skip_metadata_api_check = true
-          # If init complains about this setting, remove it:
-          force_path_style        = true
-          workspace_key_prefix    = "envs/"
+          cat > backend.oci.hcl <<'HCL'
+          tenancy_ocid         = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid            = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint          = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem      = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket               = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace            = "${{ secrets.OS_NAMESPACE }}"
+          region               = "${{ secrets.OCI_REGION }}"
+          key                  = "${{ secrets.TF_STATE_KEY }}"
+          workspace_key_prefix = "envs/"
           HCL
-
-      - name: Terraform init (S3 backend on OCI)
-        run: terraform init -backend-config=backend.s3.hcl -reconfigure -input=false -upgrade
+      - name: Terraform init
+        run: terraform init -backend-config=backend.oci.hcl
 
       - name: Terraform validate
         run: terraform validate
 
       - name: Terraform plan
-        run: terraform plan -out=tfplan -input=false -lock-timeout=5m
+        run: terraform plan -out=tfplan
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
@@ -117,12 +68,3 @@ jobs:
           name: tfplan
           path: tfplan
           if-no-files-found: error
-
-      - name: Show plan (text)
-        run: terraform show -no-color tfplan > plan.txt
-
-      - name: Upload plan text
-        uses: actions/upload-artifact@v4
-        with:
-          name: plan.txt
-          path: plan.txt
