@@ -33,7 +33,7 @@ resource "oci_core_network_security_group" "private_lb" {
 
 # === NSG Rules ===
 
-# 1. Bastion: Allow SSH from your admin IPs.
+# 1) Bastion: allow SSH from your admin IPs.
 resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
   network_security_group_id = oci_core_network_security_group.bastion.id
   direction                 = "INGRESS"
@@ -49,7 +49,9 @@ resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
   }
 }
 
-# 2. Control Plane: Allow SSH from bastion and Kube API from private LB.
+# 2) Control Plane:
+#    - allow SSH from bastion
+#    - allow kube API (6443) from private LB
 resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_bastion" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
   direction                 = "INGRESS"
@@ -80,7 +82,7 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   }
 }
 
-# 3. Workers: Allow Ingress NodePorts from the public LB.
+# 3) Workers: allow NodePorts (30000-32767) from the public LB.
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
@@ -96,7 +98,7 @@ resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_fr
   }
 }
 
-# 4. Public LB: Allow HTTP/S from Cloudflare CIDRs.
+# 4a) Public LB: allow HTTP/S from Cloudflare CIDRs (ingress to the LB).
 resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
   for_each                  = toset(var.cloudflare_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
@@ -129,47 +131,19 @@ resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress
   }
 }
 
+# 4b) Public LB -> Workers: egress to NodePort range (so the LB can reach backends).
 resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress" {
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "EGRESS"
   protocol                  = "6"
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.workers.id
-  tcp_options {
-    destination_port_range {
-      min = 22
-      max = 22
-    }
-  }
-}
 
-# 4) Public LB: allow HTTP/S from Cloudflare (INGRESS) — unchanged
-resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
-  for_each                  = toset(var.cloudflare_cidrs)
-  network_security_group_id = oci_core_network_security_group.public_lb.id
-  direction                 = "INGRESS"
-  protocol                  = "6"
-  source_type               = "CIDR_BLOCK"
-  source                    = each.value
   tcp_options {
     destination_port_range {
-      min = 443
-      max = 443
+      min = 30000
+      max = 32767
     }
   }
 }
-
-resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
-  for_each                  = toset(var.cloudflare_cidrs)
-  network_security_group_id = oci_core_network_security_group.public_lb.id
-  direction                 = "INGRESS"
-  protocol                  = "6"
-  source_type               = "CIDR_BLOCK"
-  source                    = each.value
-  tcp_options {
-    destination_port_range {
-      min = 80
-      max = 80
-    }
-  }
-}
+```
