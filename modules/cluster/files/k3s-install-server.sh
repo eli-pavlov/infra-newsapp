@@ -12,7 +12,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFISTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
@@ -58,7 +58,7 @@ wait_for_all_nodes() {
   local timeout=900
   local start_time; start_time=$(date +%s)
   while true; do
-    local ready_nodes; ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || true)
+    local ready_nodes; ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready " || true)
     if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
       echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break
@@ -95,6 +95,7 @@ install_ingress_nginx() {
     --set controller.service.type=NodePort \
     --set controller.service.nodePorts.http=30080 \
     --set controller.service.nodePorts.https=30443 \
+    --set controller.nodeSelector.role=application \
     --set controller.tolerations[0].key=node-role.kubernetes.io/master \
     --set controller.tolerations[0].operator=Exists \
     --set controller.tolerations[0].effect=NoSchedule
@@ -152,7 +153,7 @@ EOF
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  git clone "$T_MANIFISTS_REPO_URL" /tmp/manifests || git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
+  git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
 
   # DEV
   [ -f /tmp/manifests/clusters/dev/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/project.yaml
@@ -168,6 +169,7 @@ bootstrap_argocd_apps() {
 install_base_tools
 get_private_ip
 install_k3s_server
+wait_for_all_nodes
 install_helm
 install_ingress_nginx
 install_argo_cd

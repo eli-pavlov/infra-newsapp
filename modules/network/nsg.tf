@@ -1,4 +1,6 @@
-# modules/network/nsg.tf
+# ==================================================================
+# Network Security Groups (NSGs) and rules
+# ==================================================================
 
 # === NSG Definitions ===
 resource "oci_core_network_security_group" "bastion" {
@@ -33,13 +35,14 @@ resource "oci_core_network_security_group" "private_lb" {
 
 # === NSG Rules ===
 
-# 1) Bastion: allow SSH from your admin IPs.
+# 1) Bastion: allow SSH from all admin IPs.
 resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
+  for_each                  = toset(var.admin_cidrs)
   network_security_group_id = oci_core_network_security_group.bastion.id
   direction                 = "INGRESS"
   protocol                  = "6" # TCP
   source_type               = "CIDR_BLOCK"
-  source                    = var.admin_cidrs[0]
+  source                    = each.value
 
   tcp_options {
     destination_port_range {
@@ -98,7 +101,7 @@ resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_fr
   }
 }
 
-# 4a) Public LB: allow HTTP/S from Cloudflare CIDRs (ingress to the LB).
+# 4a) Public LB: allow HTTP/S from Cloudflare CIDRs.
 resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
   for_each                  = toset(var.cloudflare_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
@@ -147,12 +150,14 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
   }
 }
 
+# 5) Private LB -> Control Plane: egress to kube-apiserver (6443).
 resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egress" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "EGRESS"
-  protocol                  = "6"
+  protocol                  = "6" # TCP
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.control_plane.id
+
   tcp_options {
     destination_port_range {
       min = 6443
