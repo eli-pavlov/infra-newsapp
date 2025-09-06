@@ -146,4 +146,3 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
     }
   }
 }
-```
