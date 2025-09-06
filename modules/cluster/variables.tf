@@ -150,3 +150,18 @@ variable "private_lb_id" {
 variable "private_lb_ip_address" {
   type = string
 }
+
+variable "public_nlb_backend_set_http_name" {
+  description = "Name of the HTTP backend set on the public NLB."
+  type        = string
+}
+
+variable "public_nlb_backend_set_https_name" {
+  description = "Name of the HTTPS backend set on the public NLB."
+  type        = string
+}
+
+variable "private_lb_backendset_name" {
+  description = "Name of the backend set on the private classic LB for kube-apiserver."
+  type        = string
+}

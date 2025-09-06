@@ -24,3 +24,15 @@ output "db_worker_private_ip" {
   description = "The private IP address of the database worker node."
   value       = module.cluster.db_worker_private_ip
 }
+
+output "public_nlb_backend_set_http_name" {
+  value = oci_network_load_balancer_backend_set.public_nlb_backends["http"].name
+}
+
+output "public_nlb_backend_set_https_name" {
+  value = oci_network_load_balancer_backend_set.public_nlb_backends["https"].name
+}
+
+output "private_lb_backendset_name" {
+  value = oci_load_balancer_backend_set.private_lb_backendset.name
+}

@@ -1,11 +1,9 @@
-// modules/cluster/files/k3s-install-server.sh
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, and Argo CD bootstrapping.
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# --- Vars injected by Terraform ---
-# THIS BLOCK IS NOW CONSISTENT WITH data.tf
+# --- Vars injected by Terraform (match data.tf) ---
 T_K3S_VERSION="${T_K3S_VERSION}"
 T_K3S_TOKEN="${T_K3S_TOKEN}"
 T_DB_USER="${T_DB_USER}"
@@ -13,138 +11,135 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_MANIFESTS_REPO_URL="${T_MANIFES TS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 
-# --- Helpers ---
 install_base_tools() {
-    echo "Installing base packages..."
-    dnf -y update
-    dnf -y install curl jq git
+  echo "Installing base packages..."
+  dnf -y update
+  dnf -y install curl jq git
 }
 
 get_private_ip() {
-    echo "Fetching instance private IP from metadata..."
-    PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
-    if [ -z "$PRIVATE_IP" ]; then
-        echo "❌ Failed to fetch private IP."
-        exit 1
-    fi
-    echo "✅ Instance private IP is $PRIVATE_IP"
+  echo "Fetching instance private IP from metadata..."
+  PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
+  if [ -z "$PRIVATE_IP" ]; then
+    echo "❌ Failed to fetch private IP."
+    exit 1
+  fi
+  echo "✅ Instance private IP is $PRIVATE_IP"
 }
 
 install_k3s_server() {
-    echo "Installing K3s server..."
-    local PARAMS="--write-kubeconfig-mode 644 --node-ip $PRIVATE_IP --advertise-address $PRIVATE_IP --disable traefik --kubelet-arg=register-with-taints=node-role.kubernetes.io/master=true:NoSchedule"
-    export INSTALL_K3S_EXEC="$PARAMS"
-    export K3S_TOKEN="$T_K3S_TOKEN"
-    export INSTALL_K3S_VERSION="$T_K3S_VERSION"
-
-    curl -sfL https://get.k3s.io | sh -
-    
-    echo "Waiting for K3s server node to be ready..."
-    while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do
-        sleep 5
-    done
-    echo "K3s server node is running."
+  echo "Installing K3s server..."
+  local PARAMS="--write-kubeconfig-mode 644 --node-ip $PRIVATE_IP --advertise-address $PRIVATE_IP --disable traefik --kubelet-arg=register-with-taints=node-role.kubernetes.io/master=true:NoSchedule"
+  export INSTALL_K3S_EXEC="$PARAMS"
+  export K3S_TOKEN="$T_K3S_TOKEN"
+  export INSTALL_K3S_VERSION="$T_K3S_VERSION"
+  curl -sfL https://get.k3s.io | sh -
+  echo "Waiting for K3s server node to be ready..."
+  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
+  echo "K3s server node is running."
 }
 
 wait_for_all_nodes() {
-    echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
-    
-    local timeout=900
-    local start_time
-    start_time=$(date +%s)
-
-    while true; do
-        local ready_nodes
-        ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || true)
-        
-        if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
-            echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
-            break
-        fi
-
-        local current_time
-        current_time=$(date +%s)
-        local elapsed_time=$((current_time - start_time))
-
-        if [ "$elapsed_time" -gt "$timeout" ]; then
-            echo "❌ Timed out waiting for all nodes to become Ready."
-            /usr/local/bin/kubectl get nodes
-            exit 1
-        fi
-
-        echo "($elapsed_time/$timeout s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
-        sleep 15
-    done
+  echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
+  local timeout=900
+  local start_time; start_time=$(date +%s)
+  while true; do
+    local ready_nodes; ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready" || true)
+    if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
+      echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
+      break
+    fi
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for all nodes to become Ready."
+      /usr/local/bin/kubectl get nodes
+      exit 1
+    fi
+    echo "($elapsed_time/$timeout s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
+    sleep 15
+  done
 }
 
 install_helm() {
-    if ! command -v helm &> /dev/null; then
-        echo "Installing Helm..."
-        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-        chmod 700 get_helm.sh
-        ./get_helm.sh
-    fi
+  if ! command -v helm &> /dev/null; then
+    echo "Installing Helm..."
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 get_helm.sh
+    ./get_helm.sh
+  fi
 }
 
 install_argo_cd() {
-    echo "Installing Argo CD..."
-    kubectl create namespace argocd || true
-    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-    
-    for deploy in argocd-server argocd-repo-server argocd-dex-server argocd-application-controller; do
-        kubectl -n argocd patch deployment "$deploy" --type='json' -p='[{"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"key": "node-role.kubernetes.io/master", "operator": "Exists", "effect": "NoSchedule"}]}]'
-    done
-
-    echo "Waiting for Argo CD to be ready..."
-    kubectl wait --for=condition=Available -n argocd deployments --all --timeout=5m
+  echo "Installing Argo CD..."
+  kubectl create namespace argocd || true
+  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  for d in argocd-server argocd-repo-server argocd-dex-server argocd-application-controller; do
+    kubectl -n argocd patch deployment "$d" --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/master","operator":"Exists","effect":"NoSchedule"}]}]'
+  done
+  echo "Waiting for Argo CD to be ready..."
+  kubectl wait --for=condition=Available -n argocd deployments --all --timeout=5m
 }
 
 generate_secrets_and_credentials() {
-    echo "Generating credentials and Kubernetes secrets..."
-    
-    DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-    ARGO_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+  echo "Generating credentials and Kubernetes secrets..."
+  DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+  ARGO_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
-    cat << EOF > /root/credentials.txt
+  cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: $${ARGO_PASSWORD}
+Password: ${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: $${DB_PASSWORD}
+Password: ${DB_PASSWORD}
 EOF
-    chmod 600 /root/credentials.txt
-    echo "Credentials saved to /root/credentials.txt"
+  chmod 600 /root/credentials.txt
+  echo "Credentials saved to /root/credentials.txt"
 
-    for ns in default development; do
-      kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
-      kubectl -n "$ns" create secret generic postgres-credentials \
-        --from-literal=POSTGRES_USER="$T_DB_USER" \
-        --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
-        --dry-run=client -o yaml | kubectl apply -f -
-    done
+  for ns in default development; do
+    kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+    kubectl -n "$ns" create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER="$T_DB_USER" \
+      --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  done
 
-    DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
-    kubectl -n development create secret generic backend-db-connection --from-literal=DB_URI="$DB_URI_DEV" --dry-run=client -o yaml | kubectl apply -f -
+  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  kubectl -n development create secret generic backend-db-env --from-literal=DB_URI="$DB_URI_DEV" --dry-run=client -o yaml | kubectl apply -f -
 
-    DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
-    kubectl -n default create secret generic backend-db-connection --from-literal=DB_URI="$DB_URI_PROD" --dry-run=client -o yaml | kubectl apply -f -
+  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  kubectl -n default create secret generic backend-db-env --from-literal=DB_URI="$DB_URI_PROD" --dry-run=client -o yaml | kubectl apply -f -
 
-    echo "Kubernetes secrets for database created."
+  echo "Kubernetes secrets for database created."
 }
 
 bootstrap_argocd_apps() {
-    echo "Bootstrapping Argo CD with applications from manifest repo..."
-    git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
-    kubectl apply -f /tmp/manifests/argo-cd/applications/
-    echo "Argo CD applications applied. Argo will now sync the cluster state."
+  echo "Bootstrapping Argo CD with applications from manifest repo..."
+  git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
+
+  # DEV
+  if [ -f /tmp/manifests/clusters/dev/project.yaml ]; then
+    kubectl apply -f /tmp/manifests/clusters/dev/project.yaml
+  fi
+  if [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]; then
+    kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
+  fi
+
+  # PROD
+  if [ -f /tmp/manifests/clusters/prod/project.yaml ]; then
+    kubectl apply -f /tmp/manifests/clusters/prod/project.yaml
+  fi
+  if [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]; then
+    kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
+  fi
+
+  echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
 
-# --- Main Execution ---
 install_base_tools
 get_private_ip
 install_k3s_server

@@ -128,3 +128,48 @@ resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress
     }
   }
 }
+
+resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress" {
+  network_security_group_id = oci_core_network_security_group.public_lb.id
+  direction                 = "EGRESS"
+  protocol                  = "6"
+  destination_type          = "NETWORK_SECURITY_GROUP"
+  destination               = oci_core_network_security_group.workers.id
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
+  }
+}
+
+# 4) Public LB: allow HTTP/S from Cloudflare (INGRESS) — unchanged
+resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
+  for_each                  = toset(var.cloudflare_cidrs)
+  network_security_group_id = oci_core_network_security_group.public_lb.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source_type               = "CIDR_BLOCK"
+  source                    = each.value
+  tcp_options {
+    destination_port_range {
+      min = 443
+      max = 443
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
+  for_each                  = toset(var.cloudflare_cidrs)
+  network_security_group_id = oci_core_network_security_group.public_lb.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source_type               = "CIDR_BLOCK"
+  source                    = each.value
+  tcp_options {
+    destination_port_range {
+      min = 80
+      max = 80
+    }
+  }
+}
