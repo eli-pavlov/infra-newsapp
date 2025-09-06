@@ -1,3 +1,4 @@
+// modules/network/nsg.tf
 # ==================================================================
 # Network Security Groups (NSGs) and rules
 # ==================================================================
@@ -85,11 +86,13 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   }
 }
 
-# 3) Workers: allow NodePorts (30000-32767) from the public LB.
+# 3) Workers:
+#    - allow NodePorts (30000-32767) from the public LB (TCP/UDP)
+#    - allow SSH from bastion (optional but useful)
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6"
+  protocol                  = "6" # TCP
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.public_lb.id
 
@@ -97,6 +100,36 @@ resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_fr
     destination_port_range {
       min = 30000
       max = 32767
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "workers_nodeport_udp_in_from_publiclb" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "INGRESS"
+  protocol                  = "17" # UDP
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.public_lb.id
+
+  udp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_bastion" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.bastion.id
+
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
     }
   }
 }
@@ -138,11 +171,26 @@ resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress
 resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress" {
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "EGRESS"
-  protocol                  = "6"
+  protocol                  = "6" # TCP
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.workers.id
 
   tcp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_udp_egress" {
+  network_security_group_id = oci_core_network_security_group.public_lb.id
+  direction                 = "EGRESS"
+  protocol                  = "17" # UDP
+  destination_type          = "NETWORK_SECURITY_GROUP"
+  destination               = oci_core_network_security_group.workers.id
+
+  udp_options {
     destination_port_range {
       min = 30000
       max = 32767
@@ -162,6 +210,108 @@ resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egres
     destination_port_range {
       min = 6443
       max = 6443
+    }
+  }
+}
+
+# --- Generic egress from instances (bastion / cp / workers) ---
+resource "oci_core_network_security_group_security_rule" "bastion_egress_all" {
+  network_security_group_id = oci_core_network_security_group.bastion.id
+  direction                 = "EGRESS"
+  protocol                  = "all"
+  destination_type          = "CIDR_BLOCK"
+  destination               = "0.0.0.0/0"
+}
+
+resource "oci_core_network_security_group_security_rule" "cp_egress_all" {
+  network_security_group_id = oci_core_network_security_group.control_plane.id
+  direction                 = "EGRESS"
+  protocol                  = "all"
+  destination_type          = "CIDR_BLOCK"
+  destination               = "0.0.0.0/0"
+}
+
+resource "oci_core_network_security_group_security_rule" "workers_egress_all" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "EGRESS"
+  protocol                  = "all"
+  destination_type          = "CIDR_BLOCK"
+  destination               = "0.0.0.0/0"
+}
+
+# --- Flannel VXLAN (UDP/8472) between all nodes ---
+resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_cp" {
+  network_security_group_id = oci_core_network_security_group.control_plane.id
+  direction                 = "INGRESS"
+  protocol                  = "17" # UDP
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.control_plane.id
+
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_workers" {
+  network_security_group_id = oci_core_network_security_group.control_plane.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.workers.id
+
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "workers_flannel_in_from_cp" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.control_plane.id
+
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "workers_flannel_in_from_workers" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "INGRESS"
+  protocol                  = "17"
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.workers.id
+
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
+  }
+}
+
+# --- Kubelet (TCP/10250) control-plane -> workers ---
+resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_from_cp" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.control_plane.id
+
+  tcp_options {
+    destination_port_range {
+      min = 10250
+      max = 10250
     }
   }
 }
