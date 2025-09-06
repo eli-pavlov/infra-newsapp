@@ -32,6 +32,7 @@ jobs:
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
       TF_VAR_bastion_os_image_id: ${{ secrets.BASTION_IMAGE }}
       TF_VAR_manifests_repo_url:  ${{ secrets.MANIFESTS_REPO_URL }}
+      SUPPRESS_LABEL_WARNING=True
     steps:
       - uses: actions/checkout@v4
 
