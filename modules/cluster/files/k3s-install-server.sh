@@ -12,7 +12,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"   # <-- fixed name (no stray space)
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"   # fixed name
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 
 install_base_tools() {
@@ -79,7 +79,6 @@ install_ingress_nginx() {
   helm repo update
   kubectl create namespace ingress-nginx || true
 
-  # DaemonSet across workers; explicit NodePort values to match OCI NLB
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
@@ -113,11 +112,11 @@ generate_secrets_and_credentials() {
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
@@ -173,7 +172,7 @@ get_private_ip
 install_k3s_server
 wait_for_all_nodes
 install_helm
-install_ingress_nginx      # <-- added (simple path)
+install_ingress_nginx
 install_argo_cd
 generate_secrets_and_credentials
 bootstrap_argocd_apps
