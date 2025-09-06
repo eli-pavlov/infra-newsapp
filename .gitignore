@@ -44,3 +44,4 @@ terraform.rc
 
 # Backend config (holds bucket/key/endpoint only, no secrets)
 backend.oci.hcl
+backend.s3.hcl

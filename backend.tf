@@ -1,3 +1,3 @@
 terraform {
-  backend "oci" {}
+  backend "s3" {}
 }

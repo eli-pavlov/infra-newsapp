@@ -32,14 +32,13 @@ jobs:
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
       TF_VAR_bastion_os_image_id: ${{ secrets.BASTION_IMAGE }}
       TF_VAR_manifests_repo_url:  ${{ secrets.MANIFESTS_REPO_URL }}
-      SUPPRESS_LABEL_WARNING=True
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Terraform 1.13.0
+      - name: Install Terraform 1.9.5
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.13.0
+          terraform_version: 1.9.5
           terraform_wrapper: false
 
       - name: Install OCI CLI and configure
@@ -65,7 +64,6 @@ jobs:
           set -euo pipefail
           KEY="${{ secrets.TF_STATE_KEY }}"
           if [ -z "${KEY}" ]; then
-            # fallback if TF_STATE_KEY not provided
             KEY="${GITHUB_REPOSITORY//\//-}/${GITHUB_REF_NAME//\//-}.tfstate"
           fi
           echo "TF_STATE_KEY=$KEY" >> "$GITHUB_ENV"
@@ -86,22 +84,26 @@ jobs:
               --compartment-id "${{ secrets.COMPARTMENT_OCID }}" >/dev/null
           fi
 
-      - name: Create backend.oci.hcl
+      - name: Create backend.s3.hcl (OCI S3-compatible)
         run: |
-          cat > backend.oci.hcl <<HCL
-          tenancy_ocid         = "${{ secrets.OCI_TENANCY_OCID }}"
-          user_ocid            = "${{ secrets.OCI_USER_OCID }}"
-          fingerprint          = "${{ secrets.OCI_FINGERPRINT }}"
-          private_key          = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
-          bucket               = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace            = "${OS_NAMESPACE}"
-          region               = "${{ secrets.OCI_REGION }}"
-          key                  = "${TF_STATE_KEY}"
-          workspace_key_prefix = "envs/"
+          cat > backend.s3.hcl <<HCL
+          bucket                  = "${{ secrets.TF_STATE_BUCKET }}"
+          key                     = "${TF_STATE_KEY}"
+          region                  = "${{ secrets.OCI_REGION }}"
+          endpoint                = "https://${OS_NAMESPACE}.compat.objectstorage.${{ secrets.OCI_REGION }}.oraclecloud.com"
+          access_key              = "${{ secrets.OCI_S3_ACCESS_KEY_ID }}"
+          secret_key              = "${{ secrets.OCI_S3_SECRET_ACCESS_KEY }}"
+          skip_region_validation  = true
+          skip_credentials_validation = true
+          skip_requesting_account_id = true
+          skip_metadata_api_check = true
+          # If init complains about this setting, remove it:
+          force_path_style        = true
+          workspace_key_prefix    = "envs/"
           HCL
 
-      - name: Terraform init (OCI backend)
-        run: terraform init -backend-config=backend.oci.hcl -reconfigure -input=false -upgrade
+      - name: Terraform init (S3 backend on OCI)
+        run: terraform init -backend-config=backend.s3.hcl -reconfigure -input=false -upgrade
 
       - name: Terraform validate
         run: terraform validate
