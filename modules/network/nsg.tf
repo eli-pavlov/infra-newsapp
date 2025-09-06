@@ -4,8 +4,8 @@
 
 # Filter IPv4 from mixed CIDR lists (IPv6 contains ':')
 locals {
-  cloudflare_ipv4_cidrs = [for c in var.cloudflare_cidrs : trim(c) if !can(regex(":", c))]
-  admin_ipv4_cidrs      = [for c in var.admin_cidrs      : trim(c) if !can(regex(":", c))]
+  cloudflare_ipv4_cidrs = [for c in var.cloudflare_cidrs : trimspace(c) if !can(regex(":", c))]
+  admin_ipv4_cidrs      = [for c in var.admin_cidrs      : trimspace(c) if !can(regex(":", c))]
 }
 
 # === NSG Definitions ===
