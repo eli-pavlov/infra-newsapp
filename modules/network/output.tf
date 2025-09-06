@@ -35,6 +35,18 @@ output "private_lb_id" {
 
 output "private_lb_ip_address" {
   # The first private IP address assigned to the LB.
-  # THIS IS THE FIX: Changed from ip_addresses to ip_address_details
   value = oci_load_balancer_load_balancer.private_lb.ip_address_details[0].ip_address
+}
+
+# === Added: expose backend set names so root can pass them to the cluster module ===
+output "public_nlb_backend_set_http_name" {
+  value = oci_network_load_balancer_backend_set.public_nlb_backends["http"].name
+}
+
+output "public_nlb_backend_set_https_name" {
+  value = oci_network_load_balancer_backend_set.public_nlb_backends["https"].name
+}
+
+output "private_lb_backendset_name" {
+  value = oci_load_balancer_backend_set.private_lb_backendset.name
 }

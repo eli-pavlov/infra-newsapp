@@ -26,13 +26,13 @@ output "db_worker_private_ip" {
 }
 
 output "public_nlb_backend_set_http_name" {
-  value = oci_network_load_balancer_backend_set.public_nlb_backends["http"].name
+  value = module.network.public_nlb_backend_set_http_name
 }
 
 output "public_nlb_backend_set_https_name" {
-  value = oci_network_load_balancer_backend_set.public_nlb_backends["https"].name
+  value = module.network.public_nlb_backend_set_https_name
 }
 
 output "private_lb_backendset_name" {
-  value = oci_load_balancer_backend_set.private_lb_backendset.name
+  value = module.network.private_lb_backendset_name
 }

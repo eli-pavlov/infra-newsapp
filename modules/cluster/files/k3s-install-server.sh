@@ -1,9 +1,10 @@
 #!/bin/bash
-# K3s SERVER install, tooling, secret generation, and Argo CD bootstrapping.
+# K3s SERVER install, tooling, secret generation, ingress-nginx install,
+# and Argo CD bootstrapping.
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# --- Vars injected by Terraform (match data.tf) ---
+# --- Vars injected by Terraform (must match data.tf) ---
 T_K3S_VERSION="${T_K3S_VERSION}"
 T_K3S_TOKEN="${T_K3S_TOKEN}"
 T_DB_USER="${T_DB_USER}"
@@ -11,7 +12,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFES TS_REPO_URL}"
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"   # <-- fixed name (no stray space)
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 
 install_base_tools() {
@@ -72,6 +73,27 @@ install_helm() {
   fi
 }
 
+install_ingress_nginx() {
+  echo "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
+  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+  helm repo update
+  kubectl create namespace ingress-nginx || true
+
+  # DaemonSet across workers; explicit NodePort values to match OCI NLB
+  helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+    --namespace ingress-nginx \
+    --set controller.kind=DaemonSet \
+    --set controller.service.type=NodePort \
+    --set controller.service.nodePorts.http=30080 \
+    --set controller.service.nodePorts.https=30443 \
+    --set controller.tolerations[0].key=node-role.kubernetes.io/master \
+    --set controller.tolerations[0].operator=Exists \
+    --set controller.tolerations[0].effect=NoSchedule
+
+  echo "Waiting for ingress-nginx controller rollout..."
+  kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
+}
+
 install_argo_cd() {
   echo "Installing Argo CD..."
   kubectl create namespace argocd || true
@@ -100,6 +122,7 @@ EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
 
+  # Postgres creds used by the Postgres chart
   for ns in default development; do
     kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
     kubectl -n "$ns" create secret generic postgres-credentials \
@@ -108,11 +131,16 @@ EOF
       --dry-run=client -o yaml | kubectl apply -f -
   done
 
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
-  kubectl -n development create secret generic backend-db-env --from-literal=DB_URI="$DB_URI_DEV" --dry-run=client -o yaml | kubectl apply -f -
+  # App connection strings (point to the "-client" ClusterIP service)
+  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  kubectl -n development create secret generic backend-db-connection \
+    --from-literal=DB_URI="$DB_URI_DEV" \
+    --dry-run=client -o yaml | kubectl apply -f -
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
-  kubectl -n default create secret generic backend-db-env --from-literal=DB_URI="$DB_URI_PROD" --dry-run=client -o yaml | kubectl apply -f -
+  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  kubectl -n default create secret generic backend-db-connection \
+    --from-literal=DB_URI="$DB_URI_PROD" \
+    --dry-run=client -o yaml | kubectl apply -f -
 
   echo "Kubernetes secrets for database created."
 }
@@ -145,6 +173,7 @@ get_private_ip
 install_k3s_server
 wait_for_all_nodes
 install_helm
+install_ingress_nginx      # <-- added (simple path)
 install_argo_cd
 generate_secrets_and_credentials
 bootstrap_argocd_apps
