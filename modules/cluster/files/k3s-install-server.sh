@@ -112,7 +112,7 @@ generate_secrets_and_credentials() {
 
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
-Username: $T_DB_USER
+Username: admin
 Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---

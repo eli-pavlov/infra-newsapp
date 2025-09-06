@@ -8,7 +8,7 @@ resource "oci_core_volume" "shared_db_volume" {
 }
 
 resource "oci_core_volume_attachment" "db_volume_attachment" {
-  attachment_type = "iscsi"
+  attachment_type = "paravirtualized"
   instance_id     = oci_core_instance.db_worker.id
   volume_id       = oci_core_volume.shared_db_volume.id
 }

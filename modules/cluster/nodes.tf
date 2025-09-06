@@ -95,7 +95,7 @@ resource "oci_core_instance" "db_worker" {
     user_data           = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
       T_K3S_VERSION = var.k3s_version,
       T_K3S_TOKEN   = random_password.k3s_token.result,
-      T_K3S_URL_IP  = oci_core_instance.control_plane.private_ip,
+      T_K3S_URL_IP  = var.private_lb_ip_address,
       T_NODE_LABELS = "role=database",
       T_NODE_TAINTS = "role=database:NoSchedule"
     }))

@@ -146,3 +146,17 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
     }
   }
 }
+
+resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egress" {
+  network_security_group_id = oci_core_network_security_group.private_lb.id
+  direction                 = "EGRESS"
+  protocol                  = "6"
+  destination_type          = "NETWORK_SECURITY_GROUP"
+  destination               = oci_core_network_security_group.control_plane.id
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
+  }
+}
