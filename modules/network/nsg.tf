@@ -1,7 +1,12 @@
-// modules/network/nsg.tf
 # ==================================================================
 # Network Security Groups (NSGs) and rules
 # ==================================================================
+
+# Filter IPv4 from mixed CIDR lists (IPv6 contains ':')
+locals {
+  cloudflare_ipv4_cidrs = [for c in var.cloudflare_cidrs : trim(c) if !can(regex(":", c))]
+  admin_ipv4_cidrs      = [for c in var.admin_cidrs      : trim(c) if !can(regex(":", c))]
+}
 
 # === NSG Definitions ===
 resource "oci_core_network_security_group" "bastion" {
@@ -36,21 +41,21 @@ resource "oci_core_network_security_group" "private_lb" {
 
 # === NSG Rules ===
 
-# 1) Bastion: allow SSH from all admin IPs.
+# 1) Bastion: allow SSH from all admin IPv4s.
 resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
-  for_each                  = toset(var.admin_cidrs)
+  for_each                  = toset(local.admin_ipv4_cidrs)
   network_security_group_id = oci_core_network_security_group.bastion.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6" 
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
-  tcp_options {
-    destination_port_range {
-      min = 22
-      max = 22
+  tcp_options { 
+    destination_port_range { 
+      min = 22 
+      max = 22 
+      } 
     }
-  }
 }
 
 # 2) Control Plane:
@@ -63,12 +68,12 @@ resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_bastion
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.bastion.id
 
-  tcp_options {
-    destination_port_range {
-      min = 22
-      max = 22
+  tcp_options { 
+    destination_port_range { 
+      min = 22 
+      max = 22 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "cp_api_in_from_privatelb" {
@@ -78,143 +83,143 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.private_lb.id
 
-  tcp_options {
-    destination_port_range {
-      min = 6443
-      max = 6443
+  tcp_options { 
+    destination_port_range { 
+      min = 6443 
+      max = 6443 
+      } 
     }
-  }
 }
 
 # 3) Workers:
-#    - allow NodePorts (30000-32767) from the public LB (TCP/UDP)
-#    - allow SSH from bastion (optional but useful)
-resource "oci_core_network_security_group_security_rule" "workers_nodeport_in_from_publiclb" {
+#    - allow NodePorts (30000-32767) from the public LB (TCP & UDP)
+#    - allow SSH from bastion
+resource "oci_core_network_security_group_security_rule" "workers_nodeport_tcp_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6" 
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.public_lb.id
 
-  tcp_options {
-    destination_port_range {
-      min = 30000
-      max = 32767
+  tcp_options { 
+    destination_port_range { 
+      min = 30000 
+      max = 32767 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_udp_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "17" # UDP
+  protocol                  = "17" 
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.public_lb.id
 
-  udp_options {
-    destination_port_range {
-      min = 30000
-      max = 32767
+  udp_options { 
+    destination_port_range { 
+      min = 30000 
+      max = 32767 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_bastion" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6" 
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.bastion.id
 
-  tcp_options {
-    destination_port_range {
-      min = 22
-      max = 22
+  tcp_options { 
+    destination_port_range { 
+      min = 22 
+      max = 22 
+      } 
     }
-  }
 }
 
-# 4a) Public LB: allow HTTP/S from Cloudflare CIDRs.
+# 4a) Public LB: allow HTTP/S from Cloudflare IPv4 CIDRs only (VCN is IPv4-only).
 resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
-  for_each                  = toset(var.cloudflare_cidrs)
+  for_each                  = toset(local.cloudflare_ipv4_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
   protocol                  = "6"
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
-  tcp_options {
-    destination_port_range {
-      min = 443
-      max = 443
+  tcp_options { 
+    destination_port_range { 
+      min = 443 
+      max = 443 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
-  for_each                  = toset(var.cloudflare_cidrs)
+  for_each                  = toset(local.cloudflare_ipv4_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
   protocol                  = "6"
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
-  tcp_options {
-    destination_port_range {
-      min = 80
-      max = 80
+  tcp_options { 
+    destination_port_range { 
+      min = 80 
+      max = 80 
+      } 
     }
-  }
 }
 
-# 4b) Public LB -> Workers: egress to NodePort range (so the LB can reach backends).
-resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress" {
+# 4b) Public LB -> Workers: egress to NodePort range (so the NLB can reach backends).
+resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress_tcp" {
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "EGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6"
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.workers.id
 
-  tcp_options {
-    destination_port_range {
-      min = 30000
-      max = 32767
+  tcp_options { 
+    destination_port_range { 
+      min = 30000 
+      max = 32767 
+      } 
     }
-  }
 }
 
-resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_udp_egress" {
+resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress_udp" {
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "EGRESS"
-  protocol                  = "17" # UDP
+  protocol                  = "17"
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.workers.id
 
-  udp_options {
-    destination_port_range {
-      min = 30000
-      max = 32767
+  udp_options { 
+    destination_port_range { 
+      min = 30000 
+      max = 32767 
+      } 
     }
-  }
 }
 
 # 5) Private LB -> Control Plane: egress to kube-apiserver (6443).
 resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egress" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "EGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6" 
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.control_plane.id
 
-  tcp_options {
-    destination_port_range {
-      min = 6443
-      max = 6443
+  tcp_options { 
+    destination_port_range { 
+      min = 6443 
+      max = 6443 
+      } 
     }
-  }
 }
 
-# --- Generic egress from instances (bastion / cp / workers) ---
+# --- Generic egress (bastion / control-plane / workers) ---
 resource "oci_core_network_security_group_security_rule" "bastion_egress_all" {
   network_security_group_id = oci_core_network_security_group.bastion.id
   direction                 = "EGRESS"
@@ -243,16 +248,16 @@ resource "oci_core_network_security_group_security_rule" "workers_egress_all" {
 resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_cp" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
   direction                 = "INGRESS"
-  protocol                  = "17" # UDP
+  protocol                  = "17" 
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.control_plane.id
 
-  udp_options {
-    destination_port_range {
-      min = 8472
-      max = 8472
+  udp_options { 
+    destination_port_range { 
+      min = 8472 
+      max = 8472 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_workers" {
@@ -262,12 +267,12 @@ resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_wor
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.workers.id
 
-  udp_options {
-    destination_port_range {
-      min = 8472
-      max = 8472
+  udp_options { 
+    destination_port_range { 
+      min = 8472 
+      max = 8472 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_flannel_in_from_cp" {
@@ -277,12 +282,12 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.control_plane.id
 
-  udp_options {
-    destination_port_range {
-      min = 8472
-      max = 8472
+  udp_options { 
+    destination_port_range { 
+      min = 8472 
+      max = 8472 
+      } 
     }
-  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_flannel_in_from_workers" {
@@ -292,26 +297,26 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.workers.id
 
-  udp_options {
-    destination_port_range {
-      min = 8472
-      max = 8472
+  udp_options { 
+    destination_port_range { 
+      min = 8472 
+      max = 8472 
+      } 
     }
-  }
 }
 
 # --- Kubelet (TCP/10250) control-plane -> workers ---
 resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_from_cp" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" # TCP
+  protocol                  = "6" 
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.control_plane.id
 
-  tcp_options {
-    destination_port_range {
-      min = 10250
-      max = 10250
+  tcp_options { 
+    destination_port_range { 
+      min = 10250 
+      max = 10250 
+      } 
     }
-  }
 }
