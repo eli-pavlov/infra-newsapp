@@ -1,9 +1,14 @@
 name: destroy
+
 on:
   workflow_dispatch: {}
 
 permissions:
   contents: read
+
+concurrency:
+  group: 'terraform-apply'   # prevent overlap with plan/apply
+  cancel-in-progress: false
 
 jobs:
   destroy:
@@ -26,12 +31,15 @@ jobs:
       TF_VAR_admin_cidrs:          ${{ secrets.ADMIN_CIDRS }}
       TF_VAR_cloudflare_cidrs:     ${{ secrets.CLOUDFLARE_CIDRS }}
       TF_VAR_public_key_content:   ${{ secrets.SSH_PUBLIC_KEY }}
-      TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
-      TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
-      TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
-      TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }} 
+      TF_VAR_tf_state_bucket:      ${{ secrets.TF_STATE_BUCKET }}
+      TF_VAR_os_namespace:         ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_bastion_os_image_id:  ${{ secrets.BASTION_IMAGE }}
+      TF_VAR_manifests_repo_url:   ${{ secrets.MANIFESTS_REPO_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout (pinned to commit)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
@@ -41,20 +49,19 @@ jobs:
       - name: Create backend.oci.hcl
         run: |
           cat > backend.oci.hcl <<'HCL'
-          tenancy_ocid        = "${{ secrets.OCI_TENANCY_OCID }}"
-          user_ocid           = "${{ secrets.OCI_USER_OCID }}"
-          fingerprint         = "${{ secrets.OCI_FINGERPRINT }}"
-          private_key_pem     = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
-          bucket              = "${{ secrets.TF_STATE_BUCKET }}"
-          namespace           = "${{ secrets.OS_NAMESPACE }}"
-          region              = "${{ secrets.OCI_REGION }}"
-          key                 = "${{ secrets.TF_STATE_KEY }}"
+          tenancy_ocid         = "${{ secrets.OCI_TENANCY_OCID }}"
+          user_ocid            = "${{ secrets.OCI_USER_OCID }}"
+          fingerprint          = "${{ secrets.OCI_FINGERPRINT }}"
+          private_key_pem      = "${{ secrets.OCI_PRIVATE_KEY_PEM }}"
+          bucket               = "${{ secrets.TF_STATE_BUCKET }}"
+          namespace            = "${{ secrets.OS_NAMESPACE }}"
+          region               = "${{ secrets.OCI_REGION }}"
+          key                  = "${{ secrets.TF_STATE_KEY }}"
           workspace_key_prefix = "envs/"
           HCL
 
       - name: Terraform init
         run: terraform init -backend-config=backend.oci.hcl
 
-
       - name: Terraform destroy
-        run: terraform destroy -auto-approve -input=false
+        run: terraform destroy -auto-approve -input=false -lock-timeout=5m
