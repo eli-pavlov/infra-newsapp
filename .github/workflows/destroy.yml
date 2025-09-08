@@ -19,7 +19,6 @@ jobs:
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      # Pass secrets as TF_VARs for the provider to use during the destroy operation
       TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
       TF_VAR_user_ocid:           ${{ secrets.OCI_USER_OCID }}
       TF_VAR_fingerprint:         ${{ secrets.OCI_FINGERPRINT }}
@@ -44,7 +43,6 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          # Use the modern, working version
           terraform_version: 1.13.1
           terraform_wrapper: false
 
@@ -54,7 +52,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          # Use "echo -e" to correctly handle newlines in the PEM secret
           echo -e "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
@@ -67,8 +64,6 @@ jobs:
 
       - name: Terraform Init
         run: |
-          # NOTE: Your repository must contain a backend.tf file with `backend "oci" {}`
-          # Auth is now handled automatically by the ~/.oci/config file.
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
