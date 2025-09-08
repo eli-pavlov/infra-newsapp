@@ -27,8 +27,12 @@ jobs:
 
       - name: Create Dummy Terraform Files
         run: |
-          # Define the OCI backend (required for init)
-          echo 'terraform { backend "oci" {} }' > backend.tf
+          # Define the OCI backend using a multi-line heredoc for correct syntax
+          cat > backend.tf <<'HCL'
+          terraform {
+            backend "oci" {}
+          }
+          HCL
           
           # Create a minimal resource to generate a state file
           echo 'resource "null_resource" "test_state_creation" {}' > main.tf
@@ -56,3 +60,4 @@ jobs:
 
       - name: Verify State File Creation
         run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket in OCI for the file '${TF_STATE_KEY}'."
+
