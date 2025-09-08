@@ -10,9 +10,8 @@ jobs:
   test-remote-state:
     runs-on: ubuntu-latest
     env:
-      # Use the same secrets as your other workflows
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-      TF_STATE_KEY: "test-newsapp.tfstate" # Use a different key to avoid conflicts
+      TF_STATE_KEY: "test-newsapp.tfstate"
       OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
       OCI_REGION: ${{ secrets.OCI_REGION }}
       OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
@@ -28,17 +27,17 @@ jobs:
 
       - name: Create Dummy Terraform Files
         run: |
-          # 1. Define the OCI backend
-          cat > backend.tf <<'HCL'
-          terraform {
-            backend "oci" {}
-          }
-          HCL
+          # Define the OCI backend (required for init)
+          echo 'terraform { backend "oci" {} }' > backend.tf
           
-          # 2. Create a resource that does nothing but creates state
-          cat > main.tf <<'HCL'
-          resource "null_resource" "test_state_creation" {}
-          HCL
+          # Create a minimal resource to generate a state file
+          echo 'resource "null_resource" "test_state_creation" {}' > main.tf
+
+      - name: Write OCI Private Key to a temporary file
+        run: |
+          umask 077 # Set permissions so only the owner can read/write
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
+          echo "OCI_KEY_PATH=$RUNNER_TEMP/oci_api_key.pem" >> $GITHUB_ENV
 
       - name: Terraform Init
         run: |
@@ -50,7 +49,7 @@ jobs:
             -backend-config="tenancy_ocid=$OCI_TENANCY_OCID" \
             -backend-config="user_ocid=$OCI_USER_OCID" \
             -backend-config="fingerprint=$OCI_FINGERPRINT" \
-            -backend-config="private_key_pem=$OCI_PRIVATE_KEY_PEM"
+            -backend-config="private_key_path=${{ env.OCI_KEY_PATH }}"
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
