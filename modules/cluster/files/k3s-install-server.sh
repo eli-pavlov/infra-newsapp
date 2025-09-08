@@ -42,7 +42,7 @@ install_k3s_server() {
     --disable traefik \
     --tls-san $PRIVATE_IP \
     --tls-san $T_PRIVATE_LB_IP \
-    --kubelet-arg \"register-with-taints=node-role.kubernetes.io/master=true:NoSchedule\""
+    --kubelet-arg \"register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule\""
 
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
@@ -59,7 +59,10 @@ wait_for_all_nodes() {
   local timeout=900
   local start_time; start_time=$(date +%s)
   while true; do
-    local ready_nodes; ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready " || true)
+    # Count statuses that are Ready OR Ready,SchedulingDisabled
+    local ready_nodes
+    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
+      | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
     if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
       echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break

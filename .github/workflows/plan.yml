@@ -62,8 +62,6 @@ jobs:
 
       - name: Terraform Init
         run: |
-          # The backend.tf file in the repo tells Terraform to use the "oci" backend.
-          # Auth is now handled automatically by the ~/.oci/config file.
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
@@ -76,10 +74,18 @@ jobs:
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 
+      - name: Write plan metadata (commit + tf ver)
+        run: |
+          terraform version -json > .tfversion.json
+          jq -n --arg sha "$GITHUB_SHA" \
+                --slurpfile tv .tfversion.json \
+                '{commit:$sha, terraform_version:($tv[0].terraform_version)}' > plan-meta.json
+
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
-          path: tfplan
+          path: |
+            tfplan
+            plan-meta.json
           if-no-files-found: error
-

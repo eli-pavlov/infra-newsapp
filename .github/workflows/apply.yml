@@ -41,21 +41,29 @@ jobs:
       TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
     steps:
-      - name: Checkout
+      - name: Download plan artifact from the specific workflow run
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: tfplan
+          run_id: ${{ github.event.inputs['plan-artifact-run-id'] }}
+
+      - name: Read plan metadata
+        id: meta
+        run: |
+          test -f plan-meta.json || { echo "::error::plan-meta.json not found in artifact"; exit 1; }
+          echo "sha=$(jq -r .commit plan-meta.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout planned commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.sha }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.1
           terraform_wrapper: false
-      
-      - name: Download plan artifact from a specific workflow run
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          name: tfplan
-          run_id: ${{ github.event.inputs.plan-artifact-run-id }}
-          
+
       - name: Configure OCI Credentials
         shell: bash
         run: |
@@ -72,6 +80,15 @@ jobs:
           key_file=$HOME/.oci/oci_api_key.pem
           CFG
 
+      - name: Ensure Terraform version matches the plan
+        run: |
+          PLAN_TF=$(jq -r .terraform_version plan-meta.json)
+          CURR_TF=$(terraform version -json | jq -r .terraform_version)
+          if [ "$PLAN_TF" != "$CURR_TF" ]; then
+            echo "::error::Terraform version mismatch. Planned with $PLAN_TF but runner has $CURR_TF"
+            exit 1
+          fi
+
       - name: Terraform Init
         run: |
           terraform init \
@@ -82,4 +99,3 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -input=false tfplan
-

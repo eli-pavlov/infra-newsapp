@@ -54,8 +54,8 @@ resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
     destination_port_range { 
       min = 22 
       max = 22 
-      } 
-    }
+    } 
+  }
 }
 
 # 2) Control Plane:
@@ -72,8 +72,8 @@ resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_bastion
     destination_port_range { 
       min = 22 
       max = 22 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "cp_api_in_from_privatelb" {
@@ -87,8 +87,8 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
     destination_port_range { 
       min = 6443 
       max = 6443 
-      } 
-    }
+    } 
+  }
 }
 
 # 3) Workers:
@@ -105,8 +105,8 @@ resource "oci_core_network_security_group_security_rule" "workers_nodeport_tcp_i
     destination_port_range { 
       min = 30000 
       max = 32767 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_udp_in_from_publiclb" {
@@ -120,8 +120,8 @@ resource "oci_core_network_security_group_security_rule" "workers_nodeport_udp_i
     destination_port_range { 
       min = 30000 
       max = 32767 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_bastion" {
@@ -135,8 +135,8 @@ resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_ba
     destination_port_range { 
       min = 22 
       max = 22 
-      } 
-    }
+    } 
+  }
 }
 
 # 4a) Public LB: allow HTTP/S from Cloudflare IPv4 CIDRs only (VCN is IPv4-only).
@@ -152,8 +152,8 @@ resource "oci_core_network_security_group_security_rule" "public_lb_https_ingres
     destination_port_range { 
       min = 443 
       max = 443 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
@@ -168,8 +168,8 @@ resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress
     destination_port_range { 
       min = 80 
       max = 80 
-      } 
-    }
+    } 
+  }
 }
 
 # 4b) Public LB -> Workers: egress to NodePort range (so the NLB can reach backends).
@@ -184,8 +184,8 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
     destination_port_range { 
       min = 30000 
       max = 32767 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress_udp" {
@@ -199,11 +199,43 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
     destination_port_range { 
       min = 30000 
       max = 32767 
-      } 
-    }
+    } 
+  }
 }
 
-# 5) Private LB -> Control Plane: egress to kube-apiserver (6443).
+# 5) Private LB ingress (NEW): allow agents (workers) to reach kube-apiserver via LB:6443
+resource "oci_core_network_security_group_security_rule" "private_lb_ingress_from_workers_6443" {
+  network_security_group_id = oci_core_network_security_group.private_lb.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.workers.id
+
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
+  }
+}
+
+# (Optional) also allow from control plane (curling API via LB)
+resource "oci_core_network_security_group_security_rule" "private_lb_ingress_from_cp_6443" {
+  network_security_group_id = oci_core_network_security_group.private_lb.id
+  direction                 = "INGRESS"
+  protocol                  = "6"
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.control_plane.id
+
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
+  }
+}
+
+# 6) Private LB -> Control Plane: egress to kube-apiserver (6443).
 resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egress" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "EGRESS"
@@ -215,8 +247,8 @@ resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egres
     destination_port_range { 
       min = 6443 
       max = 6443 
-      } 
-    }
+    } 
+  }
 }
 
 # --- Generic egress (bastion / control-plane / workers) ---
@@ -256,8 +288,8 @@ resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_cp"
     destination_port_range { 
       min = 8472 
       max = 8472 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_workers" {
@@ -271,8 +303,8 @@ resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_wor
     destination_port_range { 
       min = 8472 
       max = 8472 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_flannel_in_from_cp" {
@@ -286,8 +318,8 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
     destination_port_range { 
       min = 8472 
       max = 8472 
-      } 
-    }
+    } 
+  }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_flannel_in_from_workers" {
@@ -301,8 +333,8 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
     destination_port_range { 
       min = 8472 
       max = 8472 
-      } 
-    }
+    } 
+  }
 }
 
 # --- Kubelet (TCP/10250) control-plane -> workers ---
@@ -317,6 +349,6 @@ resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_fro
     destination_port_range { 
       min = 10250 
       max = 10250 
-      } 
-    }
+    } 
+  }
 }
