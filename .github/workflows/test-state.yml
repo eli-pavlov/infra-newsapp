@@ -1,9 +1,7 @@
 name: Test Remote State Creation
 
 on:
-  workflow_dispatch: {}
-  push:
-    branches: [ main, master, development ]
+  workflow_dispatch: {} # Allows manual triggering
 
 permissions:
   contents: read
@@ -19,56 +17,55 @@ jobs:
       OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
       OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
       OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-
+      
     steps:
-      - name: Install Terraform
+      - name: Install Latest Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.5
+          terraform_version: 1.13.1 # Using a modern version that supports the OCI backend
 
-      - name: Create minimal Terraform files
+      - name: Create Dummy Terraform Files
         run: |
+          # Dynamically create the backend configuration file
           cat > backend.tf <<'HCL'
           terraform {
             backend "oci" {}
           }
           HCL
+          
+          # Create a minimal resource to generate a state file
           cat > main.tf <<'HCL'
-          terraform {
-            required_providers {
-              null = {
-                source  = "hashicorp/null"
-                version = "~> 3.2"
-              }
-            }
-          }
           resource "null_resource" "test_state_creation" {}
           HCL
 
-      - name: Write OCI Private Key (PEM) to a temporary file
+      - name: Configure OCI CLI Credentials
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.oci"
           umask 077
-          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
-          echo "OCI_KEY_PATH=$RUNNER_TEMP/oci_api_key.pem" >> $GITHUB_ENV
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          CFG
+          echo "OCI configuration file created."
 
-      - name: Create backend.oci.hcl
+      - name: Terraform Init
         run: |
-          cat > backend.oci.hcl <<HCL
-          bucket               = "$TF_STATE_BUCKET"
-          key                  = "$TF_STATE_KEY"
-          namespace            = "$OS_NAMESPACE"
-          region               = "$OCI_REGION"
-          tenancy_ocid         = "$OCI_TENANCY_OCID"
-          user_ocid            = "$OCI_USER_OCID"
-          fingerprint          = "$OCI_FINGERPRINT"
-          private_key_path     = "$OCI_KEY_PATH"
-          HCL
-
-      - name: Terraform Init (non-interactive)
-        run: terraform init -backend-config=backend.oci.hcl -input=false -lock-timeout=5m
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="namespace=$OS_NAMESPACE" \
+            -backend-config="region=$OCI_REGION"
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve -input=false -lock-timeout=5m
+        run: terraform apply -auto-approve
 
       - name: Verify State File Creation
-        run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket (namespace '${OS_NAMESPACE}', region '${OCI_REGION}') for '${TF_STATE_KEY}'."
+        run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket in OCI for the file '${TF_STATE_KEY}'."
+
