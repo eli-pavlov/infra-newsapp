@@ -1,7 +1,9 @@
 name: Test Remote State Creation
 
 on:
-  workflow_dispatch: {} # Allows manual triggering
+  workflow_dispatch: {}
+  push:
+    branches: [ main, master, development ]
 
 permissions:
   contents: read
@@ -14,58 +16,82 @@ jobs:
       TF_STATE_KEY: "test-newsapp.tfstate"
       OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
       OCI_REGION: ${{ secrets.OCI_REGION }}
-      
+      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+
     steps:
-      - name: Install Latest Terraform
+      - name: Install Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.13.1
+          terraform_version: 1.9.5
 
-      - name: Create Dummy Terraform Files
+      - name: Prepare sandbox
+        shell: bash
         run: |
-          # Dynamically create the backend configuration file with correct multi-line syntax
+          set -euo pipefail
+          rm -rf sandbox
+          mkdir -p sandbox
+
+      - name: Create minimal Terraform config (sandbox)
+        working-directory: sandbox
+        shell: bash
+        run: |
+          # backend block MUST be clearly multi-line
           cat > backend.tf <<'HCL'
           terraform {
             backend "oci" {}
           }
           HCL
-          
-          # Create a minimal resource to generate a state file
+
+          # keep versions & required providers separate to avoid inline-nesting confusion
+          cat > versions.tf <<'HCL'
+          terraform {
+            required_version = ">= 1.6.0"
+            required_providers {
+              null = {
+                source  = "hashicorp/null"
+                version = "~> 3.2"
+              }
+            }
+          }
+          HCL
+
           cat > main.tf <<'HCL'
           resource "null_resource" "test_state_creation" {}
           HCL
 
-      - name: Configure OCI Credentials
+      - name: Write OCI Private Key to a temporary file
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.oci"
           umask 077
-          # Use printf to ensure the private key has a trailing newline
-          printf "%s\n" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
-          
-          cat > "$HOME/.oci/config" <<CFG
-          [DEFAULT]
-          user=${{ secrets.OCI_USER_OCID }}
-          fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          region=${{ secrets.OCI_REGION }}
-          key_file=$HOME/.oci/oci_api_key.pem
-          CFG
-          echo "OCI configuration file created successfully."
+          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
+          echo "OCI_KEY_PATH=$RUNNER_TEMP/oci_api_key.pem" >> $GITHUB_ENV
 
-      - name: Terraform Init
+      - name: Create backend.oci.hcl
+        working-directory: sandbox
+        shell: bash
         run: |
-          # Init with backend config. Terraform will use the ~/.oci/config for auth.
-          terraform init \
-            -backend-config="bucket=$TF_STATE_BUCKET" \
-            -backend-config="key=$TF_STATE_KEY" \
-            -backend-config="namespace=$OS_NAMESPACE" \
-            -backend-config="region=$OCI_REGION"
+          cat > backend.oci.hcl <<HCL
+          bucket           = "${{ env.TF_STATE_BUCKET }}"
+          key              = "${{ env.TF_STATE_KEY }}"
+          namespace        = "${{ env.OS_NAMESPACE }}"
+          region           = "${{ env.OCI_REGION }}"
+          tenancy_ocid     = "${{ env.OCI_TENANCY_OCID }}"
+          user_ocid        = "${{ env.OCI_USER_OCID }}"
+          fingerprint      = "${{ env.OCI_FINGERPRINT }}"
+          private_key_path = "${{ env.OCI_KEY_PATH }}"
+          HCL
+
+      - name: Terraform Init (reconfigure)
+        working-directory: sandbox
+        run: terraform init -backend-config=backend.oci.hcl -input=false -lock-timeout=5m -reconfigure
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        working-directory: sandbox
+        run: terraform apply -auto-approve -input=false -lock-timeout=5m
 
       - name: Verify State File Creation
-        run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket in OCI for the file '${TF_STATE_KEY}'."
-
+        working-directory: sandbox
+        run: echo "✅ Apply successful. Check bucket '${TF_STATE_BUCKET}' (namespace '${OS_NAMESPACE}', region '${OCI_REGION}') for '${TF_STATE_KEY}'."
