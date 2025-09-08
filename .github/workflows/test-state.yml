@@ -1,9 +1,7 @@
-name: Test Remote State Creation
+name: Test Remote State Creation (with Diagnostics)
 
 on:
-  workflow_dispatch: {}
-  push:
-    branches: [ main, master, development ]
+  workflow_dispatch: {} # Allows manual triggering
 
 permissions:
   contents: read
@@ -16,82 +14,103 @@ jobs:
       TF_STATE_KEY: "test-newsapp.tfstate"
       OS_NAMESPACE: ${{ secrets.OS_NAMESPACE }}
       OCI_REGION: ${{ secrets.OCI_REGION }}
-      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
-      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
-      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-
+      
     steps:
-      - name: Install Terraform
+      - name: Install Latest Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.1
 
-      - name: Prepare sandbox
+      # DIAGNOSTIC STEP 1: Inspect the raw secret from GitHub
+      - name: "DIAGNOSTIC: Inspect Raw Secret"
         shell: bash
         run: |
-          set -euo pipefail
-          rm -rf sandbox
-          mkdir -p sandbox
+          echo "--- Verifying the OCI_PRIVATE_KEY_PEM secret ---"
+          echo "First line:"
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | head -n 1
+          echo "Last line:"
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | tail -n 1
+          echo "Line count:"
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | wc -l
+          echo "Character count:"
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | wc -c
+          echo "---------------------------------------------"
 
-      - name: Create minimal Terraform config (sandbox)
-        working-directory: sandbox
-        shell: bash
+      - name: Create Dummy Terraform Files
         run: |
-          # backend block MUST be clearly multi-line
           cat > backend.tf <<'HCL'
           terraform {
             backend "oci" {}
           }
           HCL
-
-          # keep versions & required providers separate to avoid inline-nesting confusion
-          cat > versions.tf <<'HCL'
-          terraform {
-            required_version = ">= 1.6.0"
-            required_providers {
-              null = {
-                source  = "hashicorp/null"
-                version = "~> 3.2"
-              }
-            }
-          }
-          HCL
-
           cat > main.tf <<'HCL'
           resource "null_resource" "test_state_creation" {}
           HCL
 
-      - name: Write OCI Private Key to a temporary file
+      - name: Configure OCI Credentials
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$HOME/.oci"
           umask 077
-          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
-          echo "OCI_KEY_PATH=$RUNNER_TEMP/oci_api_key.pem" >> $GITHUB_ENV
+          printf "%s\n" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          CFG
+          echo "OCI configuration file created successfully."
 
-      - name: Create backend.oci.hcl
-        working-directory: sandbox
+      # DIAGNOSTIC STEP 2: Verify the key and config files on disk
+      - name: "DIAGNOSTIC: Verify Written Files"
         shell: bash
         run: |
-          cat > backend.oci.hcl <<HCL
-          bucket           = "${{ env.TF_STATE_BUCKET }}"
-          key              = "${{ env.TF_STATE_KEY }}"
-          namespace        = "${{ env.OS_NAMESPACE }}"
-          region           = "${{ env.OCI_REGION }}"
-          tenancy_ocid     = "${{ env.OCI_TENANCY_OCID }}"
-          user_ocid        = "${{ env.OCI_USER_OCID }}"
-          fingerprint      = "${{ env.OCI_FINGERPRINT }}"
-          private_key_path = "${{ env.OCI_KEY_PATH }}"
-          HCL
+          echo "--- Verifying ~/.oci/config file ---"
+          cat "$HOME/.oci/config"
+          echo "------------------------------------"
+          echo "--- Verifying ~/.oci/oci_api_key.pem file permissions ---"
+          ls -l "$HOME/.oci/oci_api_key.pem"
+          echo "--------------------------------------------------------"
+          echo "--- Verifying ~/.oci/oci_api_key.pem content ---"
+          echo "First line from file:"
+          head -n 1 "$HOME/.oci/oci_api_key.pem"
+          echo "Last line from file:"
+          tail -n 1 "$HOME/.oci/oci_api_key.pem"
+          echo "-------------------------------------------------"
+      
+      # DIAGNOSTIC STEP 3: Validate PEM file syntax with openssl
+      - name: "DIAGNOSTIC: Validate Key with OpenSSL"
+        shell: bash
+        run: |
+          echo "--- Running openssl to check key validity ---"
+          openssl rsa -in "$HOME/.oci/oci_api_key.pem" -check -noout
+          echo "✅ OpenSSL check passed."
+          echo "-------------------------------------------"
 
-      - name: Terraform Init (reconfigure)
-        working-directory: sandbox
-        run: terraform init -backend-config=backend.oci.hcl -input=false -lock-timeout=5m -reconfigure
+      # DIAGNOSTIC STEP 4: Test credentials using the official OCI CLI
+      - name: "DIAGNOSTIC: Test Credentials with OCI CLI"
+        shell: bash
+        run: |
+          pip install --quiet oci-cli
+          echo "--- Running 'oci os ns get' to test authentication ---"
+          oci os ns get
+          echo "✅ OCI CLI authentication successful."
+          echo "------------------------------------------------------"
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="namespace=$OS_NAMESPACE" \
+            -backend-config="region=$OCI_REGION"
 
       - name: Terraform Apply
-        working-directory: sandbox
-        run: terraform apply -auto-approve -input=false -lock-timeout=5m
+        run: terraform apply -auto-approve
 
       - name: Verify State File Creation
-        working-directory: sandbox
-        run: echo "✅ Apply successful. Check bucket '${TF_STATE_BUCKET}' (namespace '${OS_NAMESPACE}', region '${OCI_REGION}') for '${TF_STATE_KEY}'."
+        run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket in OCI for the file '${TF_STATE_KEY}'."
+
