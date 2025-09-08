@@ -40,7 +40,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          # Use "echo -e" to correctly interpret the literal '\n' characters in the secret
           echo -e "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
           
           cat > "$HOME/.oci/config" <<CFG
@@ -62,11 +61,7 @@ jobs:
           echo "--- Verifying ~/.oci/oci_api_key.pem file permissions ---"
           ls -l "$HOME/.oci/oci_api_key.pem"
           echo "--------------------------------------------------------"
-          echo "--- Verifying ~/.oci/oci_api_key.pem content ---"
-          echo "First line from file:"
-          head -n 1 "$HOME/.oci/oci_api_key.pem"
-          echo "Last line from file:"
-          tail -n 1 "$HOME/.oci/oci_api_key.pem"
+          echo "--- Verifying ~/.oci/oci_api_key.pem (no content printed) ---"
           echo "Line count:"
           wc -l "$HOME/.oci/oci_api_key.pem"
           echo "-------------------------------------------------"
@@ -101,4 +96,3 @@ jobs:
 
       - name: Verify State File Creation
         run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket in OCI for the file '${TF_STATE_KEY}'."
-

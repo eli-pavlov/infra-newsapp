@@ -13,7 +13,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_MANIFESTS_REPO_URL="${T_MANIFES TS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
@@ -93,16 +93,14 @@ install_ingress_nginx() {
   helm repo update
   kubectl create namespace ingress-nginx || true
 
+  # No tolerations needed (controller is pinned to application nodes)
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
     --set controller.service.type=NodePort \
     --set controller.service.nodePorts.http=30080 \
     --set controller.service.nodePorts.https=30443 \
-    --set controller.nodeSelector.role=application \
-    --set controller.tolerations[0].key=node-role.kubernetes.io/master \
-    --set controller.tolerations[0].operator=Exists \
-    --set controller.tolerations[0].effect=NoSchedule
+    --set controller.nodeSelector.role=application
 
   echo "Waiting for ingress-nginx controller rollout..."
   kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
@@ -112,9 +110,16 @@ install_argo_cd() {
   echo "Installing Argo CD..."
   kubectl create namespace argocd || true
   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+  # If Argo needs to land on control-plane nodes, tolerate the control-plane taint (updated key)
   for d in argocd-server argocd-repo-server argocd-dex-server argocd-application-controller; do
-    kubectl -n argocd patch deployment "$d" --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/master","operator":"Exists","effect":"NoSchedule"}]}]'
+    kubectl -n argocd patch deployment "$d" --type='json' -p='[
+      {"op":"add","path":"/spec/template/spec/tolerations","value":[
+        {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
+      ]}
+    ]' || true
   done
+
   echo "Waiting for Argo CD to be ready..."
   kubectl wait --for=condition=Available -n argocd deployments --all --timeout=5m
 }

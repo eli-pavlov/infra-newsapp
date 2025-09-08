@@ -41,6 +41,25 @@ jobs:
       TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
     steps:
+      - name: Guard required secrets (including TF_STATE_KEY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ] || \
+             [ -z "${{ secrets.TF_STATE_KEY }}" ] || \
+             [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
+            echo "::error::One or more required secrets (incl. TF_STATE_KEY) are missing."
+            exit 1
+          fi
+
+      - name: Ensure jq is available
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Download plan artifact from the specific workflow run
         uses: dawidd6/action-download-artifact@v3
         with:

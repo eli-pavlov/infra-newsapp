@@ -35,6 +35,22 @@ jobs:
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
       
     steps:
+      - name: Guard required secrets (including TF_STATE_KEY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ] || \
+             [ -z "${{ secrets.TF_STATE_KEY }}" ] || \
+             [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
+            echo "::error::One or more required secrets (incl. TF_STATE_KEY) are missing."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
