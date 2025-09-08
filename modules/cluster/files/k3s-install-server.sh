@@ -13,7 +13,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFES TS_REPO_URL}"
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
@@ -93,7 +93,7 @@ install_ingress_nginx() {
   helm repo update
   kubectl create namespace ingress-nginx || true
 
-  # No tolerations needed (controller is pinned to application nodes)
+  # Controller runs on application nodes (no tolerations needed)
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
@@ -111,7 +111,7 @@ install_argo_cd() {
   kubectl create namespace argocd || true
   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-  # If Argo needs to land on control-plane nodes, tolerate the control-plane taint (updated key)
+  # Tolerate control-plane taint if a pod lands there
   for d in argocd-server argocd-repo-server argocd-dex-server argocd-application-controller; do
     kubectl -n argocd patch deployment "$d" --type='json' -p='[
       {"op":"add","path":"/spec/template/spec/tolerations","value":[
