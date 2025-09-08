@@ -21,21 +21,6 @@ jobs:
         with:
           terraform_version: 1.13.1
 
-      # DIAGNOSTIC STEP 1: Inspect the raw secret from GitHub
-      - name: "DIAGNOSTIC: Inspect Raw Secret"
-        shell: bash
-        run: |
-          echo "--- Verifying the OCI_PRIVATE_KEY_PEM secret ---"
-          echo "First line:"
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | head -n 1
-          echo "Last line:"
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | tail -n 1
-          echo "Line count:"
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | wc -l
-          echo "Character count:"
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | wc -c
-          echo "---------------------------------------------"
-
       - name: Create Dummy Terraform Files
         run: |
           cat > backend.tf <<'HCL'
@@ -53,7 +38,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          printf "%s\n" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          # Use "echo -e" to correctly interpret the literal '\n' characters in the secret
+          echo -e "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
@@ -64,7 +51,6 @@ jobs:
           CFG
           echo "OCI configuration file created successfully."
 
-      # DIAGNOSTIC STEP 2: Verify the key and config files on disk
       - name: "DIAGNOSTIC: Verify Written Files"
         shell: bash
         run: |
@@ -79,9 +65,10 @@ jobs:
           head -n 1 "$HOME/.oci/oci_api_key.pem"
           echo "Last line from file:"
           tail -n 1 "$HOME/.oci/oci_api_key.pem"
+          echo "Line count:"
+          wc -l "$HOME/.oci/oci_api_key.pem"
           echo "-------------------------------------------------"
       
-      # DIAGNOSTIC STEP 3: Validate PEM file syntax with openssl
       - name: "DIAGNOSTIC: Validate Key with OpenSSL"
         shell: bash
         run: |
@@ -90,7 +77,6 @@ jobs:
           echo "✅ OpenSSL check passed."
           echo "-------------------------------------------"
 
-      # DIAGNOSTIC STEP 4: Test credentials using the official OCI CLI
       - name: "DIAGNOSTIC: Test Credentials with OCI CLI"
         shell: bash
         run: |
