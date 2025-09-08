@@ -6,8 +6,8 @@ on:
 
 permissions:
   contents: read
+
 env:
-  # Where to store in your bucket (adjust if you want a different bucket/key prefix)
   BUCKET_NAME: ${{ secrets.TF_STATE_BUCKET }}
   KEY_PREFIX: diagnostics/vars
 
@@ -22,8 +22,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Guard required secrets
-        # The correct way to check for multiple secrets is to list them explicitly.
-        # Shell loops cannot be used inside GitHub Actions expressions.
         shell: bash
         run: |
           set -euo pipefail
@@ -37,40 +35,12 @@ jobs:
             echo "::error::One or more required secrets are missing. Check your repository secrets for OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_REGION, OCI_PRIVATE_KEY_PEM, TF_STATE_BUCKET."
             exit 1
           fi
-      - name: Install OCI CLI (quiet)
-        shell: bash
-        run: |
-          python3 -m pip install --quiet --upgrade pip
-          python3 -m pip install --quiet oci-cli
-          # Ensure the oci binary (installed under ~/.local/bin) is on PATH
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          oci --version
-      - name: Configure OCI CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.oci"
-          umask 077
-          # write key
-          printf "%s" "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
-          # write config (absolute path for key_file is required)
-          cat > "$HOME/.oci/config" <<CFG
-          [DEFAULT]
-          user=${{ secrets.OCI_USER_OCID }}
-          fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          key_file=$HOME/.oci/oci_api_key.pem
-          tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          region=${{ secrets.OCI_REGION }}
-          CFG
-      - name: Write OCI key (PEM) to runner
-        shell: bash
-        run: |
-          umask 077
-          printf '%s' "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$RUNNER_TEMP/oci_api_key.pem"
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.5
+          # Use a modern, consistent Terraform version
+          terraform_version: 1.13.1
           terraform_wrapper: false
 
       - name: Verify Terraform
@@ -87,9 +57,7 @@ jobs:
           TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}         
           TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}        
           TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
-          
         run: terraform init -upgrade
-
 
       - name: Terraform apply (bootstrap/state-bucket)
         working-directory: bootstrap/state-bucket
@@ -102,5 +70,5 @@ jobs:
           TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}         
           TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}        
           TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
-   
         run: terraform apply -auto-approve
+
