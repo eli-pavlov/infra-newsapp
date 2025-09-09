@@ -65,6 +65,18 @@ jobs:
         with:
           name: tfplan
           run_id: ${{ github.event.inputs['plan-artifact-run-id'] }}
+      - name: Move artifact contents to root
+        run: |
+          echo "Checking for downloaded artifact subdirectory..."
+          if [ -d "tfplan" ]; then
+            echo "Subdirectory 'tfplan' found. Moving contents to current directory."
+            mv tfplan/* .
+            rmdir tfplan
+          else
+            echo "No subdirectory found. Files are already in the root."
+          fi
+          echo "Current directory contents:"
+          ls -l
 
       - name: Read plan metadata
         id: meta
