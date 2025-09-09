@@ -41,7 +41,7 @@ install_k3s_server() {
     --disable traefik \
     --tls-san $PRIVATE_IP \
     --tls-san $T_PRIVATE_LB_IP \
-    --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule
+    --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
