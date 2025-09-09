@@ -1,13 +1,8 @@
 resource "oci_core_instance" "bastion" {
   availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid
-  display_name        = "bastion"
-
-  shape = var.node_shape
-  shape_config {
-    ocpus         = var.node_ocpus
-    memory_in_gbs = var.node_memory_gb
-  }
+  display_name        = "${var.cluster_name}-bastion"
+  shape               = "VM.Standard.E2.1.Micro"
 
   create_vnic_details {
     subnet_id        = var.public_subnet_id
@@ -22,6 +17,5 @@ resource "oci_core_instance" "bastion" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    # user_data = base64encode(templatefile("${path.module}/files/bastion-cloudinit.sh", {}))
   }
 }

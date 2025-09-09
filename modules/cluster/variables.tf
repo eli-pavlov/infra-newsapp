@@ -134,4 +134,3 @@ variable "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver."
   type        = string
 }
-

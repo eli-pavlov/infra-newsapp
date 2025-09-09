@@ -1,25 +1,23 @@
-name: 'Apply'
+name: 'Plan and Apply'
 
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read # Required to download artifacts from other workflow runs
 
 concurrency:
   group: 'terraform-apply'
   cancel-in-progress: false
 
 jobs:
-  apply:
-    name: 'Terraform Apply'
+  plan_and_apply:
+    name: 'Terraform Plan and Apply'
     runs-on: ubuntu-latest
     environment: production
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      # Secrets are needed for the provider in the apply job
       TF_VAR_tenancy_ocid:        ${{ secrets.OCI_TENANCY_OCID }}
       TF_VAR_user_ocid:           ${{ secrets.OCI_USER_OCID }}
       TF_VAR_fingerprint:         ${{ secrets.OCI_FINGERPRINT }}
@@ -34,10 +32,10 @@ jobs:
       TF_VAR_public_key_content:  ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
-      TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }} 
+      TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
     steps:
-      - name: Guard required secrets (including TF_STATE_KEY)
+      - name: Guard required secrets
         shell: bash
         run: |
           set -euo pipefail
@@ -53,18 +51,13 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure jq is available
-        run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Checkout planned commit
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.meta.outputs.sha }}
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.1
-          terraform_wrapper: false
 
       - name: Configure OCI Credentials
         shell: bash
@@ -89,7 +82,12 @@ jobs:
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}"
+
+      - name: Terraform Validate
+        run: terraform validate
+
       - name: Terraform Plan
         run: terraform plan -out=tfplan
+
       - name: Terraform Apply
-        run: terraform apply -input=false tfplan
+        run: terraform apply -auto-approve -input=false tfplan

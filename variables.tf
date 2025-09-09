@@ -87,4 +87,3 @@ variable "manifests_repo_url" {
   type        = string
   default     = "https://github.com/eli-pavlov/newsapp-manifests.git"
 }
-
