@@ -92,6 +92,12 @@ jobs:
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
+      - name: Diagnose Terraform Input Variables
+        run: |
+          echo "TF_VAR_os_image_id = ${{ secrets.OS_IMAGE_ID }}"
+          echo "TF_VAR_bastion_os_image_id = ${{ secrets.BASTION_IMAGE }}"
+          echo "TF_VAR_availability_domain = ${{ secrets.AVAILABILITY_DOMAIN }}"
+          # Add any other critical variables you want to inspect
 
       - name: Write plan metadata (commit + tf ver)
         run: |
