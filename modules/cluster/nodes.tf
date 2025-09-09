@@ -1,15 +1,13 @@
-# modules/cluster/nodes.tf
-
 # =================== 1. Control Plane Node ===================
 resource "oci_core_instance" "control_plane" {
   display_name        = "${var.cluster_name}-control-plane"
   compartment_id      = var.compartment_ocid
   availability_domain = var.availability_domain
   shape               = var.node_shape
-  shape_config { 
-    ocpus = var.node_ocpus 
-    memory_in_gbs = var.node_memory_gb 
-    }
+  shape_config {
+    ocpus         = var.node_ocpus
+    memory_in_gbs = var.node_memory_gb
+  }
 
   create_vnic_details {
     subnet_id        = var.private_subnet_id
@@ -17,14 +15,15 @@ resource "oci_core_instance" "control_plane" {
     nsg_ids          = [var.control_plane_nsg_id]
   }
 
-  source_details { 
-    source_type = "image" 
-    source_id = var.os_image_id 
-    }
+  source_details {
+    source_type = "image"
+    source_id   = var.os_image_id
+  }
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data           = data.cloudinit_config.k3s_server_tpl.rendered
+    # OCI expects base64 here; cloudinit_config renders a MIME doc, so wrap it:
+    user_data           = base64encode(data.cloudinit_config.k3s_server_tpl.rendered)
   }
 }
 
@@ -35,10 +34,10 @@ resource "oci_core_instance" "app_workers" {
   compartment_id      = var.compartment_ocid
   availability_domain = var.availability_domain
   shape               = var.node_shape
-  shape_config { 
-    ocpus = var.node_ocpus
-    memory_in_gbs = var.node_memory_gb 
-    }
+  shape_config {
+    ocpus         = var.node_ocpus
+    memory_in_gbs = var.node_memory_gb
+  }
 
   create_vnic_details {
     subnet_id        = var.private_subnet_id
@@ -46,10 +45,10 @@ resource "oci_core_instance" "app_workers" {
     nsg_ids          = [var.workers_nsg_id]
   }
 
-  source_details { 
+  source_details {
     source_type = "image"
-    source_id = var.os_image_id 
-    }
+    source_id   = var.os_image_id
+  }
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
@@ -71,10 +70,10 @@ resource "oci_core_instance" "db_worker" {
   compartment_id      = var.compartment_ocid
   availability_domain = var.availability_domain
   shape               = var.node_shape
-  shape_config { 
-    ocpus = var.node_ocpus
-    memory_in_gbs = var.node_memory_gb 
-    }
+  shape_config {
+    ocpus         = var.node_ocpus
+    memory_in_gbs = var.node_memory_gb
+  }
 
   create_vnic_details {
     subnet_id        = var.private_subnet_id
@@ -82,10 +81,10 @@ resource "oci_core_instance" "db_worker" {
     nsg_ids          = [var.workers_nsg_id]
   }
 
-  source_details { 
+  source_details {
     source_type = "image"
-    source_id = var.os_image_id 
-    }
+    source_id   = var.os_image_id
+  }
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
