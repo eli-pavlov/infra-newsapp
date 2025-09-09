@@ -18,14 +18,14 @@ T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
 install_base_tools() {
   echo "Installing base packages..."
-  dnf -y update
-  dnf -y install curl jq git
+  dnf -y update || true
+  dnf -y install curl jq git || true
 }
 
 get_private_ip() {
   echo "Fetching instance private IP from metadata..."
   PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
-  if [ -z "$PRIVATE_IP" ]; then
+  if [ -z "$PRIVATE_IP" ] || [ "$PRIVATE_IP" = "null" ]; then
     echo "❌ Failed to fetch private IP."
     exit 1
   fi
@@ -58,7 +58,6 @@ wait_for_all_nodes() {
   local timeout=900
   local start_time; start_time=$(date +%s)
   while true; do
-    # Count statuses that are Ready OR Ready,SchedulingDisabled
     local ready_nodes
     ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
       | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
@@ -92,14 +91,16 @@ install_ingress_nginx() {
   helm repo update
   kubectl create namespace ingress-nginx || true
 
-  # Controller runs on application nodes (no tolerations needed)
+  # Explicitly create 'nginx' IngressClass to match your Ingress manifests
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
     --set controller.service.type=NodePort \
     --set controller.service.nodePorts.http=30080 \
     --set controller.service.nodePorts.https=30443 \
-    --set controller.nodeSelector.role=application
+    --set controller.nodeSelector.role=application \
+    --set controller.ingressClassResource.name=nginx \
+    --set controller.ingressClassByName=true
 
   echo "Waiting for ingress-nginx controller rollout..."
   kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
@@ -126,7 +127,7 @@ install_argo_cd() {
 generate_secrets_and_credentials() {
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-  ARGO_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+  ARGO_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || true)
 
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
@@ -148,6 +149,7 @@ EOF
       --dry-run=client -o yaml | kubectl apply -f -
   done
 
+  # Match your charts: use the -client Service for app connectivity
   DB_URI_DEV="postgresql://$T_DB_USER:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="$DB_URI_DEV" \
@@ -164,12 +166,12 @@ bootstrap_argocd_apps() {
   git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
 
   # DEV
-  [ -f /tmp/manifests/clusters/dev/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/project.yaml
-  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
+  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml
+  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
 
   # PROD
-  [ -f /tmp/manifests/clusters/prod/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/prod/project.yaml
-  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ] && kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
+  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml
+  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
 
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
