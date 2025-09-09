@@ -12,7 +12,7 @@ T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
 T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
 T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_MANIFESTS_REPO_URL="${T_MANIFests_REPO_URL:-${T_MANIFESTS_REPO_URL}}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
@@ -89,7 +89,7 @@ install_ingress_nginx() {
   echo "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
   helm repo update
-  kubectl create namespace ingress-nginx || true
+  /usr/local/bin/kubectl create namespace ingress-nginx || true
 
   # Explicitly create 'nginx' IngressClass to match your Ingress manifests
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
@@ -104,75 +104,84 @@ install_ingress_nginx() {
     --set controller.ingressClassByName=true
 
   echo "Waiting for ingress-nginx controller rollout..."
-  kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
+  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
 }
 
 install_argo_cd() {
   echo "Installing Argo CD..."
-  kubectl create namespace argocd || true
-  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  /usr/local/bin/kubectl create namespace argocd || true
+  # Apply upstream install (includes CRDs)
+  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-  # Tolerate control-plane taint if a pod lands there
-  for d in argocd-server argocd-repo-server argocd-dex-server argocd-application-controller; do
-    kubectl -n argocd patch deployment "$d" --type='json' -p='[
+  # Tolerate control-plane taint where applicable
+  for d in argocd-server argocd-repo-server argocd-dex-server; do
+    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[
       {"op":"add","path":"/spec/template/spec/tolerations","value":[
         {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
       ]}
     ]' || true
   done
 
-  echo "Waiting for Argo CD to be ready..."
-  kubectl wait --for=condition=Available -n argocd deployments --all --timeout=5m
+  # NEW: the application controller is a StatefulSet; patch that too
+  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[
+    {"op":"add","path":"/spec/template/spec/tolerations","value":[
+      {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
+    ]}
+  ]' || true
+
+  echo "Waiting for Argo CD components to be ready..."
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployments --all --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
 generate_secrets_and_credentials() {
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-  ARGO_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || true)
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || true)
 
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: $${ARGO_PASSWORD}
+Password: ${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
-Username: $T_DB_USER
-Password: $${DB_PASSWORD}
+Username: ${T_DB_USER}
+Password: ${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
 
   for ns in default development; do
-    kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
-    kubectl -n "$ns" create secret generic postgres-credentials \
-      --from-literal=POSTGRES_USER="$T_DB_USER" \
-      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-      --dry-run=client -o yaml | kubectl apply -f -
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER="${T_DB_USER}" \
+      --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
   done
 
   # Match your charts: use the -client Service for app connectivity
-  DB_URI_DEV="postgresql://$T_DB_USER:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
-  kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="$DB_URI_DEV" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
+    --from-literal=DB_URI="${DB_URI_DEV}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
-  DB_URI_PROD="postgresql://$T_DB_USER:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
-  kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="$DB_URI_PROD" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
+    --from-literal=DB_URI="${DB_URI_PROD}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 }
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests
+  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests
 
   # DEV
-  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml
-  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
+  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml
+  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
 
   # PROD
-  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml
-  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
+  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml
+  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
 
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }

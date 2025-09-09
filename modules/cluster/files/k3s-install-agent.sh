@@ -2,7 +2,7 @@
 # K3s AGENT install script with role-aware setup.
 # - Application workers join normally.
 # - DB worker mounts the extra OCI paravirtualized block volume (no iSCSI/CSI),
-#   formats it if needed, and prepares /mnt/oci/db/postgres for a Local PV.
+#   formats it if needed, and prepares /mnt/oci/db/dev and /mnt/oci/db/prod for Local PVs.
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1
 
@@ -52,10 +52,32 @@ setup_local_db_volume() {
   echo "Mounting all filesystems from /etc/fstab..."
   mount -a
 
-  # Postgres runs as uid/gid 999 in the chart defaults; ensure ownership.
-  mkdir -p /mnt/oci/db/postgres
-  chown -R 999:999 /mnt/oci/db
-  echo "✅ DB volume ready at /mnt/oci/db (PV path: /mnt/oci/db/postgres)."
+  # Create dev and prod PV paths; Postgres runs as uid/gid 999 in the chart defaults
+  mkdir -p /mnt/oci/db/dev /mnt/oci/db/prod
+  chown -R 999:999 /mnt/oci/db/dev /mnt/oci/db/prod
+  chmod -R 700 /mnt/oci/db/dev /mnt/oci/db/prod
+
+  # Verify directories exist and have correct ownership
+  for path in /mnt/oci/db/dev /mnt/oci/db/prod; do
+    if [ ! -d "$path" ]; then
+      echo "Error: $path does not exist"
+      exit 1
+    fi
+    if [ "$(stat -c %u:%g "$path")" != "999:999" ]; then
+      echo "Error: $path has incorrect ownership (expected 999:999)"
+      exit 1
+    fi
+  done
+
+  # Migrate existing data from /mnt/oci/db/postgres if it exists
+  if [ -d /mnt/oci/db/postgres ] && [ "$(ls -A /mnt/oci/db/postgres)" ]; then
+    echo "Found existing data in /mnt/oci/db/postgres; migrating to /mnt/oci/db/dev..."
+    cp -r /mnt/oci/db/postgres/. /mnt/oci/db/dev/
+    echo "Data migrated to /mnt/oci/db/dev; removing old /mnt/oci/db/postgres..."
+    rm -rf /mnt/oci/db/postgres
+  fi
+
+  echo "✅ DB volume ready at /mnt/oci/db (PV paths: /mnt/oci/db/dev, /mnt/oci/db/prod)."
 }
 
 install_k3s_agent() {
