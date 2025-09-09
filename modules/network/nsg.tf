@@ -5,7 +5,10 @@
 # Filter IPv4 from mixed CIDR lists (IPv6 contains ':')
 locals {
   cloudflare_ipv4_cidrs = [for c in var.cloudflare_cidrs : trimspace(c) if !can(regex(":", c))]
-  admin_ipv4_cidrs      = [for c in var.admin_cidrs      : trimspace(c) if !can(regex(":", c))]
+  admin_ipv4_cidrs      = [for c in var.admin_cidrs : trimspace(c) if !can(regex(":", c))]
+
+  # NEW: Combine Cloudflare and Admin CIDRs into a single, unique list for the public LB.
+  public_lb_ingress_cidrs = distinct(concat(local.cloudflare_ipv4_cidrs, local.admin_ipv4_cidrs))
 }
 
 # === NSG Definitions ===
@@ -46,15 +49,15 @@ resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
   for_each                  = toset(local.admin_ipv4_cidrs)
   network_security_group_id = oci_core_network_security_group.bastion.id
   direction                 = "INGRESS"
-  protocol                  = "6" 
+  protocol                  = "6" # TCP
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
-  tcp_options { 
-    destination_port_range { 
-      min = 22 
-      max = 22 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
   }
 }
 
@@ -68,11 +71,11 @@ resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_bastion
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.bastion.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 22 
-      max = 22 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
   }
 }
 
@@ -83,11 +86,11 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.private_lb.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 6443 
-      max = 6443 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
   }
 }
 
@@ -97,78 +100,80 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_tcp_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" 
+  protocol                  = "6" # TCP
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.public_lb.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 30000 
-      max = 32767 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
   }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_nodeport_udp_in_from_publiclb" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "17" 
+  protocol                  = "17" # UDP
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.public_lb.id
 
-  udp_options { 
-    destination_port_range { 
-      min = 30000 
-      max = 32767 
-    } 
+  udp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
   }
 }
 
 resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_bastion" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" 
+  protocol                  = "6" # TCP
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.bastion.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 22 
-      max = 22 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 22
+      max = 22
+    }
   }
 }
 
-# 4a) Public LB: allow HTTP/S from Cloudflare IPv4 CIDRs only (VCN is IPv4-only).
+# 4a) Public LB: allow HTTP/S from Cloudflare AND Admin IPv4 CIDRs.
 resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
-  for_each                  = toset(local.cloudflare_ipv4_cidrs)
+  # CHANGED: Use the new combined list
+  for_each                  = toset(local.public_lb_ingress_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
   protocol                  = "6"
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
-  tcp_options { 
-    destination_port_range { 
-      min = 443 
-      max = 443 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 443
+      max = 443
+    }
   }
 }
 
 resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
-  for_each                  = toset(local.cloudflare_ipv4_cidrs)
+  # CHANGED: Use the new combined list
+  for_each                  = toset(local.public_lb_ingress_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
   protocol                  = "6"
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
-  tcp_options { 
-    destination_port_range { 
-      min = 80 
-      max = 80 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 80
+      max = 80
+    }
   }
 }
 
@@ -180,11 +185,11 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.workers.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 30000 
-      max = 32767 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
   }
 }
 
@@ -195,15 +200,15 @@ resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_n
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.workers.id
 
-  udp_options { 
-    destination_port_range { 
-      min = 30000 
-      max = 32767 
-    } 
+  udp_options {
+    destination_port_range {
+      min = 30000
+      max = 32767
+    }
   }
 }
 
-# 5) Private LB ingress (NEW): allow agents (workers) to reach kube-apiserver via LB:6443
+# 5) Private LB ingress: allow agents and control plane to reach kube-apiserver via LB:6443
 resource "oci_core_network_security_group_security_rule" "private_lb_ingress_from_workers_6443" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "INGRESS"
@@ -219,7 +224,6 @@ resource "oci_core_network_security_group_security_rule" "private_lb_ingress_fro
   }
 }
 
-# (Optional) also allow from control plane (curling API via LB)
 resource "oci_core_network_security_group_security_rule" "private_lb_ingress_from_cp_6443" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "INGRESS"
@@ -239,15 +243,15 @@ resource "oci_core_network_security_group_security_rule" "private_lb_ingress_fro
 resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_egress" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
   direction                 = "EGRESS"
-  protocol                  = "6" 
+  protocol                  = "6" # TCP
   destination_type          = "NETWORK_SECURITY_GROUP"
   destination               = oci_core_network_security_group.control_plane.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 6443 
-      max = 6443 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
   }
 }
 
@@ -280,15 +284,15 @@ resource "oci_core_network_security_group_security_rule" "workers_egress_all" {
 resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_cp" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
   direction                 = "INGRESS"
-  protocol                  = "17" 
+  protocol                  = "17" # UDP
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.control_plane.id
 
-  udp_options { 
-    destination_port_range { 
-      min = 8472 
-      max = 8472 
-    } 
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
   }
 }
 
@@ -299,11 +303,11 @@ resource "oci_core_network_security_group_security_rule" "cp_flannel_in_from_wor
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.workers.id
 
-  udp_options { 
-    destination_port_range { 
-      min = 8472 
-      max = 8472 
-    } 
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
   }
 }
 
@@ -314,11 +318,11 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.control_plane.id
 
-  udp_options { 
-    destination_port_range { 
-      min = 8472 
-      max = 8472 
-    } 
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
   }
 }
 
@@ -329,11 +333,11 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.workers.id
 
-  udp_options { 
-    destination_port_range { 
-      min = 8472 
-      max = 8472 
-    } 
+  udp_options {
+    destination_port_range {
+      min = 8472
+      max = 8472
+    }
   }
 }
 
@@ -341,14 +345,14 @@ resource "oci_core_network_security_group_security_rule" "workers_flannel_in_fro
 resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_from_cp" {
   network_security_group_id = oci_core_network_security_group.workers.id
   direction                 = "INGRESS"
-  protocol                  = "6" 
+  protocol                  = "6" # TCP
   source_type               = "NETWORK_SECURITY_GROUP"
   source                    = oci_core_network_security_group.control_plane.id
 
-  tcp_options { 
-    destination_port_range { 
-      min = 10250 
-      max = 10250 
-    } 
+  tcp_options {
+    destination_port_range {
+      min = 10250
+      max = 10250
+    }
   }
 }
