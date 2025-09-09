@@ -1,4 +1,3 @@
-# modules/cluster/files/k3s-install-server.sh
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
