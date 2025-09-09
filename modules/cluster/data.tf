@@ -1,4 +1,4 @@
-# Token used by agents to join the server
+# K3s token for cluster join authentication
 resource "random_password" "k3s_token" {
   length  = 55
   special = false

@@ -1,3 +1,6 @@
+# modules/cluster/nodes.tf
+
+# =================== 1. Control Plane Node ===================
 resource "oci_core_instance" "control_plane" {
   availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid
@@ -21,7 +24,8 @@ resource "oci_core_instance" "control_plane" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data           = data.cloudinit_config.k3s_server_tpl.rendered
+    # cloudinit_config already base64-encodes; pass rendered directly
+    user_data = data.cloudinit_config.k3s_server_tpl.rendered
   }
 }
 
@@ -56,12 +60,17 @@ resource "oci_core_instance" "app_workers" {
       templatefile("${path.module}/files/k3s-install-agent.sh", {
         T_K3S_VERSION = var.k3s_version
         T_K3S_TOKEN   = random_password.k3s_token.result
-        T_K3S_URL_IP  = var.private_lb_ip_address
-        T_NODE_LABELS = "role=application"
+        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_NODE_LABELS = "role=application",
         T_NODE_TAINTS = ""
       })
     )
   }
+  
+  depends_on = [
+    oci_core_instance.control_plane,
+    oci_load_balancer_backend.kube_api
+  ]
 }
 
 # ---------------------------------------------------------------
@@ -94,10 +103,15 @@ resource "oci_core_instance" "db_worker" {
       templatefile("${path.module}/files/k3s-install-agent.sh", {
         T_K3S_VERSION = var.k3s_version
         T_K3S_TOKEN   = random_password.k3s_token.result
-        T_K3S_URL_IP  = var.private_lb_ip_address
-        T_NODE_LABELS = "role=database"
+        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_NODE_LABELS = "role=database",
         T_NODE_TAINTS = "role=database:NoSchedule"
       })
     )
   }
+
+  depends_on = [
+    oci_core_instance.control_plane,
+    oci_load_balancer_backend.kube_api
+  ]
 }
