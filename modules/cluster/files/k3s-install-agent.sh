@@ -14,7 +14,6 @@ T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
 install_base_tools() {
-  # Keep it lean; we just need some common tools for disk ops.
   echo "Installing base packages (jq, e2fsprogs, util-linux, curl)..."
   dnf -y update || true
   dnf -y install jq e2fsprogs util-linux curl || true
@@ -25,8 +24,6 @@ setup_local_db_volume() {
   echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
 
   echo "Preparing local block volume for DB (paravirtualized attach)..."
-  # OCI paravirtualized volumes typically appear as /dev/oracleoci/oraclevd[b-z].
-  # Pick the first additional device if present.
   DEV="$(ls /dev/oracleoci/oraclevd[b-z] 2>/dev/null | head -n1 || true)"
 
   if [ -z "$DEV" ]; then
@@ -35,7 +32,6 @@ setup_local_db_volume() {
   fi
 
   echo "Detected extra volume: $DEV"
-  # Format if it doesn't have a filesystem yet
   if ! blkid "$DEV" >/dev/null 2>&1; then
     echo "No filesystem on $DEV; creating ext4..."
     mkfs.ext4 -F "$DEV"
@@ -44,7 +40,10 @@ setup_local_db_volume() {
   fi
 
   UUID="$(blkid -s UUID -o value "$DEV")"
- 
+
+  # Ensure mountpoint exists BEFORE mounting
+  mkdir -p /mnt/oci/db
+
   # Ensure fstab entry exists (mount at boot)
   if ! grep -q "$UUID" /etc/fstab; then
     echo "UUID=$UUID /mnt/oci/db ext4 defaults,noatime 0 2" >> /etc/fstab
@@ -62,7 +61,6 @@ setup_local_db_volume() {
 install_k3s_agent() {
   echo "Joining K3s cluster at https://${T_K3S_URL_IP}:6443"
 
-  # Compose agent params from labels/taints
   local params="--node-label ${T_NODE_LABELS}"
   if [[ -n "$T_NODE_TAINTS" ]]; then
     params="$params --node-taint ${T_NODE_TAINTS}"
@@ -79,7 +77,6 @@ install_k3s_agent() {
 
 main() {
   install_base_tools
-  # Prepare host-local storage for DB node (no iSCSI needed with paravirtualized attach)
   setup_local_db_volume
   install_k3s_agent
 }

@@ -98,6 +98,7 @@ install_ingress_nginx() {
     --set controller.service.type=NodePort \
     --set controller.service.nodePorts.http=30080 \
     --set controller.service.nodePorts.https=30443 \
+    --set controller.service.externalTrafficPolicy=Local \
     --set controller.nodeSelector.role=application \
     --set controller.ingressClassResource.name=nginx \
     --set controller.ingressClassByName=true
