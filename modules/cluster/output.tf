@@ -7,15 +7,15 @@ output "bastion_public_ip" {
 
 output "control_plane_private_ip" {
   description = "Private IP of the control-plane node."
-  value       = oci_core_instance.control_plane.private_ip
+  value       = data.oci_core_vnic.cp.private_ip_address
 }
 
 output "app_worker_private_ips" {
   description = "Private IPs of the application worker nodes."
-  value       = [for instance in oci_core_instance.app_workers : instance.private_ip]
+  value       = [for _, v in data.oci_core_vnic.app : v.private_ip_address]
 }
 
 output "db_worker_private_ip" {
   description = "Private IP of the database worker node."
-  value       = oci_core_instance.db_worker.private_ip
+  value       = data.oci_core_vnic.db.private_ip_address
 }

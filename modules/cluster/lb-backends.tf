@@ -2,7 +2,7 @@
 resource "oci_load_balancer_backend" "kube_api" {
   load_balancer_id = var.private_lb_id
   backendset_name  = var.private_lb_backendset_name
-  ip_address       = oci_core_instance.control_plane.private_ip
+  ip_address       = data.oci_core_vnic.cp.private_ip_address
   port             = 6443
   weight           = 1
   backup           = false
@@ -12,7 +12,7 @@ resource "oci_load_balancer_backend" "kube_api" {
 
 # Helper map of app worker IPs
 locals {
-  app_worker_ips = { for idx, inst in oci_core_instance.app_workers : tostring(idx) => inst.private_ip }
+  app_worker_ips = { for idx, vnic in data.oci_core_vnic.app : tostring(idx) => vnic.private_ip_address }
 }
 
 # --- Backends for the PUBLIC NLB -> ingress-nginx NodePorts 30080/30443 ---
