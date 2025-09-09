@@ -15,8 +15,8 @@ T_NODE_TAINTS="${T_NODE_TAINTS}"
 
 install_base_tools() {
   echo "Installing base packages (jq, e2fsprogs, util-linux, curl)..."
-  dnf -y update || true
-  dnf -y install jq e2fsprogs util-linux curl || true
+  apt-get update -y || true
+  apt-get install -y jq e2fsprogs util-linux curl || true
 }
 
 setup_local_db_volume() {

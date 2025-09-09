@@ -18,8 +18,8 @@ T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
 install_base_tools() {
   echo "Installing base packages..."
-  dnf -y update || true
-  dnf -y install curl jq git || true
+  apt-get update -y || true
+  apt-get install -y curl jq git || true
 }
 
 get_private_ip() {
