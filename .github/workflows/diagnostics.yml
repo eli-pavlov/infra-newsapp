@@ -113,7 +113,7 @@ jobs:
           
           # This command ensures Terraform is available in the current session
           source "${{ github.action_path }}/.setup-terraform.sh"
-
+          
           mkdir -p terraform_ad_check
           cd terraform_ad_check
 
