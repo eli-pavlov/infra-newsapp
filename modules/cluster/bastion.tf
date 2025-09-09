@@ -1,22 +1,37 @@
-# modules/cluster/bastion.tf
+data "oci_identity_availability_domains" "ads" {
+  compartment_id = var.tenancy_ocid
+}
+
+# pick an AD (0,1,2) or however you select it today
+locals {
+  ad_name = data.oci_identity_availability_domains.ads.availability_domains[var.ad_index].name
+}
+
 resource "oci_core_instance" "bastion" {
-  display_name        = "${var.cluster_name}-bastion"
+  availability_domain = local.ad_name
   compartment_id      = var.compartment_ocid
-  availability_domain = var.availability_domain
-  shape               = "VM.Standard.E2.1.Micro"
+  display_name        = "bastion"
+  shape               = var.instance_shape
 
   create_vnic_details {
-    subnet_id        = var.public_subnet_id
+    subnet_id        = oci_core_subnet.public_subnet.id
     assign_public_ip = true
-    nsg_ids          = [var.bastion_nsg_id]
+    nsg_ids          = [oci_core_network_security_group.bastion.id]
   }
 
+  # keep your image selection as-is; example shown:
   source_details {
     source_type = "image"
-    source_id   = var.bastion_os_image_id # --- THIS LINE IS CHANGED ---
+    source_id   = var.image_ocid
   }
 
   metadata = {
-    ssh_authorized_keys = var.public_key_content
+    ssh_authorized_keys = var.ssh_public_key
+    # IMPORTANT: Base64-encode the rendered cloud-init!
+    user_data = base64encode(
+      templatefile("${path.module}/scripts/bastion-cloudinit.sh", {
+        # add vars if your script expects any
+      })
+    )
   }
 }

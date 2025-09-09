@@ -1,110 +1,45 @@
-# =================== 1. Control Plane Node ===================
+data "oci_identity_availability_domains" "ads" {
+  compartment_id = var.tenancy_ocid
+}
+
+locals {
+  ad_name = data.oci_identity_availability_domains.ads.availability_domains[var.ad_index].name
+}
+
 resource "oci_core_instance" "control_plane" {
-  display_name        = "${var.cluster_name}-control-plane"
+  availability_domain = local.ad_name
   compartment_id      = var.compartment_ocid
-  availability_domain = var.availability_domain
-  shape               = var.node_shape
-  shape_config {
-    ocpus         = var.node_ocpus
-    memory_in_gbs = var.node_memory_gb
-  }
+  display_name        = "k3s-control-plane"
+  shape               = var.instance_shape
+
+  # shape_config {...} if you’re using a flexible shape
 
   create_vnic_details {
-    subnet_id        = var.private_subnet_id
+    subnet_id        = oci_core_subnet.private_app_subnet.id
     assign_public_ip = false
-    nsg_ids          = [var.control_plane_nsg_id]
+    nsg_ids          = [oci_core_network_security_group.control_plane.id]
   }
 
   source_details {
     source_type = "image"
-    source_id   = var.os_image_id
+    source_id   = var.image_ocid
   }
 
   metadata = {
-    ssh_authorized_keys = var.public_key_content
-    # cloudinit_config already base64-encodes; pass rendered directly
-    user_data = data.cloudinit_config.k3s_server_tpl.rendered
+    ssh_authorized_keys = var.ssh_public_key
+    user_data = base64encode(
+      templatefile("${path.module}/scripts/k3s-server.sh", {
+        T_K3S_VERSION          = var.k3s_version
+        T_K3S_TOKEN            = var.k3s_token
+        T_DB_USER              = var.db_user
+        T_DB_NAME_DEV          = var.db_name_dev
+        T_DB_NAME_PROD         = var.db_name_prod
+        T_DB_SERVICE_NAME_DEV  = var.db_service_name_dev   # e.g. "postgresql-dev"
+        T_DB_SERVICE_NAME_PROD = var.db_service_name_prod  # e.g. "postgresql-prod"
+        T_MANIFESTS_REPO_URL   = var.manifests_repo_url
+        T_EXPECTED_NODE_COUNT  = var.expected_node_count
+        T_PRIVATE_LB_IP        = module.network.private_nlb_ip
+      })
+    )
   }
-}
-
-# =================== 2. Application Worker Nodes (x2) ===================
-resource "oci_core_instance" "app_workers" {
-  count               = 2
-  display_name        = "${var.cluster_name}-app-worker-${count.index + 1}"
-  compartment_id      = var.compartment_ocid
-  availability_domain = var.availability_domain
-  shape               = var.node_shape
-  shape_config {
-    ocpus         = var.node_ocpus
-    memory_in_gbs = var.node_memory_gb
-  }
-
-  create_vnic_details {
-    subnet_id        = var.private_subnet_id
-    assign_public_ip = false
-    nsg_ids          = [var.workers_nsg_id]
-  }
-
-  source_details {
-    source_type = "image"
-    source_id   = var.os_image_id
-  }
-
-  metadata = {
-    ssh_authorized_keys = var.public_key_content
-    user_data = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
-      T_K3S_VERSION = var.k3s_version,
-      T_K3S_TOKEN   = random_password.k3s_token.result,
-      T_K3S_URL_IP  = var.private_lb_ip_address,   # agents join via private LB
-      T_NODE_LABELS = "role=application",
-      T_NODE_TAINTS = ""
-    }))
-  }
-
-  # Make sure kube-apiserver is reachable via the private LB before agents try to join.
-  # IMPORTANT: do NOT depend on NLB backends (http/https) — they depend on workers and would create a cycle.
-  depends_on = [
-    oci_core_instance.control_plane,
-    oci_load_balancer_backend.kube_api
-  ]
-}
-
-# =================== 3. Database Worker Node (x1) ===================
-resource "oci_core_instance" "db_worker" {
-  display_name        = "${var.cluster_name}-db-worker-3"
-  compartment_id      = var.compartment_ocid
-  availability_domain = var.availability_domain
-  shape               = var.node_shape
-  shape_config {
-    ocpus         = var.node_ocpus
-    memory_in_gbs = var.node_memory_gb
-  }
-
-  create_vnic_details {
-    subnet_id        = var.private_subnet_id
-    assign_public_ip = false
-    nsg_ids          = [var.workers_nsg_id]
-  }
-
-  source_details {
-    source_type = "image"
-    source_id   = var.os_image_id
-  }
-
-  metadata = {
-    ssh_authorized_keys = var.public_key_content
-    user_data = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
-      T_K3S_VERSION = var.k3s_version,
-      T_K3S_TOKEN   = random_password.k3s_token.result,
-      T_K3S_URL_IP  = var.private_lb_ip_address,   # agents join via private LB
-      T_NODE_LABELS = "role=database",
-      T_NODE_TAINTS = "role=database:NoSchedule"
-    }))
-  }
-
-  # Same rationale as app workers
-  depends_on = [
-    oci_core_instance.control_plane,
-    oci_load_balancer_backend.kube_api
-  ]
 }
