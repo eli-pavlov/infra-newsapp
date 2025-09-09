@@ -23,7 +23,7 @@ resource "oci_core_instance" "control_plane" {
   metadata = {
     ssh_authorized_keys = var.public_key_content
     # OCI expects base64 here; cloudinit_config renders a MIME doc, so wrap it:
-    user_data           = base64encode(data.cloudinit_config.k3s_server_tpl.rendered)
+    user_data = data.cloudinit_config.k3s_server_tpl.rendered
   }
 }
 
