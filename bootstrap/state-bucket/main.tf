@@ -16,7 +16,7 @@ resource "oci_objectstorage_bucket" "state" {
   compartment_id = var.compartment_ocid
   name           = var.bucket_name
   namespace      = var.os_namespace
-
+  versioning = "Enabled"
   # Optional safety (uncomment if you want)
   # lifecycle { prevent_destroy = true }
 }
