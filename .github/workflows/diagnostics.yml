@@ -111,10 +111,22 @@ jobs:
         run: |
           echo "### Discovering Availability Domains in ${{ env.TF_VAR_region }} ###"
           
+          # This command ensures Terraform is available in the current session
+          source "${{ github.action_path }}/.setup-terraform.sh"
+
           mkdir -p terraform_ad_check
           cd terraform_ad_check
 
           cat > main.tf <<EOT
+          terraform {
+            required_providers {
+              oci = {
+                source = "oracle/oci"
+                version = "~> 7.17.0"
+              }
+            }
+          }
+          
           provider "oci" {
             region = "${{ env.TF_VAR_region }}"
             tenancy_ocid = "${{ env.TF_VAR_tenancy_ocid }}"
@@ -122,7 +134,7 @@ jobs:
             fingerprint = "${{ env.TF_VAR_fingerprint }}"
             private_key = "${{ env.TF_VAR_private_key_pem }}"
           }
-
+          
           data "oci_identity_availability_domains" "ads" {
             compartment_id = "${{ env.TF_VAR_tenancy_ocid }}"
           }
