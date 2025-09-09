@@ -1,4 +1,3 @@
-// modules/cluster/files/k3s-install-server.sh
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
@@ -163,12 +162,12 @@ EOF
   # Match your charts: use the -client Service for app connectivity
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_DEV}" \
+    --from-literal=DB_URI="$${DB_URI_DEV}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
   DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_PROD}" \
+    --from-literal=DB_URI="$${DB_URI_PROD}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 }
 
@@ -187,14 +186,16 @@ bootstrap_argocd_apps() {
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
 
-install_base_tools
-get_private_ip
-install_k3s_server
-wait_for_all_nodes
-install_helm
-install_ingress_nginx
-install_argo_cd
-generate_secrets_and_credentials
-bootstrap_argocd_apps
+main() {
+  install_base_tools
+  get_private_ip
+  install_k3s_server
+  wait_for_all_nodes
+  install_helm
+  install_ingress_nginx
+  install_argo_cd
+  generate_secrets_and_credentials
+  bootstrap_argocd_apps
+}
 
-echo "✅ Cloud-init bootstrap finished successfully."
+main "$@"
