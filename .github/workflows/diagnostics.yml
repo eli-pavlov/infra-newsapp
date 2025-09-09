@@ -106,7 +106,39 @@ jobs:
           echo "✅ OCI CLI authentication successful."
           echo "------------------------------------"
 
-      - name: 3. Upload Diagnostic File to OCI
+      - name: 3. Discover Availability Domains
+        shell: bash
+        run: |
+          echo "### Discovering Availability Domains in ${{ env.TF_VAR_region }} ###"
+          
+          mkdir -p terraform_ad_check
+          cd terraform_ad_check
+
+          cat > main.tf <<EOT
+          provider "oci" {
+            region = "${{ env.TF_VAR_region }}"
+            tenancy_ocid = "${{ env.TF_VAR_tenancy_ocid }}"
+            user_ocid = "${{ env.TF_VAR_user_ocid }}"
+            fingerprint = "${{ env.TF_VAR_fingerprint }}"
+            private_key = "${{ env.TF_VAR_private_key_pem }}"
+          }
+
+          data "oci_identity_availability_domains" "ads" {
+            compartment_id = "${{ env.TF_VAR_tenancy_ocid }}"
+          }
+
+          output "availability_domains" {
+            value = data.oci_identity_availability_domains.ads.availability_domains
+          }
+          EOT
+
+          terraform init
+          terraform apply -auto-approve
+
+          echo "✅ Availability Domain discovery complete."
+          echo "------------------------------------"
+
+      - name: 4. Upload Diagnostic File to OCI
         shell: bash
         run: |
           echo "### Uploading diagnostic file to OCI bucket ###"
@@ -119,13 +151,13 @@ jobs:
             --file "diagnostics-output.json"
           echo "✅ Diagnostic file successfully uploaded to OCI."
 
-      - name: 4. Check Terraform Configuration
+      - name: 5. Check Terraform Configuration
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.13.1
           terraform_wrapper: false
 
-      - name: 5. Run Terraform Init and Validate
+      - name: 6. Run Terraform Init and Validate
         shell: bash
         run: |
           echo "### Initializing and Validating Terraform ###"
