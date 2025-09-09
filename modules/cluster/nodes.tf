@@ -22,6 +22,7 @@ resource "oci_core_instance" "control_plane" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
+    # cloudinit_config already base64-encodes; pass rendered directly
     user_data = data.cloudinit_config.k3s_server_tpl.rendered
   }
 }
@@ -54,13 +55,18 @@ resource "oci_core_instance" "app_workers" {
     user_data = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
       T_K3S_VERSION = var.k3s_version,
       T_K3S_TOKEN   = random_password.k3s_token.result,
-      T_K3S_URL_IP  = var.private_lb_ip_address,   # ← use LB IP
+      T_K3S_URL_IP  = var.private_lb_ip_address,   # agents join via private LB
       T_NODE_LABELS = "role=application",
       T_NODE_TAINTS = ""
     }))
   }
 
-  depends_on = [oci_core_instance.control_plane]
+  # Make sure kube-apiserver is reachable via the private LB before agents try to join.
+  # IMPORTANT: do NOT depend on NLB backends (http/https) — they depend on workers and would create a cycle.
+  depends_on = [
+    oci_core_instance.control_plane,
+    oci_load_balancer_backend.kube_api
+  ]
 }
 
 # =================== 3. Database Worker Node (x1) ===================
@@ -90,11 +96,15 @@ resource "oci_core_instance" "db_worker" {
     user_data = base64encode(templatefile("${path.module}/files/k3s-install-agent.sh", {
       T_K3S_VERSION = var.k3s_version,
       T_K3S_TOKEN   = random_password.k3s_token.result,
-      T_K3S_URL_IP  = var.private_lb_ip_address,   # already LB IP
+      T_K3S_URL_IP  = var.private_lb_ip_address,   # agents join via private LB
       T_NODE_LABELS = "role=database",
       T_NODE_TAINTS = "role=database:NoSchedule"
     }))
   }
 
-  depends_on = [oci_core_instance.control_plane]
+  # Same rationale as app workers
+  depends_on = [
+    oci_core_instance.control_plane,
+    oci_load_balancer_backend.kube_api
+  ]
 }
