@@ -2,10 +2,6 @@ name: 'Apply'
 
 on:
   workflow_dispatch:
-    inputs:
-      plan-artifact-run-id:
-        description: 'The Run ID of the "plan" workflow that generated the artifact to apply.'
-        required: true
 
 permissions:
   contents: read
@@ -59,31 +55,6 @@ jobs:
 
       - name: Ensure jq is available
         run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Download plan artifact from the specific workflow run
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          name: tfplan
-          run_id: ${{ github.event.inputs['plan-artifact-run-id'] }}
-      - name: Move artifact contents to root
-        run: |
-          echo "Checking for downloaded artifact subdirectory..."
-          if [ -d "tfplan" ]; then
-            echo "Subdirectory 'tfplan' found. Moving contents to current directory."
-            mv tfplan/* .
-            rmdir tfplan
-          else
-            echo "No subdirectory found. Files are already in the root."
-          fi
-          echo "Current directory contents:"
-          ls -l
-
-      - name: Read plan metadata
-        id: meta
-        run: |
-          test -f plan-meta.json || { echo "::error::plan-meta.json not found in artifact"; exit 1; }
-          echo "sha=$(jq -r .commit plan-meta.json)" >> "$GITHUB_OUTPUT"
-
       - name: Checkout planned commit
         uses: actions/checkout@v4
         with:
@@ -111,15 +82,6 @@ jobs:
           key_file=$HOME/.oci/oci_api_key.pem
           CFG
 
-      - name: Ensure Terraform version matches the plan
-        run: |
-          PLAN_TF=$(jq -r .terraform_version plan-meta.json)
-          CURR_TF=$(terraform version -json | jq -r .terraform_version)
-          if [ "$PLAN_TF" != "$CURR_TF" ]; then
-            echo "::error::Terraform version mismatch. Planned with $PLAN_TF but runner has $CURR_TF"
-            exit 1
-          fi
-
       - name: Terraform Init
         run: |
           terraform init \
@@ -127,6 +89,7 @@ jobs:
             -backend-config="key=${{ secrets.TF_STATE_KEY }}" \
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}"
-
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
       - name: Terraform Apply
         run: terraform apply -input=false tfplan
