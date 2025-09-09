@@ -1,27 +1,19 @@
 # modules/cluster/variables.tf
 
-variable "region" {
-  type = string
-}
+variable "region" { type = string }
 
-variable "availability_domain" {
-  type = string
-}
+variable "availability_domain" { type = string }
 
-variable "compartment_ocid" {
-  type = string
-}
+variable "compartment_ocid" { type = string }
 
-variable "cluster_name" {
-  type = string
-}
+variable "cluster_name" { type = string }
 
 variable "os_image_id" {
   description = "The OCID of the OS image for the K8s nodes (control plane and workers)."
   type        = string
 }
 
-# --- NEW VARIABLE ---
+# --- Bastion image ---
 variable "bastion_os_image_id" {
   description = "The OCID of the OS image specifically for the bastion host."
   type        = string
@@ -39,11 +31,10 @@ variable "manifests_repo_url" {
 }
 
 # --- SHAPE AND RESOURCE VARIABLES ---
-
 variable "node_shape" {
   description = "The base shape for all Kubernetes nodes. Must be a Flex shape."
   type        = string
-  default     = "VM.Standard.A1.Flex" # OCI's ARM-based Free Tier eligible shape
+  default     = "VM.Standard.A1.Flex"
 }
 
 variable "node_ocpus" {
@@ -59,35 +50,33 @@ variable "node_memory_gb" {
 }
 
 # --- NETWORKING & NODE COUNT ---
+variable "public_subnet_id"  { type = string }
+variable "private_subnet_id" { type = string }
 
-variable "public_subnet_id" {
-  type = string
+variable "bastion_nsg_id"       { type = string }
+variable "control_plane_nsg_id" { type = string }
+variable "workers_nsg_id"       { type = string }
+
+# NEW: explicit worker counts
+variable "app_worker_count" {
+  description = "Number of application worker nodes."
+  type        = number
+  default     = 2
 }
 
-variable "private_subnet_id" {
-  type = string
-}
-
-variable "bastion_nsg_id" {
-  type = string
-}
-
-variable "control_plane_nsg_id" {
-  type = string
-}
-
-variable "workers_nsg_id" {
-  type = string
+variable "db_worker_count" {
+  description = "Number of database worker nodes."
+  type        = number
+  default     = 1
 }
 
 variable "expected_total_node_count" {
   description = "The total number of nodes (control plane + all workers) expected in the cluster."
   type        = number
-  default     = 4 # 1 master + 2 app + 1 db
+  default     = 4 # 1 control-plane + 2 app + 1 db
 }
 
 # --- DATABASE & SECRET VARIABLES ---
-
 variable "db_user" {
   description = "The username for the PostgreSQL database."
   type        = string
@@ -121,11 +110,10 @@ variable "db_service_name_prod" {
 variable "db_volume_size_gb" {
   description = "The total size of the shared block volume for databases."
   type        = number
-  default     = 50 # OCI Free Tier includes 2 block volumes, totaling 200 GB.
+  default     = 50
 }
 
 # --- K3S VARIABLES ---
-
 variable "k3s_version" {
   description = "The version of K3s to install."
   type        = string
@@ -147,9 +135,7 @@ variable "private_lb_id" {
   type        = string
 }
 
-variable "private_lb_ip_address" {
-  type = string
-}
+variable "private_lb_ip_address" { type = string }
 
 variable "public_nlb_backend_set_http_name" {
   description = "Name of the HTTP backend set on the public NLB."
