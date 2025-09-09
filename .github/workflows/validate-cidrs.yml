@@ -1,0 +1,95 @@
+name: Validate CIDR Secrets
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main, master, development ]
+    # This workflow should only run if the Terraform variables that use these secrets change.
+    paths:
+      - 'modules/network/variables.tf'
+      - '.github/workflows/validate-cidrs.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      ADMIN_CIDRS: ${{ secrets.ADMIN_CIDRS }}
+      CLOUDFLARE_CIDRS: ${{ secrets.CLOUDFLARE_CIDRS }}
+    steps:
+      - name: Guard required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in ADMIN_CIDRS CLOUDFLARE_CIDRS; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error::Missing or empty secret: $v"
+              exit 1
+            fi
+          done
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Write secrets to files for validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$ADMIN_CIDRS"      > admin-cidrs.json
+          printf '%s' "$CLOUDFLARE_CIDRS" > cloudflare-cidrs.json
+
+      - name: Validate JSON structure (must be arrays of strings)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in admin-cidrs.json cloudflare-cidrs.json; do
+            jq -e 'type=="array" and length > 0 and all(.[]; type=="string")' "$f" >/dev/null || {
+              echo "::error::$f secret must be a non-empty JSON array of strings."
+              echo "Example: [\"1.1.1.1/32\", \"2.2.2.2/32\"]"
+              exit 1;
+            }
+          done
+          echo "✅ JSON structure is a valid array of strings."
+
+      - name: Validate that all entries are valid IPv4 CIDRs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import ipaddress
+          import sys
+
+          files_to_check = {
+              "admin-cidrs.json": "ADMIN_CIDRS",
+              "cloudflare-cidrs.json": "CLOUDFLARE_CIDRS",
+          }
+          
+          has_errors = False
+          
+          for path, name in files_to_check.items():
+              try:
+                  with open(path, 'r') as f:
+                      cidrs = json.load(f)
+                  
+                  for cidr in cidrs:
+                      try:
+                          net = ipaddress.ip_network(cidr, strict=True)
+                          if net.version != 4:
+                              print(f"::error::File '{path}' (Secret '{name}') contains a non-IPv4 CIDR: {cidr}")
+                              has_errors = True
+                      except ValueError as e:
+                          print(f"::error::File '{path}' (Secret '{name}') contains an invalid CIDR '{cidr}': {e}")
+                          has_errors = True
+              except json.JSONDecodeError as e:
+                  # This is a fallback, but the jq step should catch it first
+                  print(f"::error::File '{path}' (Secret '{name}') is not valid JSON: {e}")
+                  has_errors = True
+
+          if has_errors:
+              sys.exit(1)
+              
+          print("✅ All entries in both secrets are valid IPv4 CIDRs.")
+          PY
