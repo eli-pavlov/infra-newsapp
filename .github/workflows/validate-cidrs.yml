@@ -74,6 +74,11 @@ jobs:
                   with open(path, 'r') as f:
                       cidrs = json.load(f)
                   
+                  if not isinstance(cidrs, list) or not all(isinstance(x, str) for x in cidrs):
+                      print(f"::error::File '{path}' (Secret '{name}') must be a JSON array of strings.")
+                      has_errors = True
+                      continue # Skip to next file if structure is wrong
+                  
                   for cidr in cidrs:
                       try:
                           net = ipaddress.ip_network(cidr, strict=True)
@@ -93,3 +98,4 @@ jobs:
               
           print("✅ All entries in both secrets are valid IPv4 CIDRs.")
           PY
+
