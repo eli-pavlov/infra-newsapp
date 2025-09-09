@@ -1,3 +1,4 @@
+# .github/workflows/diagnostics.yml
 name: OCI & Terraform Diagnostics
 
 on:
@@ -105,18 +106,19 @@ jobs:
           oci os ns get
           echo "✅ OCI CLI authentication successful."
           echo "------------------------------------"
-
+      
       - name: 3. Discover Availability Domains
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.1
+          terraform_wrapper: false
+      - name: Run Availability Domain Discovery Script
         shell: bash
         run: |
           echo "### Discovering Availability Domains in ${{ env.TF_VAR_region }} ###"
-          
-          # This command ensures Terraform is available in the current session
-          source "${{ github.action_path }}/.setup-terraform.sh"
-          
           mkdir -p terraform_ad_check
           cd terraform_ad_check
-
+          
           cat > main.tf <<EOT
           terraform {
             required_providers {
@@ -143,10 +145,9 @@ jobs:
             value = data.oci_identity_availability_domains.ads.availability_domains
           }
           EOT
-
+          
           terraform init
           terraform apply -auto-approve
-
           echo "✅ Availability Domain discovery complete."
           echo "------------------------------------"
 
