@@ -86,4 +86,5 @@ variable "tf_state_bucket" {
 variable "manifests_repo_url" {
   description = "Git URL of the Kubernetes manifests repo for Argo CD bootstrap."
   type        = string
+  default     = "https://github.com/eli-pavlov/newsapp-manifests.git"
 }

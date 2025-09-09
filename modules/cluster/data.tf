@@ -20,7 +20,7 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_DB_SERVICE_NAME_DEV  = var.db_service_name_dev,
       T_DB_SERVICE_NAME_PROD = var.db_service_name_prod,
       T_MANIFESTS_REPO_URL   = var.manifests_repo_url,
-      T_EXPECTED_NODE_COUNT  = var.expected_total_node_count,
+      T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
       T_PRIVATE_LB_IP        = var.private_lb_ip_address
     })
   }

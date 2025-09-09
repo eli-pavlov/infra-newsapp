@@ -1,11 +1,8 @@
 # modules/cluster/variables.tf
 
 variable "region" { type = string }
-
 variable "availability_domain" { type = string }
-
 variable "compartment_ocid" { type = string }
-
 variable "cluster_name" { type = string }
 
 variable "os_image_id" {
@@ -57,23 +54,11 @@ variable "bastion_nsg_id"       { type = string }
 variable "control_plane_nsg_id" { type = string }
 variable "workers_nsg_id"       { type = string }
 
-# NEW: explicit worker counts
+# Number of application workers (BE/FE schedule here)
 variable "app_worker_count" {
   description = "Number of application worker nodes."
   type        = number
   default     = 2
-}
-
-variable "db_worker_count" {
-  description = "Number of database worker nodes."
-  type        = number
-  default     = 1
-}
-
-variable "expected_total_node_count" {
-  description = "The total number of nodes (control plane + all workers) expected in the cluster."
-  type        = number
-  default     = 4 # 1 control-plane + 2 app + 1 db
 }
 
 # --- DATABASE & SECRET VARIABLES ---
