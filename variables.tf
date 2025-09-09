@@ -38,7 +38,6 @@ variable "os_image_id" {
   type        = string
 }
 
-# --- NEW VARIABLE ---
 variable "bastion_os_image_id" {
   description = "The OCID of the OS image specifically for the bastion host."
   type        = string
@@ -88,3 +87,4 @@ variable "manifests_repo_url" {
   type        = string
   default     = "https://github.com/eli-pavlov/newsapp-manifests.git"
 }
+

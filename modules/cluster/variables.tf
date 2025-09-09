@@ -10,7 +10,6 @@ variable "os_image_id" {
   type        = string
 }
 
-# --- Bastion image ---
 variable "bastion_os_image_id" {
   description = "The OCID of the OS image specifically for the bastion host."
   type        = string
@@ -54,7 +53,6 @@ variable "bastion_nsg_id"       { type = string }
 variable "control_plane_nsg_id" { type = string }
 variable "workers_nsg_id"       { type = string }
 
-# Number of application workers (BE/FE schedule here)
 variable "app_worker_count" {
   description = "Number of application worker nodes."
   type        = number
@@ -136,3 +134,4 @@ variable "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver."
   type        = string
 }
+
