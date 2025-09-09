@@ -1,5 +1,3 @@
-# modules/cluster/data.tf
-
 # K3s token for cluster join authentication
 resource "random_password" "k3s_token" {
   length  = 55
@@ -26,4 +24,44 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_PRIVATE_LB_IP       = var.private_lb_ip_address
     })
   }
+}
+
+# =================== VNIC lookups for instance IPs ===================
+
+# Control plane
+data "oci_core_vnic_attachments" "cp" {
+  compartment_id = var.compartment_ocid
+  instance_id    = oci_core_instance.control_plane.id
+}
+data "oci_core_vnic" "cp" {
+  vnic_id = data.oci_core_vnic_attachments.cp.vnic_attachments[0].vnic_id
+}
+
+# Bastion
+data "oci_core_vnic_attachments" "bastion" {
+  compartment_id = var.compartment_ocid
+  instance_id    = oci_core_instance.bastion.id
+}
+data "oci_core_vnic" "bastion" {
+  vnic_id = data.oci_core_vnic_attachments.bastion.vnic_attachments[0].vnic_id
+}
+
+# App workers (map by index)
+data "oci_core_vnic_attachments" "app" {
+  for_each       = { for idx, inst in oci_core_instance.app_workers : idx => inst.id }
+  compartment_id = var.compartment_ocid
+  instance_id    = each.value
+}
+data "oci_core_vnic" "app" {
+  for_each = data.oci_core_vnic_attachments.app
+  vnic_id  = each.value.vnic_attachments[0].vnic_id
+}
+
+# DB worker
+data "oci_core_vnic_attachments" "db" {
+  compartment_id = var.compartment_ocid
+  instance_id    = oci_core_instance.db_worker.id
+}
+data "oci_core_vnic" "db" {
+  vnic_id = data.oci_core_vnic_attachments.db.vnic_attachments[0].vnic_id
 }
