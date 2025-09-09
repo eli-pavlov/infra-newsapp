@@ -44,8 +44,7 @@ setup_local_db_volume() {
   fi
 
   UUID="$(blkid -s UUID -o value "$DEV")"
-  mkdir -p /mnt/oci/db/postgres
-
+ 
   # Ensure fstab entry exists (mount at boot)
   if ! grep -q "$UUID" /etc/fstab; then
     echo "UUID=$UUID /mnt/oci/db ext4 defaults,noatime 0 2" >> /etc/fstab
@@ -55,6 +54,7 @@ setup_local_db_volume() {
   mount -a
 
   # Postgres runs as uid/gid 999 in the chart defaults; ensure ownership.
+  mkdir -p /mnt/oci/db/postgres
   chown -R 999:999 /mnt/oci/db
   echo "✅ DB volume ready at /mnt/oci/db (PV path: /mnt/oci/db/postgres)."
 }
