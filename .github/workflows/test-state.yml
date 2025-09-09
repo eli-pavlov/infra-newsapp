@@ -97,3 +97,7 @@ jobs:
 
       - name: Verify State File Creation
         run: echo "✅ Apply successful. Check the '${TF_STATE_BUCKET}' bucket in OCI for the file '${TF_STATE_KEY}'."
+      - name: Clean Up Test State
+        run: |
+          terraform destroy -auto-approve
+          echo "✅ Test state file '${TF_STATE_KEY}' deleted."
