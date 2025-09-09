@@ -3,7 +3,6 @@ resource "oci_core_instance" "bastion" {
   compartment_id      = var.compartment_ocid
   display_name        = "bastion"
 
-  # Use the same Flex shape knobs as the nodes (defaults are Flex)
   shape = var.node_shape
   shape_config {
     ocpus         = var.node_ocpus
@@ -23,7 +22,6 @@ resource "oci_core_instance" "bastion" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    # If you have cloud-init for bastion, uncomment and point to it:
     # user_data = base64encode(templatefile("${path.module}/files/bastion-cloudinit.sh", {}))
   }
 }

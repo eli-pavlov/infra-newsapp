@@ -22,7 +22,6 @@ resource "oci_core_instance" "control_plane" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    # Rendered + base64-encoded by data.cloudinit_config.k3s_server_tpl
     user_data           = data.cloudinit_config.k3s_server_tpl.rendered
   }
 }
