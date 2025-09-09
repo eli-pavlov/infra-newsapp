@@ -24,10 +24,15 @@ setup_local_db_volume() {
   echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
 
   echo "Preparing local block volume for DB (paravirtualized attach)..."
+  # Check for Oracle Linux device naming first
   DEV="$(ls /dev/oracleoci/oraclevd[b-z] 2>/dev/null | head -n1 || true)"
-
+  # Fallback to standard Linux device naming if no Oracle Linux device found
   if [ -z "$DEV" ]; then
-    echo "⚠️  No extra OCI volume found under /dev/oracleoci; DB will fall back to ephemeral root disk."
+    DEV="$(ls /dev/sd[b-z] /dev/nvme*n* 2>/dev/null | head -n1 || true)"
+  fi
+  
+  if [ -z "$DEV" ]; then
+    echo "⚠️  No extra OCI volume found; DB will fall back to ephemeral root disk."
     return 0
   fi
 
