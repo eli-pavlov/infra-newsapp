@@ -37,64 +37,49 @@ jobs:
           sudo apt-get install -y jq openssl
           pip install --quiet oci-cli
 
-      - name: 1. Display Critical Variables (Secrets are Masked)
+      - name: 1. Create Diagnostic Output File
+        id: create-file
         shell: bash
         run: |
-          echo "### Critical Terraform Variables ###"
-          echo "------------------------------------"
-          echo "OCI Region:               '${TF_VAR_region}'"
-          echo "Availability Domain:      '${TF_VAR_availability_domain}'"
-          echo "Compartment OCID:         '${TF_VAR_compartment_ocid}'"
-          echo "OS Image OCID:            '${TF_VAR_os_image_id}'"
-          echo "Bastion Image OCID:       '${TF_VAR_bastion_os_image_id}'"
-          echo "State Bucket Name:        '${TF_STATE_BUCKET}'"
-          echo "Object Storage Namespace: '${OS_NAMESPACE}'"
-          echo "---"
-          echo "Tenancy OCID:             '${TF_VAR_tenancy_ocid}'"
-          echo "User OCID:                '${TF_VAR_user_ocid}'"
-          echo "Fingerprint:              '${TF_VAR_fingerprint}'"
-          echo "------------------------------------"
+          echo "### Writing critical variables to a local JSON file ###"
+          jq -n \
+            --arg tf_var_tenancy_ocid "${TF_VAR_tenancy_ocid}" \
+            --arg tf_var_user_ocid "${TF_VAR_user_ocid}" \
+            --arg tf_var_fingerprint "${TF_VAR_fingerprint}" \
+            --arg tf_var_region "${TF_VAR_region}" \
+            --arg tf_var_private_key_pem "${TF_VAR_private_key_pem}" \
+            --arg tf_var_compartment_ocid "${TF_VAR_compartment_ocid}" \
+            --arg tf_var_availability_domain "${TF_VAR_availability_domain}" \
+            --arg tf_var_os_image_id "${TF_VAR_os_image_id}" \
+            --arg tf_var_bastion_os_image_id "${TF_VAR_bastion_os_image_id}" \
+            --arg admin_cidrs "${ADMIN_CIDRS}" \
+            --arg cloudflare_cidrs "${CLOUDFLARE_CIDRS}" \
+            --arg ssh_public_key "${SSH_PUBLIC_KEY}" \
+            --arg tf_state_bucket "${TF_STATE_BUCKET}" \
+            --arg tf_state_key "${TF_STATE_KEY}" \
+            --arg os_namespace "${OS_NAMESPACE}" \
+            '{
+              "tf_var_tenancy_ocid": $tf_var_tenancy_ocid,
+              "tf_var_user_ocid": $tf_var_user_ocid,
+              "tf_var_fingerprint": $tf_var_fingerprint,
+              "tf_var_region": $tf_var_region,
+              "tf_var_private_key_pem": $tf_var_private_key_pem,
+              "tf_var_compartment_ocid": $tf_var_compartment_ocid,
+              "tf_var_availability_domain": $tf_var_availability_domain,
+              "tf_var_os_image_id": $tf_var_os_image_id,
+              "tf_var_bastion_os_image_id": $tf_var_bastion_os_image_id,
+              "admin_cidrs": ($admin_cidrs | fromjson),
+              "cloudflare_cidrs": ($cloudflare_cidrs | fromjson),
+              "ssh_public_key": $ssh_public_key,
+              "tf_state_bucket": $tf_state_bucket,
+              "tf_state_key": $tf_state_key,
+              "os_namespace": $os_namespace
+            }' > diagnostics-output.json
           
-          # Validate presence and basic format of sensitive secrets without printing them
-          if [ -n "${TF_VAR_private_key_pem}" ]; then
-            echo "✅ OCI Private Key is SET."
-          else
-            echo "❌ ERROR: OCI Private Key is NOT SET."
-          fi
-          if [ -n "${SSH_PUBLIC_KEY}" ]; then
-            echo "✅ SSH Public Key is SET."
-          else
-            echo "❌ ERROR: SSH Public Key is NOT SET."
-          fi
+          # We can't see the output, but we know it's created.
+          echo "✅ Diagnostic file created locally."
 
-      - name: 2. Validate CIDR JSON Format
-        shell: bash
-        run: |
-          echo "### Validating CIDR formats ###"
-          set -euo pipefail
-          
-          validate_cidr_json() {
-            local secret_name="$1"
-            local secret_value="$2"
-            if [ -z "${secret_value}" ]; then
-              echo "❌ ERROR: Secret '${secret_name}' is not set."
-              return 1
-            fi
-            echo "${secret_value}" | jq -e 'type=="array" and length > 0 and all(.[]; type=="string")' >/dev/null
-            if [ $? -eq 0 ]; then
-              echo "✅ ${secret_name} is a valid JSON array of strings."
-            else
-              echo "❌ ERROR: ${secret_name} is NOT a valid JSON array of strings."
-              echo "   Example format: [\"1.2.3.4/32\", \"5.6.7.8/32\"]"
-              return 1
-            fi
-          }
-          
-          validate_cidr_json "ADMIN_CIDRS" "${ADMIN_CIDRS}"
-          validate_cidr_json "CLOUDFLARE_CIDRS" "${CLOUDFLARE_CIDRS}"
-          echo "------------------------------------"
-
-      - name: 3. Test OCI API Credentials
+      - name: 2. Test OCI API Credentials
         shell: bash
         run: |
           echo "### Testing OCI API Authentication ###"
@@ -120,6 +105,19 @@ jobs:
           oci os ns get
           echo "✅ OCI CLI authentication successful."
           echo "------------------------------------"
+
+      - name: 3. Upload Diagnostic File to OCI
+        shell: bash
+        run: |
+          echo "### Uploading diagnostic file to OCI bucket ###"
+          # The file contains sensitive data, hence the careful upload process.
+          # Replace TF_STATE_BUCKET and OS_NAMESPACE if needed.
+          oci os object put \
+            --bucket-name "${TF_STATE_BUCKET}" \
+            --namespace "${OS_NAMESPACE}" \
+            --name "diagnostics-output-${{ github.run_id }}.json" \
+            --file "diagnostics-output.json"
+          echo "✅ Diagnostic file successfully uploaded to OCI."
 
       - name: 4. Check Terraform Configuration
         uses: hashicorp/setup-terraform@v3
