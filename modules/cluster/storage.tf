@@ -1,5 +1,5 @@
 resource "oci_core_volume" "shared_db_volume" {
-  availability_domain = local.var.availability_domain
+  availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid
   display_name        = "db-paravirt-volume"
 
