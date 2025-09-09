@@ -7,7 +7,7 @@ locals {
   cloudflare_ipv4_cidrs = [for c in var.cloudflare_cidrs : trimspace(c) if !can(regex(":", c))]
   admin_ipv4_cidrs      = [for c in var.admin_cidrs : trimspace(c) if !can(regex(":", c))]
 
-  # NEW: Combine Cloudflare and Admin CIDRs into a single, unique list for the public LB.
+  # Combine + de-dup for Public LB ingress
   public_lb_ingress_cidrs = distinct(concat(local.cloudflare_ipv4_cidrs, local.admin_ipv4_cidrs))
 }
 
@@ -142,13 +142,12 @@ resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_ba
   }
 }
 
-# 4a) Public LB: allow HTTP/S from Cloudflare AND Admin IPv4 CIDRs.
+# 4a) Public LB: allow HTTPS from Cloudflare + Admin IPv4s
 resource "oci_core_network_security_group_security_rule" "public_lb_https_ingress" {
-  # CHANGED: Use the new combined list
   for_each                  = toset(local.public_lb_ingress_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
-  protocol                  = "6"
+  protocol                  = "6" # TCP
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
@@ -160,12 +159,12 @@ resource "oci_core_network_security_group_security_rule" "public_lb_https_ingres
   }
 }
 
+# Public LB: allow HTTP from Cloudflare + Admin IPv4s (ACME/http->https, etc.)
 resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress" {
-  # CHANGED: Use the new combined list
   for_each                  = toset(local.public_lb_ingress_cidrs)
   network_security_group_id = oci_core_network_security_group.public_lb.id
   direction                 = "INGRESS"
-  protocol                  = "6"
+  protocol                  = "6" # TCP
   source_type               = "CIDR_BLOCK"
   source                    = each.value
 
@@ -176,6 +175,7 @@ resource "oci_core_network_security_group_security_rule" "public_lb_http_ingress
     }
   }
 }
+
 
 # 4b) Public LB -> Workers: egress to NodePort range (so the NLB can reach backends).
 resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_nodeports_egress_tcp" {
@@ -356,3 +356,4 @@ resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_fro
     }
   }
 }
+
