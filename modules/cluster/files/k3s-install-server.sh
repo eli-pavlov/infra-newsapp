@@ -122,7 +122,7 @@ install_argo_cd() {
     ]' || true
   done
 
-  # NEW: the application controller is a StatefulSet; patch that too
+  # The application controller is a StatefulSet; patch that too
   /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
       {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
@@ -142,11 +142,11 @@ generate_secrets_and_credentials() {
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
@@ -155,17 +155,17 @@ EOF
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
   done
 
   # Match your charts: use the -client Service for app connectivity
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_DEV}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_PROD}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
