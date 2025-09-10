@@ -17,15 +17,13 @@ T_NODE_TAINTS="${T_NODE_TAINTS}"
 wait_for_server() {
   local timeout=600 # 10 minutes
   local start_time=$(date +%s)
-  local url="https://${T_K3S_URL_IP}:6443/ping"
 
-  # CORRECTED: Escaped ${url} to $${url} so Terraform ignores it.
-  echo "Waiting for K3s server to be available at $${url}..."
+  echo "Waiting for K3s server to be available at https://${T_K3S_URL_IP}:6443/ping..."
 
   while true; do
     # The -k flag is necessary because the server uses a self-signed cert initially.
-    # CORRECTED: Escaped ${url} to $${url} so Terraform ignores it.
-    if curl -k --connect-timeout 5 --silent --output /dev/null "$${url}"; then
+    # This now uses the Terraform variable directly to avoid templating conflicts.
+    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_K3S_URL_IP}:6443/ping"; then
       echo "✅ K3s server is responsive. Proceeding with agent installation."
       break
     fi
@@ -138,3 +136,4 @@ main() {
 }
 
 main "$@"
+
