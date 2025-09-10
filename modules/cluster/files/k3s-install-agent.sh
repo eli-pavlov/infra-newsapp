@@ -45,50 +45,6 @@ install_base_tools() {
   apt-get install -y jq e2fsprogs util-linux curl || true
 }
 
-disable_firewalls() {
-  echo "Flushing and disabling firewalls (iptables and nftables)..."
-  # Flush iptables
-  if command -v iptables >/dev/null; then
-    sudo iptables -F
-    sudo iptables -X
-    sudo iptables -P INPUT ACCEPT
-    sudo iptables -P FORWARD ACCEPT
-    sudo iptables -P OUTPUT ACCEPT
-    echo "✅ iptables rules flushed and policies set to ACCEPT."
-  else
-    echo "iptables not installed."
-  fi
-  # Flush nftables
-  if command -v nft >/dev/null; then
-    sudo nft flush ruleset
-    echo "✅ nftables rules flushed."
-  else
-    echo "nftables not installed."
-  fi
-  # Disable services
-  if systemctl is-active --quiet nftables; then
-    sudo systemctl stop nftables
-    sudo systemctl disable nftables
-    echo "✅ nftables service stopped and disabled."
-  else
-    echo "nftables service not active."
-  fi
-  if systemctl is-active --quiet ufw; then
-    sudo ufw disable
-    echo "✅ ufw disabled."
-  else
-    echo "ufw not active."
-  fi
-  # Stop netfilter-persistent if present
-  if systemctl is-active --quiet netfilter-persistent; then
-    sudo systemctl stop netfilter-persistent
-    sudo systemctl disable netfilter-persistent
-    echo "✅ netfilter-persistent stopped and disabled."
-  else
-    echo "netfilter-persistent not active."
-  fi
-}
-
 setup_local_db_volume() {
   # Only on the DB node (role=database)
   echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
@@ -174,7 +130,6 @@ install_k3s_agent() {
 
 main() {
   install_base_tools
-  disable_firewalls
   wait_for_server
   setup_local_db_volume
   install_k3s_agent

@@ -15,57 +15,12 @@ T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
 T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
-T_PRIVATE_SUBNET_CIDR="${T_PRIVATE_SUBNET_CIDR}"
 
 install_base_tools() {
   echo "Installing base packages..."
   apt-get update -y || true
   apt-get install -y curl jq git || true
 }
-
-disable_firewalls() {
-  echo "Flushing and disabling firewalls (iptables and nftables)..."
-  # Flush iptables
-  if command -v iptables >/dev/null; then
-    sudo iptables -F
-    sudo iptables -X
-    sudo iptables -P INPUT ACCEPT
-    sudo iptables -P FORWARD ACCEPT
-    sudo iptables -P OUTPUT ACCEPT
-    echo "✅ iptables rules flushed and policies set to ACCEPT."
-  else
-    echo "iptables not installed."
-  fi
-  # Flush nftables
-  if command -v nft >/dev/null; then
-    sudo nft flush ruleset
-    echo "✅ nftables rules flushed."
-  else
-    echo "nftables not installed."
-  fi
-  # Disable services
-  if systemctl is-active --quiet nftables; then
-    sudo systemctl stop nftables
-    sudo systemctl disable nftables
-    echo "✅ nftables service stopped and disabled."
-  else
-    echo "nftables service not active."
-  fi
-  if systemctl is-active --quiet ufw; then
-    sudo ufw disable
-    echo "✅ ufw disabled."
-  else
-    echo "ufw not active."
-  fi
-  # Stop netfilter-persistent if present
-  if systemctl is-active --quiet netfilter-persistent; then
-    sudo systemctl stop netfilter-persistent
-    sudo systemctl disable netfilter-persistent
-    echo "✅ netfilter-persistent stopped and disabled."
-  else
-    echo "netfilter-persistent not active."
-  fi
-}}
 
 get_private_ip() {
   echo "Fetching instance private IP from metadata..."
@@ -234,7 +189,6 @@ bootstrap_argocd_apps() {
 
 main() {
   install_base_tools
-  disable_firewalls
   get_private_ip
   install_k3s_server
   wait_for_all_nodes
