@@ -2,6 +2,13 @@
 # Network Security Groups (NSGs) and rules
 # ==================================================================
 
+data "oci_core_services" "all_services" {
+  filter {
+    name   = "all-services-in-vcn"
+    values = ["All.*Services in Oracle.*"]
+  }
+}
+
 # Filter IPv4 from mixed CIDR lists (IPv6 contains ':')
 locals {
   cloudflare_ipv4_cidrs = [for c in var.cloudflare_cidrs : trimspace(c) if !can(regex(":", c))]
@@ -126,6 +133,22 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   protocol                    = "6"
   source_type                 = "NETWORK_SECURITY_GROUP"
   source                      = oci_core_network_security_group.private_lb.id
+
+  tcp_options {
+    destination_port_range {
+      min = 6443
+      max = 6443
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from_oci" {
+  network_security_group_id = oci_core_network_security_group.control_plane.id
+  direction                   = "INGRESS"
+  protocol                    = "6" # TCP
+  source_type                 = "SERVICE_CIDR_BLOCK"
+  source                      = data.oci_core_services.all_services.services[0].cidr_block
+  description                 = "Allow LB Health Checks from OCI"
 
   tcp_options {
     destination_port_range {
