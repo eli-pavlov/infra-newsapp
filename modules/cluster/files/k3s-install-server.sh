@@ -47,10 +47,10 @@ install_k3s_server() {
   log "Installing K3s server..."
   # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
-    --node-ip $PRIVATE_IP \
-    --advertise-address $PRIVATE_IP \
+    --node-ip ${PRIVATE_IP} \
+    --advertise-address ${PRIVATE_IP} \
     --disable traefik \
-    --tls-san $PRIVATE_IP \
+    --tls-san ${PRIVATE_IP} \
     --tls-san ${T_PRIVATE_LB_IP} \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
@@ -65,11 +65,11 @@ install_k3s_server() {
   # Wait for kubeconfig file and for kube-apiserver to accept connections
   local wait_secs=180
   local waited=0
-  while [ ! -s "$K3S_KUBECONFIG" ]; do
+  while [ ! -s "$${K3S_KUBECONFIG}" ]; do
     sleep 2
     waited=$((waited+2))
-    if [ "$waited" -ge "$wait_secs" ]; then
-      log "❌ Timeout waiting for $K3S_KUBECONFIG to appear"
+    if [ "$${waited}" -ge "$${wait_secs}" ]; then
+      log "❌ Timeout waiting for $${K3S_KUBECONFIG} to appear"
       ls -l /etc/rancher/k3s || true
       journalctl -u k3s --no-pager -n 200 || true
       exit 1
@@ -88,8 +88,8 @@ install_k3s_server() {
     fi
     sleep 2
     waited=$((waited+2))
-    if [ "$waited" -ge "$wait_secs" ]; then
-      log "❌ kube-apiserver did not respond in ${wait_secs}s"
+    if [ "$${waited}" -ge "$${wait_secs}" ]; then
+      log "❌ kube-apiserver did not respond in $${wait_secs}s"
       $KUBECTL --kubeconfig="$K3S_KUBECONFIG" get pods --all-namespaces || true
       journalctl -u k3s --no-pager -n 200 || true
       exit 1
@@ -107,7 +107,7 @@ install_k3s_server() {
     fi
     sleep 5
     waited=$((waited+5))
-    if [ "$waited" -ge "$wait_node_secs" ]; then
+    if [ "$${waited}" -ge "$${wait_node_secs}" ]; then
       log "❌ Timeout waiting for node to be Ready"
       $KUBECTL --kubeconfig="$K3S_KUBECONFIG" get nodes -o wide || true
       exit 1
@@ -150,10 +150,10 @@ install_helm() {
     log "helm already installed"
   fi
   # Ensure helm present at expected path
-  if [ -x "${HELM_BIN}" ]; then
-    log "Helm path: ${HELM_BIN}"
+  if [ -x "$${HELM_BIN}" ]; then
+    log "Helm path: $${HELM_BIN}"
   else
-    log "Helm not found at ${HELM_BIN}, using $(command -v helm || echo 'none')"
+    log "Helm not found at $${HELM_BIN}, using $(command -v helm || echo 'none')"
   fi
 }
 
