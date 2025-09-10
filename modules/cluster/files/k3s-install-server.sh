@@ -15,6 +15,7 @@ T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
 T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
+T_PRIVATE_SUBNET_CIDR="${T_PRIVATE_SUBNET_CIDR}"
 
 install_base_tools() {
   echo "Installing base packages..."
@@ -34,6 +35,12 @@ get_private_ip() {
 
 install_k3s_server() {
   echo "Installing K3s server..."
+  # Add nftables rule to allow traffic from the entire private subnet
+  # to the Kube API server on port 6443. This is dynamic and persistent.
+  echo "Adding nftables rule to allow traffic from private subnet CIDR: ${T_PRIVATE_SUBNET_CIDR}"
+  sudo nft add rule ip filter INPUT ip saddr "${T_PRIVATE_SUBNET_CIDR}" tcp dport 6443 ct state new,established accept
+  systemctl disable --now firewalld 2>/dev/null || true
+  ufw disable 2>/dev/null || true
   # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \

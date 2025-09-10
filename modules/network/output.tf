@@ -50,3 +50,6 @@ output "public_nlb_backend_set_https_name" {
 output "private_lb_backendset_name" {
   value = oci_load_balancer_backend_set.private_lb_backendset.name
 }
+output "private_subnet_cidr" {
+  value = oci_core_subnet.private.cidr_block
+}

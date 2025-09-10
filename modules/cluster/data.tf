@@ -22,6 +22,7 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_MANIFESTS_REPO_URL   = var.manifests_repo_url,
       T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
       T_PRIVATE_LB_IP        = var.private_lb_ip_address
+      T_PRIVATE_SUBNET_CIDR  = var.private_subnet_cidr
     })
   }
 }
