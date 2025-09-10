@@ -47,13 +47,13 @@ install_k3s_server() {
 
   # k3s server flags (explicit binds + SANs)
   local PARAMS="--write-kubeconfig-mode 644 \
-    --node-ip $PRIVATE_IP \
-    --advertise-address $PRIVATE_IP \
+    --node-ip $$PRIVATE_IP \
+    --advertise-address $$PRIVATE_IP \
     --disable traefik \
-    --tls-san $PRIVATE_IP \
-    --tls-san $T_PRIVATE_LB_IP \
+    --tls-san $$PRIVATE_IP \
+    --tls-san $$T_PRIVATE_LB_IP \
     --kube-apiserver-arg=bind-address=0.0.0.0 \
-    --kube-apiserver-arg=advertise-address=$PRIVATE_IP \
+    --kube-apiserver-arg=advertise-address=$$PRIVATE_IP \
     --https-listen-port=6443 \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
