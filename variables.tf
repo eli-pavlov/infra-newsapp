@@ -81,15 +81,3 @@ variable "manifests_repo_url" {
   type        = string
   default     = "https://github.com/eli-pavlov/newsapp-manifests.git"
 }
-
-variable "cloudflare_api_token" {
-  description = "The Cloudflare API token."
-  type        = string
-  sensitive   = true
-}
-
-variable "cloudflare_zone_id" {
-  description = "The Zone ID of the domain in Cloudflare."
-  type        = string
-  sensitive   = true
-}

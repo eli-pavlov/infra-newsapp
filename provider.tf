@@ -5,7 +5,3 @@ provider "oci" {
   region       = var.region
   private_key  = var.private_key_pem
 }
-
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
-}
