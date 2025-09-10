@@ -203,8 +203,6 @@ main() {
   get_private_ip
   install_k3s_server
   wait_for_all_nodes
-  wait_for_kubeconfig
-  wait_for_api
   install_helm
   install_ingress_nginx
   install_argo_cd
