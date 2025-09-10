@@ -28,10 +28,10 @@ get_private_ip() {
   PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ \
     | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}') || true
   # Fallback via routing table
-  if [ -z "${PRIVATE_IP:-}" ]; then
+  if [ -z "$${PRIVATE_IP:-}" ]; then
     PRIVATE_IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
   fi
-  if [ -z "${PRIVATE_IP:-}" ]; then
+  if [ -z "$${PRIVATE_IP:-}" ]; then
     echo "❌ Failed to determine private IP."
     exit 1
   fi
@@ -47,13 +47,13 @@ install_k3s_server() {
 
   # k3s server flags (explicit binds + SANs)
   local PARAMS="--write-kubeconfig-mode 644 \
-    --node-ip $PRIVATE_IP \
-    --advertise-address $PRIVATE_IP \
+    --node-ip $$PRIVATE_IP \
+    --advertise-address $$PRIVATE_IP \
     --disable traefik \
-    --tls-san $PRIVATE_IP \
-    --tls-san $T_PRIVATE_LB_IP \
+    --tls-san $$PRIVATE_IP \
+    --tls-san $$T_PRIVATE_LB_IP \
     --kube-apiserver-arg=bind-address=0.0.0.0 \
-    --kube-apiserver-arg=advertise-address=$PRIVATE_IP \
+    --kube-apiserver-arg=advertise-address=$$PRIVATE_IP \
     --https-listen-port=6443 \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
@@ -160,11 +160,11 @@ generate_secrets_and_credentials() {
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
