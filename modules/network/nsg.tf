@@ -64,42 +64,40 @@ resource "oci_core_network_security_group_security_rule" "bastion_ssh_in" {
 
 # --- TEMPORARY SSH ACCESS RULES ---
 # To allow direct SSH access to all K8s nodes from your admin IPs for testing,
-# uncomment this entire block and run 'terraform apply'.
-# Re-comment it and apply again to restore the secure bastion-only access.
 
-resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_admin_cidrs_temporary" {
-  for_each                    = toset(local.admin_ipv4_cidrs)
-  network_security_group_id = oci_core_network_security_group.control_plane.id
-  direction                   = "INGRESS"
-  protocol                    = "6" # TCP
-  source_type                 = "CIDR_BLOCK"
-  source                      = each.value
-  description                 = "Temporary direct SSH access for admin"
+# resource "oci_core_network_security_group_security_rule" "cp_ssh_in_from_admin_cidrs_temporary" {
+#   for_each                    = toset(local.admin_ipv4_cidrs)
+#   network_security_group_id = oci_core_network_security_group.control_plane.id
+#   direction                   = "INGRESS"
+#   protocol                    = "6" # TCP
+#   source_type                 = "CIDR_BLOCK"
+#   source                      = each.value
+#   description                 = "Temporary direct SSH access for admin"
 
-  tcp_options {
-    destination_port_range {
-      min = 22
-      max = 22
-    }
-  }
-}
+#   tcp_options {
+#     destination_port_range {
+#       min = 22
+#       max = 22
+#     }
+#   }
+# }
 
-resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_admin_cidrs_temporary" {
-  for_each                    = toset(local.admin_ipv4_cidrs)
-  network_security_group_id = oci_core_network_security_group.workers.id
-  direction                   = "INGRESS"
-  protocol                    = "6" # TCP
-  source_type                 = "CIDR_BLOCK"
-  source                      = each.value
-  description                 = "Temporary direct SSH access for admin"
+# resource "oci_core_network_security_group_security_rule" "workers_ssh_in_from_admin_cidrs_temporary" {
+#   for_each                    = toset(local.admin_ipv4_cidrs)
+#   network_security_group_id = oci_core_network_security_group.workers.id
+#   direction                   = "INGRESS"
+#   protocol                    = "6" # TCP
+#   source_type                 = "CIDR_BLOCK"
+#   source                      = each.value
+#   description                 = "Temporary direct SSH access for admin"
 
-  tcp_options {
-    destination_port_range {
-      min = 22
-      max = 22
-    }
-  }
-}
+#   tcp_options {
+#     destination_port_range {
+#       min = 22
+#       max = 22
+#     }
+#   }
+# }
 
 
 
