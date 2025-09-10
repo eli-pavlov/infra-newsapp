@@ -36,7 +36,7 @@ systemctl disable firewalld --now || true
 get_private_ip() {
   log "Fetching instance private IP from metadata (OCI metadata endpoint)..."
   PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
-  if [ -z "$${PRIVATE_IP:-}" ] || [ "$${PRIVATE_IP}" = "null" ]; then
+  if [ -z "$PRIVATE_IP" ] || [ "$PRIVATE_IP" = "null" ]; then
     log "❌ Failed to fetch private IP."
     exit 1
   fi
@@ -45,31 +45,31 @@ get_private_ip() {
 
 install_k3s_server() {
   log "Installing K3s server..."
-  # Add TLS SANs for both the node's own IP and the private LB IP
+  # Add TLS SANs for both the node's own IP and the private LB IP. Use $PRIVATE_IP (no braces)
   local PARAMS="--write-kubeconfig-mode 644 \
-    --node-ip ${PRIVATE_IP} \
-    --advertise-address ${PRIVATE_IP} \
+    --node-ip $PRIVATE_IP \
+    --advertise-address $PRIVATE_IP \
     --disable traefik \
-    --tls-san ${PRIVATE_IP} \
+    --tls-san $PRIVATE_IP \
     --tls-san ${T_PRIVATE_LB_IP} \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
   export INSTALL_K3S_EXEC="$PARAMS"
-  export K3S_TOKEN="${T_K3S_TOKEN}"
-  export INSTALL_K3S_VERSION="${T_K3S_VERSION}"
+  export K3S_TOKEN="$T_K3S_TOKEN"
+  export INSTALL_K3S_VERSION="$T_K3S_VERSION"
 
   # Use upstream installer (works on OL9). Keep exact behaviour as original script.
   curl -sfL https://get.k3s.io | sh -
 
   log "Waiting for k3s kubeconfig file to appear: $K3S_KUBECONFIG"
   # Wait for kubeconfig file and for kube-apiserver to accept connections
-  local wait_secs=180
-  local waited=0
-  while [ ! -s "$${K3S_KUBECONFIG}" ]; do
+  wait_secs=180
+  waited=0
+  while [ ! -s "$K3S_KUBECONFIG" ]; do
     sleep 2
     waited=$((waited+2))
-    if [ "$${waited}" -ge "$${wait_secs}" ]; then
-      log "❌ Timeout waiting for $${K3S_KUBECONFIG} to appear"
+    if [ "$waited" -ge "$wait_secs" ]; then
+      log "❌ Timeout waiting for $K3S_KUBECONFIG to appear"
       ls -l /etc/rancher/k3s || true
       journalctl -u k3s --no-pager -n 200 || true
       exit 1
@@ -77,7 +77,7 @@ install_k3s_server() {
   done
   log "✅ kubeconfig present"
 
-  # We will always use explicit kubeconfig. Export it for convenience.
+  # Use explicit kubeconfig for all kubectl calls
   export KUBECONFIG="$K3S_KUBECONFIG"
 
   log "Waiting for kube-apiserver to respond to kubectl version..."
@@ -88,8 +88,8 @@ install_k3s_server() {
     fi
     sleep 2
     waited=$((waited+2))
-    if [ "$${waited}" -ge "$${wait_secs}" ]; then
-      log "❌ kube-apiserver did not respond in $${wait_secs}s"
+    if [ "$waited" -ge "$wait_secs" ]; then
+      log "❌ kube-apiserver did not respond in ${wait_secs}s"
       $KUBECTL --kubeconfig="$K3S_KUBECONFIG" get pods --all-namespaces || true
       journalctl -u k3s --no-pager -n 200 || true
       exit 1
@@ -97,7 +97,7 @@ install_k3s_server() {
   done
   log "✅ kube-apiserver responding"
 
-  # Wait until this node becomes Ready (use explicit kubeconfig)
+  # Wait until this node becomes Ready
   log "Waiting for K3s server node to be Ready..."
   waited=0
   wait_node_secs=300
@@ -107,7 +107,7 @@ install_k3s_server() {
     fi
     sleep 5
     waited=$((waited+5))
-    if [ "$${waited}" -ge "$${wait_node_secs}" ]; then
+    if [ "$waited" -ge "$wait_node_secs" ]; then
       log "❌ Timeout waiting for node to be Ready"
       $KUBECTL --kubeconfig="$K3S_KUBECONFIG" get nodes -o wide || true
       exit 1
@@ -117,18 +117,16 @@ install_k3s_server() {
 }
 
 wait_for_all_nodes() {
-  log "Waiting for all ${T_EXPECTED_NODE_COUNT} nodes to join and become Ready..."
-  local timeout=900
-  local start_time; start_time=$(date +%s)
+  log "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
+  timeout=900
+  start_time=$(date +%s)
   while true; do
-    local ready_nodes
-    ready_nodes=$($KUBECTL --kubeconfig="$K3S_KUBECONFIG" get nodes --no-headers 2>/dev/null \
-      | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
-    if [ "$ready_nodes" -eq "${T_EXPECTED_NODE_COUNT}" ]; then
-      log "✅ All ${T_EXPECTED_NODE_COUNT} nodes are Ready. Proceeding."
+    ready_nodes=$($KUBECTL --kubeconfig="$K3S_KUBECONFIG" get nodes --no-headers 2>/dev/null | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
+    if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
+      log "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break
     fi
-    local elapsed_time=$(( $(date +%s) - start_time ))
+    elapsed_time=$(( $(date +%s) - start_time ))
     if [ "$elapsed_time" -gt "$timeout" ]; then
       log "❌ Timed out waiting for all nodes to become Ready."
       $KUBECTL --kubeconfig="$K3S_KUBECONFIG" get nodes || true
@@ -149,25 +147,21 @@ install_helm() {
   else
     log "helm already installed"
   fi
-  # Ensure helm present at expected path
-  if [ -x "$${HELM_BIN}" ]; then
-    log "Helm path: $${HELM_BIN}"
+  if [ -x "$HELM_BIN" ]; then
+    log "Helm path: $HELM_BIN"
   else
-    log "Helm not found at $${HELM_BIN}, using $(command -v helm || echo 'none')"
+    log "Helm not found at $HELM_BIN, using $(command -v helm || echo 'none')"
   fi
 }
 
 install_ingress_nginx() {
   log "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
 
-  # Add repo and update
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
   helm repo update || true
 
-  # Ensure namespace exists
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" create namespace ingress-nginx --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
 
-  # Install/upgrade using explicit kubeconfig
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
@@ -191,13 +185,13 @@ install_argo_cd() {
   log "Installing Argo CD..."
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" create namespace argocd --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
 
-  # Apply upstream install (includes CRDs)
+  # Install ArgoCD
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-  # Wait for core argocd deployments/statefulset to appear (give CRDs time to register)
-  local wait_for=300
-  local waited=0
-  local sleep_step=5
+  # Wait for core argocd resources to exist (give CRDs time to register)
+  wait_for=300
+  waited=0
+  sleep_step=5
   while true; do
     if $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get deploy argocd-server >/dev/null 2>&1 && \
        $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get statefulset argocd-application-controller >/dev/null 2>&1; then
@@ -212,7 +206,6 @@ install_argo_cd() {
     fi
   done
 
-  # Tolerate control-plane taint where applicable
   for d in argocd-server argocd-repo-server argocd-dex-server; do
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd patch deployment "$d" --type='json' -p='[ 
       {"op":"add","path":"/spec/template/spec/tolerations","value":[
@@ -221,7 +214,6 @@ install_argo_cd() {
     ]' || true
   done
 
-  # Patch the StatefulSet (application controller) tolerations
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd patch statefulset argocd-application-controller --type='json' -p='[
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
       {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
@@ -233,6 +225,7 @@ install_argo_cd() {
     log "Warning: not all ArgoCD deployments reported Available within timeout"
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get pods -o wide || true
   }
+
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd rollout status statefulset/argocd-application-controller --timeout=10m || {
     log "Warning: argocd-application-controller rollout status did not become ready within timeout"
   }
@@ -240,12 +233,10 @@ install_argo_cd() {
 
 generate_secrets_and_credentials() {
   log "Generating credentials and Kubernetes secrets..."
-  # generate DB password
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 || true)
 
-  # Wait for argocd initial admin secret to exist (it may be created after argocd deployment)
   log "Waiting up to 2m for Argo CD initial admin secret..."
-  local waited=0
+  waited=0
   while true; do
     if $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1; then
       break
@@ -263,11 +254,11 @@ generate_secrets_and_credentials() {
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: $${ARGO_PASSWORD}
+Password: $ARGO_PASSWORD
 
 # --- PostgreSQL Database Credentials ---
-Username: ${T_DB_USER}
-Password: $${DB_PASSWORD}
+Username: $T_DB_USER
+Password: $DB_PASSWORD
 EOF
   chmod 600 /root/credentials.txt
   log "Credentials saved to /root/credentials.txt"
@@ -275,19 +266,19 @@ EOF
   for ns in default development; do
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" create namespace "$ns" --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n "$ns" create secret generic postgres-credentials \
-      --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+      --from-literal=POSTGRES_USER="$T_DB_USER" \
+      --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
       --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
   done
 
-  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  DB_URI_DEV="postgresql://$T_DB_USER:$DB_PASSWORD@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/$T_DB_NAME_DEV"
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_DEV}" \
+    --from-literal=DB_URI="$DB_URI_DEV" \
     --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://$T_DB_USER:$DB_PASSWORD@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/$T_DB_NAME_PROD"
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_PROD}" \
+    --from-literal=DB_URI="$DB_URI_PROD" \
     --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
 }
 
@@ -295,13 +286,11 @@ bootstrap_argocd_apps() {
   log "Bootstrapping Argo CD with applications from manifest repo..."
   rm -rf /tmp/manifests || true
 
-  # try cloning; tolerate failure but log it
-  if ! git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests; then
-    log "Warning: git clone of ${T_MANIFESTS_REPO_URL} failed. Skipping application bootstrap."
+  if ! git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests; then
+    log "Warning: git clone of $T_MANIFESTS_REPO_URL failed. Skipping application bootstrap."
     return 0
   fi
 
-  # DEV
   if [ -f /tmp/manifests/clusters/dev/apps/project.yaml ]; then
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
   fi
@@ -309,7 +298,6 @@ bootstrap_argocd_apps() {
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f /tmp/manifests/clusters/dev/apps/stack.yaml || true
   fi
 
-  # PROD
   if [ -f /tmp/manifests/clusters/prod/apps/project.yaml ]; then
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
   fi
