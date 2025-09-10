@@ -16,6 +16,11 @@ T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}" # This will be the load balancer's private IP
 
+# Variables for problematic commands, injected by Terraform
+K3S_GET_PRIVATE_IP_COMMAND="${K3S_GET_PRIVATE_IP_COMMAND}"
+IP_ROUTE_AWK_COMMAND="${IP_ROUTE_AWK_COMMAND}"
+KUBECTL_GET_NODES_FILTER="${KUBECTL_GET_NODES_FILTER}"
+
 install_base_tools() {
   echo "Installing base packages..."
   apt-get update -y || true
@@ -24,13 +29,11 @@ install_base_tools() {
 
 get_private_ip() {
   echo "Fetching instance private IP..."
-  # Try OCI metadata first
-  # The jq filter and regex can confuse Terraform's template parser.
-  # We use %{literal} %{endliteral} to tell Terraform to leave these parts alone.
-  PRIVATE_IP="$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ %{literal} | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')%{endliteral}" || true
+  # Use the injected command string
+  PRIVATE_IP="$(eval "$K3S_GET_PRIVATE_IP_COMMAND")" || true
   # Fallback via routing table
   if [ -z "${PRIVATE_IP:-}" ]; then
-    PRIVATE_IP="$(ip -4 route get 1.1.1.1 %{literal} | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')%{endliteral}"
+    PRIVATE_IP="$(eval "$IP_ROUTE_AWK_COMMAND")"
   fi
   if [ -z "${PRIVATE_IP:-}" ]; then
     echo "❌ Failed to determine private IP."
@@ -46,7 +49,6 @@ install_k3s_server() {
   ufw disable 2>/dev/null || true
 
   # k3s server flags (explicit binds + SANs)
-  # Corrected $$ to $ for bash variable expansion
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip \"$PRIVATE_IP\" \
     --advertise-address \"$PRIVATE_IP\" \
@@ -85,8 +87,8 @@ wait_for_all_nodes() {
   local start_time; start_time=$(date +%s)
   while true; do
     local ready_nodes
-    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
-      %{literal} | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)%{endliteral}
+    # Use the injected filter string
+    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null "$KUBECTL_GET_NODES_FILTER")
     if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
       echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break
@@ -144,18 +146,18 @@ install_argo_cd() {
   fi
   /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --wait=true --timeout=5m
 
-  for d in argocd-server argocd-repo-server argocd-dex-server; do
-    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[ %{literal}
-      {"op":"add","path":"/spec/template/spec/tolerations","value":[
-        {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
-      ]}
-    ]'%{endliteral}' || true
-  done
-  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[ %{literal}
+  # JSON for patches. The key here is to ensure the JSON is correctly formatted as a single string.
+  # Terraform variables are not used in these JSON strings, so they don't need further templating.
+  local tolerations_json='[
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
       {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
     ]}
-  ]'%{endliteral}' || true
+  ]'
+
+  for d in argocd-server argocd-repo-server argocd-dex-server; do
+    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p="${tolerations_json}" || true
+  done
+  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p="${tolerations_json}" || true
 
   echo "Waiting for Argo CD components to be ready..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-server --timeout=5m || true

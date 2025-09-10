@@ -8,7 +8,6 @@ resource "random_password" "k3s_token" {
 data "cloudinit_config" "k3s_server_tpl" {
   gzip          = true
   base64_encode = true
-
   part {
     content_type = "text/x-shellscript"
     content = templatefile("${path.module}/files/k3s-install-server.sh", {
@@ -21,7 +20,12 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_DB_SERVICE_NAME_PROD = var.db_service_name_prod,
       T_MANIFESTS_REPO_URL   = var.manifests_repo_url,
       T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
-      T_PRIVATE_LB_IP        = var.private_lb_ip_address
+      T_PRIVATE_LB_IP        = var.private_lb_ip_address,
+      # These are the parts that were causing issues in the script
+      # Pass them as variables to the template
+      K3S_GET_PRIVATE_IP_COMMAND = "curl -s -H \"Authorization: Bearer Oracle\" http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\\\\.){3}[0-9]{1,3}'", # escaped \. for regex
+      IP_ROUTE_AWK_COMMAND       = "ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($$i==\"src\"){print $$(i+1); exit}}'", # $$ for literal $
+      KUBECTL_GET_NODES_FILTER   = " | awk '{print $$2}' | grep -Ec '^Ready(,SchedulingDisabled)?$$' || true" # $$ for literal $
     })
   }
 }
