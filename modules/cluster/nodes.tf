@@ -59,8 +59,15 @@ resource "oci_core_instance" "app_workers" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    # use the pre-built cloudinit bundle for app agents (no templatefile of the large script)
-    user_data = data.cloudinit_config.k3s_agent_app_tpl.rendered
+    user_data = base64encode(
+      templatefile("${path.module}/files/k3s-install-agent.sh", {
+        T_K3S_VERSION = var.k3s_version
+        T_K3S_TOKEN   = random_password.k3s_token.result
+        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_NODE_LABELS = "role=application",
+        T_NODE_TAINTS = ""
+      })
+    )
   }
   
   depends_on = [
@@ -96,9 +103,19 @@ resource "oci_core_instance" "db_worker" {
 
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    # use the pre-built cloudinit bundle for db agent (no templatefile of the large script)
-    user_data = data.cloudinit_config.k3s_agent_db_tpl.rendered
+    user_data = base64encode(
+      templatefile("${path.module}/files/k3s-install-agent.sh", {
+        T_K3S_VERSION = var.k3s_version
+        T_K3S_TOKEN   = random_password.k3s_token.result
+        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_NODE_LABELS = "role=database",
+        T_NODE_TAINTS = "role=database:NoSchedule"
+      })
+    )
   }
+
+
+
 
   depends_on = [
     oci_core_instance.control_plane,
