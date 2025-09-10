@@ -4,8 +4,11 @@
 
 data "oci_core_services" "all_services" {
   filter {
-    name   = "all-services-in-vcn"
-    values = ["All.*Services in Oracle.*"]
+    # Filter by the service's 'name' attribute
+    name   = "name"
+    # Use the correct service name pattern for health checks
+    values = ["All .* Services in Oracle Services Network"]
+    regex  = true
   }
 }
 
