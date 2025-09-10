@@ -16,7 +16,6 @@ export T_NODE_TAINTS="${T_NODE_TAINTS}"
 # - Application workers join normally.
 # - DB worker mounts the extra OCI paravirtualized block volume (no iSCSI/CSI),
 #   formats it if needed, and prepares /mnt/oci/db/dev and /mnt/oci/db/prod for Local PVs.
-
 # (set -euo pipefail and exec already set above)
 
 # --- Function to wait for the K3s server to be ready ---
@@ -28,6 +27,7 @@ wait_for_server() {
 
   while true; do
     # The -k flag is necessary because the server uses a self-signed cert initially.
+    # This now uses the Terraform variable directly to avoid templating conflicts.
     if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_K3S_URL_IP}:6443/ping"; then
       echo "✅ K3s server is responsive. Proceeding with agent installation."
       break
