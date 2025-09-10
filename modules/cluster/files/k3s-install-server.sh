@@ -59,6 +59,8 @@ install_k3s_server() {
   # Wait until kubectl from k3s observes this node Ready
   while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
   echo "K3s server node is running."
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  log "Exported KUBECONFIG=${KUBECONFIG}"
 }
 
 wait_for_all_nodes() {
@@ -81,6 +83,29 @@ wait_for_all_nodes() {
     fi
     echo "($elapsed_time/$timeout s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
     sleep 15
+  done
+}
+
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+wait_for_kubeconfig() {
+  timeout=180
+  waited=0
+  while [ ! -s "$KUBECONFIG" ]; do
+    sleep 2; waited=$((waited+2))
+    if [ "$waited" -ge "$timeout" ]; then
+      echo "kubeconfig missing after ${timeout}s"; exit 1
+    fi
+  done
+}
+
+wait_for_api() {
+  timeout=180; waited=0
+  while ! kubectl --kubeconfig="$KUBECONFIG" version --short >/dev/null 2>&1; do
+    sleep 2; waited=$((waited+2))
+    if [ "$waited" -ge "$timeout" ]; then
+      echo "API not responding after ${timeout}s"; kubectl --kubeconfig="$KUBECONFIG" get pods --all-namespaces || true; exit 1
+    fi
   done
 }
 
