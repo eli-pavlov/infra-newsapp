@@ -33,6 +33,9 @@ jobs:
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
       TF_VAR_bastion_os_image_id:   ${{ secrets.BASTION_IMAGE }}
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
+      TF_VAR_cloudflare_api_token:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_zone_id:    ${{ secrets.CLOUDFLARE_ZONE_ID }}
+
     steps:
       - name: Guard required secrets
         shell: bash
