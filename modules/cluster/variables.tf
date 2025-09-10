@@ -134,8 +134,3 @@ variable "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver."
   type        = string
 }
-
-variable "private_subnet_cidr" {
-  description = "The CIDR block of the private subnet."
-  type        = string
-}
