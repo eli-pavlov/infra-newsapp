@@ -2,13 +2,6 @@
 # Network Security Groups (NSGs) and rules
 # ==================================================================
 
-data "oci_core_services" "all_services" {
-  filter {
-    name   = "name"
-    values = ["All .* Services In Oracle Services Network"]
-    regex  = true
-  }
-}
 
 # Filter IPv4 from mixed CIDR lists (IPv6 contains ':')
 locals {
@@ -143,13 +136,13 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from_oci" {
+resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from_subnet" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
-  direction                 = "INGRESS"
-  protocol                  = "6" # TCP
-  source_type               = "SERVICE_CIDR_BLOCK"
-  source                    = data.oci_core_services.all_services.services[0].cidr_block
-  description               = "Allow LB Health Checks from OCI"
+  direction                   = "INGRESS"
+  protocol                    = "6" # TCP
+  source_type                 = "CIDR_BLOCK"
+  source                      = var.private_subnet_cidr
+  description                 = "Allow LB Health Checks from within the private subnet"
 
   tcp_options {
     destination_port_range {
