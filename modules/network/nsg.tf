@@ -4,10 +4,8 @@
 
 data "oci_core_services" "all_services" {
   filter {
-    # Filter by the service's 'name' attribute
     name   = "name"
-    # Use the correct service name pattern for health checks
-    values = ["All .* Services in Oracle Services Network"]
+    values = ["All .* Services In Oracle Services Network"]
     regex  = true
   }
 }
@@ -147,11 +145,11 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
 
 resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from_oci" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
-  direction                   = "INGRESS"
-  protocol                    = "6" # TCP
-  source_type                 = "SERVICE_CIDR_BLOCK"
-  source                      = data.oci_core_services.all_services.services[0].cidr_block
-  description                 = "Allow LB Health Checks from OCI"
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source_type               = "SERVICE_CIDR_BLOCK"
+  source                    = data.oci_core_services.all_services.services[0].cidr_block
+  description               = "Allow LB Health Checks from OCI"
 
   tcp_options {
     destination_port_range {
