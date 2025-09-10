@@ -29,10 +29,6 @@ resource "oci_core_instance" "control_plane" {
     # cloudinit_config already base64-encodes; pass rendered directly
     user_data = data.cloudinit_config.k3s_server_tpl.rendered
   }
-
-  depends_on = [
-  module.network.load_balancers.private_lb
-  ]
 }
 
 # ---------------------------------------------------------------

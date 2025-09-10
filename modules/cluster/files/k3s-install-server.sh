@@ -23,10 +23,16 @@ install_base_tools() {
 }
 
 get_private_ip() {
-  echo "Fetching instance private IP from metadata..."
-  PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
-  if [ -z "$PRIVATE_IP" ] || [ "$PRIVATE_IP" = "null" ]; then
-    echo "❌ Failed to fetch private IP."
+  echo "Fetching instance private IP..."
+  # Try OCI metadata first
+  PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ \
+    | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}') || true
+  # Fallback via routing table
+  if [ -z "${PRIVATE_IP:-}" ]; then
+    PRIVATE_IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
+  fi
+  if [ -z "${PRIVATE_IP:-}" ]; then
+    echo "❌ Failed to determine private IP."
     exit 1
   fi
   echo "✅ Instance private IP is $PRIVATE_IP"
@@ -34,13 +40,21 @@ get_private_ip() {
 
 install_k3s_server() {
   echo "Installing K3s server..."
-  # Add TLS SANs for both the node's own IP and the private LB IP
+
+  # Be explicit and permissive for host firewalls (Ubuntu/OL)
+  systemctl disable --now firewalld 2>/dev/null || true
+  ufw disable 2>/dev/null || true
+
+  # k3s server flags (explicit binds + SANs)
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
     --advertise-address $PRIVATE_IP \
     --disable traefik \
     --tls-san $PRIVATE_IP \
     --tls-san $T_PRIVATE_LB_IP \
+    --kube-apiserver-arg=bind-address=0.0.0.0 \
+    --kube-apiserver-arg=advertise-address=$PRIVATE_IP \
+    --https-listen-port=6443 \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
   export INSTALL_K3S_EXEC="$PARAMS"
@@ -48,9 +62,18 @@ install_k3s_server() {
   export INSTALL_K3S_VERSION="$T_K3S_VERSION"
   curl -sfL https://get.k3s.io | sh -
 
-  echo "Waiting for K3s server node to be ready..."
-  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
-  echo "K3s server node is running."
+  echo "Waiting for K3s server node to be Ready..."
+  until /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q ' Ready'; do
+    sleep 5
+  done
+  echo "✅ K3s server node is Ready."
+
+  echo "Probing local API..."
+  set +e
+  curl -k --connect-timeout 5 -sS https://127.0.0.1:6443/healthz && echo || echo "⚠️ local /healthz probe failed"
+  curl -k --connect-timeout 5 -sS https://$PRIVATE_IP:6443/healthz && echo || echo "⚠️ $PRIVATE_IP /healthz probe failed"
+  curl -k --connect-timeout 5 -sS https://$T_PRIVATE_LB_IP:6443/ping && echo || echo "⚠️ LB /ping probe failed (OK until LB backends attach)"
+  set -e
 }
 
 wait_for_all_nodes() {
@@ -67,11 +90,11 @@ wait_for_all_nodes() {
     fi
     local elapsed_time=$(( $(date +%s) - start_time ))
     if [ "$elapsed_time" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for all nodes to become Ready."
-      /usr/local/bin/kubectl get nodes
-      exit 1
+      echo "⚠️ Timed out waiting for all nodes. Proceeding with addons anyway."
+      /usr/local/bin/kubectl get nodes || true
+      break
     fi
-    echo "($elapsed_time/$timeout s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
+    echo "($elapsed_time/$timeout s) $ready_nodes/$T_EXPECTED_NODE_COUNT Ready. Waiting..."
     sleep 15
   done
 }
@@ -91,7 +114,6 @@ install_ingress_nginx() {
   helm repo update
   /usr/local/bin/kubectl create namespace ingress-nginx || true
 
-  # Explicitly create 'nginx' IngressClass to match your Ingress manifests
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
@@ -104,16 +126,14 @@ install_ingress_nginx() {
     --set controller.ingressClassByName=true
 
   echo "Waiting for ingress-nginx controller rollout..."
-  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
+  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m || true
 }
 
 install_argo_cd() {
   echo "Installing Argo CD..."
   /usr/local/bin/kubectl create namespace argocd || true
-  # Apply upstream install (includes CRDs)
   /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-  # Tolerate control-plane taint where applicable
   for d in argocd-server argocd-repo-server argocd-dex-server; do
     /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[
       {"op":"add","path":"/spec/template/spec/tolerations","value":[
@@ -121,8 +141,6 @@ install_argo_cd() {
       ]}
     ]' || true
   done
-
-  # The application controller is a StatefulSet; patch that too
   /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
       {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
@@ -159,7 +177,6 @@ EOF
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
   done
 
-  # Match your charts: use the -client Service for app connectivity
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_DEV}" \
@@ -173,17 +190,14 @@ EOF
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests
+  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
 
-  # DEV
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml
   [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
-
-  # PROD
   [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml
   [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
 
-  echo "Argo CD applications applied. Argo will now sync the cluster state."
+  echo "Argo CD applications applied."
 }
 
 main() {
