@@ -40,10 +40,13 @@ wait_for_server() {
 }
 
 install_base_tools() {
-  echo "Installing base packages (jq, e2fsprogs, util-linux, curl)..."
-  apt-get update -y || true
-  apt-get install -y jq e2fsprogs util-linux curl || true
+  echo "Installing base packages (dnf: jq, e2fsprogs, util-linux, curl)..."
+  # Refresh metadata then install packages (keeping behaviour minimal/explicit)
+  dnf makecache --refresh -y || true
+  dnf install -y jq e2fsprogs util-linux curl || true
 }
+
+systemctl disable firewalld --now
 
 setup_local_db_volume() {
   # Only on the DB node (role=database)
@@ -136,4 +139,3 @@ main() {
 }
 
 main "$@"
-

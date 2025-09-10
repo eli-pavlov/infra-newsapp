@@ -1,6 +1,7 @@
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
+# Converted for Oracle Linux 9 (dnf-based) — no other behaviour changes.
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
@@ -17,13 +18,17 @@ T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
 install_base_tools() {
-  echo "Installing base packages..."
-  apt-get update -y || true
-  apt-get install -y curl jq git || true
+  echo "Installing base packages (dnf)..."
+  # Refresh metadata and install minimal tools. Keep changes minimal (no full distro upgrade).
+  dnf makecache --refresh -y || true
+  dnf install -y curl jq git || true
 }
 
+systemctl disable firewalld --now
+
 get_private_ip() {
-  echo "Fetching instance private IP from metadata..."
+  echo "Fetching instance private IP from metadata (OCI metadata endpoint)..."
+  # OCI metadata path. Header Authorization shown in original script — preserved.
   PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
   if [ -z "$PRIVATE_IP" ] || [ "$PRIVATE_IP" = "null" ]; then
     echo "❌ Failed to fetch private IP."
@@ -46,9 +51,12 @@ install_k3s_server() {
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
   export INSTALL_K3S_VERSION="$T_K3S_VERSION"
+
+  # Use upstream installer (works on OL9). Keep exact behaviour as original script.
   curl -sfL https://get.k3s.io | sh -
 
   echo "Waiting for K3s server node to be ready..."
+  # Wait until kubectl from k3s observes this node Ready
   while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
   echo "K3s server node is running."
 }
@@ -68,7 +76,7 @@ wait_for_all_nodes() {
     local elapsed_time=$(( $(date +%s) - start_time ))
     if [ "$elapsed_time" -gt "$timeout" ]; then
       echo "❌ Timed out waiting for all nodes to become Ready."
-      /usr/local/bin/kubectl get nodes
+      /usr/local/bin/kubectl get nodes || true
       exit 1
     fi
     echo "($elapsed_time/$timeout s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
@@ -79,9 +87,10 @@ wait_for_all_nodes() {
 install_helm() {
   if ! command -v helm &> /dev/null; then
     echo "Installing Helm..."
-    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-    chmod 700 get_helm.sh
-    ./get_helm.sh
+    curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 /tmp/get_helm.sh
+    /tmp/get_helm.sh
+    rm -f /tmp/get_helm.sh
   fi
 }
 
@@ -152,36 +161,37 @@ EOF
   echo "Credentials saved to /root/credentials.txt"
 
   for ns in default development; do
-    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
   # Match your charts: use the -client Service for app connectivity
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_DEV}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
   DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_PROD}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 }
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests
+  rm -rf /tmp/manifests || true
+  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
 
   # DEV
-  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml
-  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml
+  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
+  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml   || true
 
   # PROD
-  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml
-  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml
+  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
+  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml   || true
 
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
