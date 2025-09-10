@@ -23,6 +23,50 @@ install_base_tools() {
   apt-get install -y curl jq git || true
 }
 
+disable_firewalls() {
+  echo "Flushing and disabling firewalls (iptables and nftables)..."
+  # Flush iptables
+  if command -v iptables >/dev/null; then
+    sudo iptables -F
+    sudo iptables -X
+    sudo iptables -P INPUT ACCEPT
+    sudo iptables -P FORWARD ACCEPT
+    sudo iptables -P OUTPUT ACCEPT
+    echo "✅ iptables rules flushed and policies set to ACCEPT."
+  else
+    echo "iptables not installed."
+  fi
+  # Flush nftables
+  if command -v nft >/dev/null; then
+    sudo nft flush ruleset
+    echo "✅ nftables rules flushed."
+  else
+    echo "nftables not installed."
+  fi
+  # Disable services
+  if systemctl is-active --quiet nftables; then
+    sudo systemctl stop nftables
+    sudo systemctl disable nftables
+    echo "✅ nftables service stopped and disabled."
+  else
+    echo "nftables service not active."
+  fi
+  if systemctl is-active --quiet ufw; then
+    sudo ufw disable
+    echo "✅ ufw disabled."
+  else
+    echo "ufw not active."
+  fi
+  # Stop netfilter-persistent if present
+  if systemctl is-active --quiet netfilter-persistent; then
+    sudo systemctl stop netfilter-persistent
+    sudo systemctl disable netfilter-persistent
+    echo "✅ netfilter-persistent stopped and disabled."
+  else
+    echo "netfilter-persistent not active."
+  fi
+}}
+
 get_private_ip() {
   echo "Fetching instance private IP from metadata..."
   PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
@@ -36,9 +80,6 @@ get_private_ip() {
 install_k3s_server() {
   echo "Installing K3s server..."
   # Add nftables rule to allow traffic from the entire private subnet
-  # to the Kube API server on port 6443. This is dynamic and persistent.
-  echo "Adding nftables rule to allow traffic from private subnet CIDR: ${T_PRIVATE_SUBNET_CIDR}"
-  sudo nft add rule ip filter INPUT ip saddr "${T_PRIVATE_SUBNET_CIDR}" tcp dport 6443 ct state new,established accept
   # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
@@ -193,6 +234,7 @@ bootstrap_argocd_apps() {
 
 main() {
   install_base_tools
+  disable_firewalls
   get_private_ip
   install_k3s_server
   wait_for_all_nodes
