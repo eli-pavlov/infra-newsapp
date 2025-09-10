@@ -61,6 +61,37 @@ install_k3s_server() {
   echo "K3s server node is running."
 }
 
+wait_for_kubeconfig_and_api() {
+  echo "Waiting for kubeconfig and API to be fully ready..."
+  local timeout=120
+  local start_time
+  start_time=$(date +%s)
+  while true; do
+    # Check if kubeconfig exists
+    if [ ! -f /etc/rancher/k3s/k3s.yaml ]; then
+      echo "Waiting for kubeconfig file to be created..."
+      sleep 5
+      continue
+    fi
+    # Check if kubectl can access the API (basic connectivity)
+    if /usr/local/bin/kubectl get nodes 2>/dev/null | grep -q 'Ready'; then
+      # Additional check: ensure core components (etcd, scheduler, controller-manager) are ready
+      if /usr/local/bin/kubectl get pods -n kube-system 2>/dev/null | grep -qE '(etd|coredns|kube-proxy|kube-scheduler|kube-controller)'; then
+        echo "✅ Kubeconfig and API are ready."
+        break
+      fi
+    fi
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for kubeconfig and API readiness."
+      /usr/local/bin/kubectl cluster-info || true
+      exit 1
+    fi
+    echo "($elapsed_time/$timeout s) Waiting for kubeconfig and API readiness..."
+    sleep 5
+  done
+}
+
 wait_for_all_nodes() {
   echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
   local timeout=900
@@ -200,6 +231,7 @@ main() {
   install_base_tools
   get_private_ip
   install_k3s_server
+  wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
   install_ingress_nginx
