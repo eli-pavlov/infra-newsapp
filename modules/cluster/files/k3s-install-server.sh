@@ -36,7 +36,7 @@ systemctl disable firewalld --now || true
 get_private_ip() {
   log "Fetching instance private IP from metadata (OCI metadata endpoint)..."
   PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
-  if [ -z "${PRIVATE_IP:-}" ] || [ "$PRIVATE_IP" = "null" ]; then
+  if [ -z "$${PRIVATE_IP:-}" ] || [ "$${PRIVATE_IP}" = "null" ]; then
     log "❌ Failed to fetch private IP."
     exit 1
   fi
@@ -51,12 +51,12 @@ install_k3s_server() {
     --advertise-address $PRIVATE_IP \
     --disable traefik \
     --tls-san $PRIVATE_IP \
-    --tls-san $T_PRIVATE_LB_IP \
+    --tls-san ${T_PRIVATE_LB_IP} \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
   export INSTALL_K3S_EXEC="$PARAMS"
-  export K3S_TOKEN="$T_K3S_TOKEN"
-  export INSTALL_K3S_VERSION="$T_K3S_VERSION"
+  export K3S_TOKEN="${T_K3S_TOKEN}"
+  export INSTALL_K3S_VERSION="${T_K3S_VERSION}"
 
   # Use upstream installer (works on OL9). Keep exact behaviour as original script.
   curl -sfL https://get.k3s.io | sh -
@@ -124,8 +124,8 @@ wait_for_all_nodes() {
     local ready_nodes
     ready_nodes=$($KUBECTL --kubeconfig="$K3S_KUBECONFIG" get nodes --no-headers 2>/dev/null \
       | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
-    if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
-      log "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
+    if [ "$ready_nodes" -eq "${T_EXPECTED_NODE_COUNT}" ]; then
+      log "✅ All ${T_EXPECTED_NODE_COUNT} nodes are Ready. Proceeding."
       break
     fi
     local elapsed_time=$(( $(date +%s) - start_time ))
@@ -192,7 +192,6 @@ install_argo_cd() {
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" create namespace argocd --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
 
   # Apply upstream install (includes CRDs)
-  # Use curl + kubectl apply to avoid helm complexities; apply is idempotent
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
   # Wait for core argocd deployments/statefulset to appear (give CRDs time to register)
@@ -200,7 +199,6 @@ install_argo_cd() {
   local waited=0
   local sleep_step=5
   while true; do
-    # check if deployments/statefulset exist
     if $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get deploy argocd-server >/dev/null 2>&1 && \
        $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get statefulset argocd-application-controller >/dev/null 2>&1; then
       break
@@ -231,12 +229,10 @@ install_argo_cd() {
   ]' || true
 
   log "Waiting for Argo CD components to be ready..."
-  # Wait for deployments to become Available
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd wait --for=condition=Available deployments --all --timeout=10m || {
     log "Warning: not all ArgoCD deployments reported Available within timeout"
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd get pods -o wide || true
   }
-  # Wait for application controller statefulset rollout
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n argocd rollout status statefulset/argocd-application-controller --timeout=10m || {
     log "Warning: argocd-application-controller rollout status did not become ready within timeout"
   }
@@ -267,11 +263,11 @@ generate_secrets_and_credentials() {
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   log "Credentials saved to /root/credentials.txt"
@@ -280,16 +276,16 @@ EOF
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" create namespace "$ns" --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
     $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
   done
 
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_DEV}" \
     --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   $KUBECTL --kubeconfig="$K3S_KUBECONFIG" -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_PROD}" \
     --dry-run=client -o yaml | $KUBECTL --kubeconfig="$K3S_KUBECONFIG" apply -f - || true

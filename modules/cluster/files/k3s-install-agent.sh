@@ -1,179 +1,141 @@
 #!/bin/bash
+# K3s AGENT install script with role-aware setup.
+# - Application workers join normally.
+# - DB worker mounts the extra OCI paravirtualized block volume (no iSCSI/CSI),
+#   formats it if needed, and prepares /mnt/oci/db/dev and /mnt/oci/db/prod for Local PVs.
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1
 
-# --- Vars injected by Terraform ---
-T_K3S_VERSION="${T_K3S_VERSION:-}"
-T_K3S_TOKEN="${T_K3S_TOKEN:-}"
-T_K3S_SERVER="${T_K3S_SERVER:-}"   # e.g. "https://10.0.2.118:6443" or "10.0.2.118"
-T_WAIT_SERVER_SECONDS="${T_WAIT_SERVER_SECONDS:-600}"  # how long to wait for server TCP
-T_WAIT_JOIN_SECONDS="${T_WAIT_JOIN_SECONDS:-300}"     # how long to wait for agent join
-# optional node role/labels
-T_NODE_LABELS="${T_NODE_LABELS:-}"  # e.g. "role=application,env=dev"
-T_NODE_SELECTOR="${T_NODE_SELECTOR:-}" # use if you want to influence helm installs
+# --- Vars injected by Terraform (must match modules/cluster/nodes.tf) ---
+T_K3S_VERSION="${T_K3S_VERSION}"
+T_K3S_TOKEN="${T_K3S_TOKEN}"
+T_K3S_URL_IP="${T_K3S_URL_IP}"
+T_NODE_LABELS="${T_NODE_LABELS}"
+T_NODE_TAINTS="${T_NODE_TAINTS}"
 
-log() { echo "[$(date -Is)] $*"; }
+# --- Function to wait for the K3s server to be ready ---
+wait_for_server() {
+  local timeout=600 # 10 minutes
+  local start_time=$(date +%s)
 
-install_base_tools() {
-  log "Installing base packages (dnf)..."
-  dnf makecache --refresh -y || true
-  dnf install -y curl jq netcat-openbsd || true
-}
+  echo "Waiting for K3s server to be available at https://${T_K3S_URL_IP}:6443/ping..."
 
-disable_firewall() {
-  if systemctl is-enabled --quiet firewalld; then
-    log "Disabling firewalld"
-    systemctl disable --now firewalld || true
-  fi
-}
-
-get_private_ip() {
-  log "Fetching instance private IP from metadata (OCI metadata endpoint)..."
-  PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp' 2>/dev/null || true)
-  if [ -z "${PRIVATE_IP:-}" ] || [ "${PRIVATE_IP}" = "null" ]; then
-    log "❌ Failed to fetch private IP from metadata; falling back to ip route check"
-    PRIVATE_IP=$(ip -4 addr show scope global | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1 || true)
-  fi
-  if [ -z "${PRIVATE_IP:-}" ]; then
-    log "❌ Could not determine private IP. Exiting."
-    exit 1
-  fi
-  log "✅ Instance private IP is ${PRIVATE_IP}"
-}
-
-wait_for_server_api_tcp() {
-  # Accept T_K3S_SERVER in several forms: "https://ip:6443", "ip", or "ip:6443"
-  if [ -z "${T_K3S_SERVER}" ]; then
-    log "T_K3S_SERVER not provided - cannot continue."
-    exit 1
-  fi
-
-  # Normalise host:port
-  SERVER_HOST="${T_K3S_SERVER#https://}"
-  SERVER_HOST="${SERVER_HOST#http://}"
-  SERVER_HOST="${SERVER_HOST%%/*}"   # remove any trailing path
-  if [[ "$SERVER_HOST" != *:* ]]; then
-    SERVER_HOST="${SERVER_HOST}:6443"
-  fi
-  SERVER_IP="${SERVER_HOST%%:*}"
-  SERVER_PORT="${SERVER_HOST##*:}"
-
-  log "Waiting up to ${T_WAIT_SERVER_SECONDS}s for control-plane TCP ${SERVER_IP}:${SERVER_PORT}..."
-
-  local start now
-  start=$(date +%s)
   while true; do
-    if nc -z -w 3 "$SERVER_IP" "$SERVER_PORT"; then
-      log "✅ Control-plane TCP ${SERVER_IP}:${SERVER_PORT} is reachable"
+    # The -k flag is necessary because the server uses a self-signed cert initially.
+    # This now uses the Terraform variable directly to avoid templating conflicts.
+    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_K3S_URL_IP}:6443/ping"; then
+      echo "✅ K3s server is responsive. Proceeding with agent installation."
       break
     fi
-    now=$(date +%s)
-    if [ $((now - start)) -ge "$T_WAIT_SERVER_SECONDS" ]; then
-      log "❌ Timed out waiting for control-plane TCP ${SERVER_IP}:${SERVER_PORT} after ${T_WAIT_SERVER_SECONDS}s"
+
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for K3s server."
       exit 1
     fi
-    sleep 5
+
+    echo "($elapsed_time/$timeout s) Server not ready yet, waiting 10 seconds..."
+    sleep 10
   done
+}
+
+install_base_tools() {
+  echo "Installing base packages (dnf: jq, e2fsprogs, util-linux, curl)..."
+  # Refresh metadata then install packages (keeping behaviour minimal/explicit)
+  dnf makecache --refresh -y || true
+  dnf install -y jq e2fsprogs util-linux curl || true
+}
+
+systemctl disable firewalld --now
+
+setup_local_db_volume() {
+  # Only on the DB node (role=database)
+  echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
+
+  echo "Preparing local block volume for DB (paravirtualized attach)..."
+  # Check for Oracle Linux device naming first
+  DEV="$(ls /dev/oracleoci/oraclevd[b-z] 2>/dev/null | head -n1 || true)"
+  # Fallback to standard Linux device naming if no Oracle Linux device found
+  if [ -z "$DEV" ]; then
+    DEV="$(ls /dev/sd[b-z] /dev/nvme*n* 2>/dev/null | head -n1 || true)"
+  fi
+  
+  if [ -z "$DEV" ]; then
+    echo "⚠️  No extra OCI volume found; DB will fall back to ephemeral root disk."
+    return 0
+  fi
+
+  echo "Detected extra volume: $DEV"
+  if ! blkid "$DEV" >/dev/null 2>&1; then
+    echo "No filesystem on $DEV; creating ext4..."
+    mkfs.ext4 -F "$DEV"
+  else
+    echo "Filesystem already present on $DEV; leaving as-is."
+  fi
+
+  UUID="$(blkid -s UUID -o value "$DEV")"
+
+  # Ensure mountpoint exists BEFORE mounting
+  mkdir -p /mnt/oci/db
+
+  # Ensure fstab entry exists (mount at boot)
+  if ! grep -q "$UUID" /etc/fstab; then
+    echo "UUID=$UUID /mnt/oci/db ext4 defaults,noatime 0 2" >> /etc/fstab
+  fi
+
+  echo "Mounting all filesystems from /etc/fstab..."
+  mount -a
+
+  # Create dev and prod PV paths; Postgres runs as uid/gid 999 in the chart defaults
+  mkdir -p /mnt/oci/db/dev /mnt/oci/db/prod
+  chown -R 999:999 /mnt/oci/db/dev /mnt/oci/db/prod
+  chmod -R 700 /mnt/oci/db/dev /mnt/oci/db/prod
+
+  # Verify directories exist and have correct ownership
+  for path in /mnt/oci/db/dev /mnt/oci/db/prod; do
+    if [ ! -d "$path" ]; then
+      echo "Error: $path does not exist"
+      exit 1
+    fi
+    if [ "$(stat -c %u:%g "$path")" != "999:999" ]; then
+      echo "Error: $path has incorrect ownership (expected 999:999)"
+      exit 1
+    fi
+  done
+
+  # Migrate existing data from /mnt/oci/db/postgres if it exists
+  if [ -d /mnt/oci/db/postgres ] && [ "$(ls -A /mnt/oci/db/postgres)" ]; then
+    echo "Found existing data in /mnt/oci/db/postgres; migrating to /mnt/oci/db/dev..."
+    cp -r /mnt/oci/db/postgres/. /mnt/oci/db/dev/
+    echo "Data migrated to /mnt/oci/db/dev; removing old /mnt/oci/db/postgres..."
+    rm -rf /mnt/oci/db/postgres
+  fi
+
+  echo "✅ DB volume ready at /mnt/oci/db (PV paths: /mnt/oci/db/dev, /mnt/oci/db/prod)."
 }
 
 install_k3s_agent() {
-  log "Installing K3s agent..."
+  echo "Joining K3s cluster at https://${T_K3S_URL_IP}:6443"
+
+  local params="--node-label ${T_NODE_LABELS}"
+  if [[ -n "$T_NODE_TAINTS" ]]; then
+    params="$params --node-taint ${T_NODE_TAINTS}"
+  fi
+
+  export K3S_URL="https://${T_K3S_URL_IP}:6443"
   export K3S_TOKEN="$T_K3S_TOKEN"
-  # K3S_URL expects scheme host:port
-  if [[ "${T_K3S_SERVER}" == https://* ]] || [[ "${T_K3S_SERVER}" == http://* ]]; then
-    export K3S_URL="${T_K3S_SERVER}"
-  else
-    export K3S_URL="https://${T_K3S_SERVER}"
-  fi
+  export INSTALL_K3S_VERSION="$T_K3S_VERSION"
+  export INSTALL_K3S_EXEC="$params"
 
-  # Node-level params: node-ip, advertise-address optional
-  local PARAMS="--node-ip ${PRIVATE_IP} --kubelet-arg=rotate-server-cert=true"
-  # If you want the agent to run workloads on control-plane in single-node setups,
-  # remove node taints on server script instead; here we keep agent default behavior.
-  export INSTALL_K3S_EXEC="${PARAMS}"
-
-  # Set version if provided
-  if [ -n "${T_K3S_VERSION}" ]; then
-    export INSTALL_K3S_VERSION="${T_K3S_VERSION}"
-  fi
-
-  # Run upstream installer (idempotent)
-  curl -sfL https://get.k3s.io | sh - || {
-    log "❌ k3s installer failed. Check /var/log/cloud-init-output.log and /var/log/messages"
-    exit 1
-  }
-
-  log "k3s-agent install invoked. Waiting for k3s-agent service to be active..."
-  local start now
-  start=$(date +%s)
-  while true; do
-    if systemctl is-active --quiet k3s-agent; then
-      log "✅ k3s-agent service is active"
-      break
-    fi
-    now=$(date +%s)
-    if [ $((now - start)) -ge "$T_WAIT_JOIN_SECONDS" ]; then
-      log "❌ Timed out waiting for k3s-agent service to become active after ${T_WAIT_JOIN_SECONDS}s"
-      journalctl -u k3s-agent -n 200 --no-pager || true
-      exit 1
-    fi
-    sleep 3
-  done
-
-  # Wait for agent kubelet kubeconfig to exist as a sign the agent completed registration steps
-  AGENT_CONFIG=/var/lib/rancher/k3s/agent/kubelet.kubeconfig
-  start=$(date +%s)
-  log "Waiting up to ${T_WAIT_JOIN_SECONDS}s for ${AGENT_CONFIG} to appear (agent joined)..."
-  while true; do
-    if [ -s "${AGENT_CONFIG}" ]; then
-      log "✅ Agent kubelet kubeconfig present: ${AGENT_CONFIG}"
-      break
-    fi
-    now=$(date +%s)
-    if [ $((now - start)) -ge "$T_WAIT_JOIN_SECONDS" ]; then
-      log "❌ Timed out waiting for agent kubelet kubeconfig to appear"
-      journalctl -u k3s-agent -n 200 --no-pager || true
-      exit 1
-    fi
-    sleep 3
-  done
-
-  log "Agent installation & basic join checks passed."
-}
-
-post_join_labeling() {
-  # Optional: label the node once joined. This requires kubectl on the node that can talk to the cluster.
-  # k3s provides kubectl as a wrapper. We will attempt to use it; if it's not appropriate for your setup,
-  # remove or replace with a server-side process.
-  if [ -n "${T_NODE_LABELS}" ]; then
-    log "Applying node labels: ${T_NODE_LABELS}"
-    # kubectl available via symlink to k3s binary
-    KUBECTL_BIN="/usr/local/bin/kubectl"
-    if [ -x "${KUBECTL_BIN}" ]; then
-      # label the local node
-      local node_name
-      node_name=$(hostname)
-      IFS=',' read -ra pairs <<< "$T_NODE_LABELS"
-      for p in "${pairs[@]}"; do
-        key=${p%%=*}
-        val=${p#*=}
-        log "Labeling node ${node_name} ${key}=${val} (non-fatal)"
-        ${KUBECTL_BIN} label node "${node_name}" "${key}=${val}" --overwrite=true || true
-      done
-    else
-      log "kubectl not present; skipping node labeling"
-    fi
-  fi
+  curl -sfL https://get.k3s.io | sh -
+  echo "✅ K3s agent setup complete with params: $params"
 }
 
 main() {
   install_base_tools
-  disable_firewall
-  get_private_ip
-  wait_for_server_api_tcp
+  wait_for_server
+  setup_local_db_volume
   install_k3s_agent
-  post_join_labeling
-  log "Agent setup complete."
 }
 
 main "$@"
