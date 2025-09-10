@@ -10,20 +10,43 @@ data "cloudinit_config" "k3s_server_tpl" {
   gzip          = true
   base64_encode = true
 
+  # --- raw server install script: use file() because this is a plain bash script
   part {
     content_type = "text/x-shellscript"
-    content = templatefile("${path.module}/files/k3s-install-server.sh", {
-      T_K3S_VERSION          = var.k3s_version,
-      T_K3S_TOKEN            = random_password.k3s_token.result,
-      T_DB_USER              = var.db_user,
-      T_DB_NAME_DEV          = var.db_name_dev,
-      T_DB_NAME_PROD         = var.db_name_prod,
-      T_DB_SERVICE_NAME_DEV  = var.db_service_name_dev,
-      T_DB_SERVICE_NAME_PROD = var.db_service_name_prod,
-      T_MANIFESTS_REPO_URL   = var.manifests_repo_url,
-      T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
+    filename     = "/tmp/k3s-install-server.sh"
+    content      = file("${path.module}/files/k3s-install-server.sh")
+  }
+
+  # --- templated config: inject only the variables needed by the script
+  part {
+    content_type = "text/x-shellscript"
+    filename     = "/tmp/k3s-server-config.sh"
+    content = templatefile("${path.module}/files/k3s-server-config.sh.tftpl", {
+      T_K3S_VERSION          = var.k3s_version
+      T_K3S_TOKEN            = random_password.k3s_token.result
+      T_DB_USER              = var.db_user
+      T_DB_NAME_DEV          = var.db_name_dev
+      T_DB_NAME_PROD         = var.db_name_prod
+      T_DB_SERVICE_NAME_DEV  = var.db_service_name_dev
+      T_DB_SERVICE_NAME_PROD = var.db_service_name_prod
+      T_MANIFESTS_REPO_URL   = var.manifests_repo_url
+      # templatefile() expects strings for interpolation -> convert numeric count to string
+      T_EXPECTED_NODE_COUNT  = tostring(local.expected_total_node_count)
       T_PRIVATE_LB_IP        = var.private_lb_ip_address
     })
+  }
+
+  # final part: small wrapper to source the config and run the main script
+  part {
+    content_type = "text/x-shellscript"
+    content = <<EOT
+#!/bin/bash
+# Source the generated config file to populate environment variables
+source /tmp/k3s-server-config.sh
+
+# Execute the main server install script
+/tmp/k3s-install-server.sh
+EOT
   }
 }
 
