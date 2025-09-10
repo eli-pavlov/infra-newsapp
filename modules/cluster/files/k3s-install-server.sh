@@ -34,7 +34,6 @@ get_private_ip() {
 
 install_k3s_server() {
   echo "Installing K3s server..."
-  # Add nftables rule to allow traffic from the entire private subnet
   # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
