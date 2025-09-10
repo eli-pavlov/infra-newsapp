@@ -59,8 +59,6 @@ install_k3s_server() {
   # Wait until kubectl from k3s observes this node Ready
   while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
   echo "K3s server node is running."
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  log "Exported KUBECONFIG=${KUBECONFIG}"
 }
 
 wait_for_all_nodes() {
