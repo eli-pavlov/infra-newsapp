@@ -1,5 +1,3 @@
-# dns.tf
-
 # Define variables for Cloudflare credentials
 variable "cloudflare_api_token" {
   description = "Cloudflare API Token for managing DNS."
@@ -11,11 +9,6 @@ variable "cloudflare_zone_id" {
   description = "Cloudflare Zone ID for the domain."
   type        = string
   sensitive   = true
-}
-
-# Configure the Cloudflare provider
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
 }
 
 # Create A record for argocd.weblightenment.com
