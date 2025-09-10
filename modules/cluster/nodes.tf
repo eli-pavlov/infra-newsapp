@@ -12,8 +12,11 @@ resource "oci_core_instance" "control_plane" {
   }
 
   create_vnic_details {
-    subnet_id        = var.private_subnet_id
-    assign_public_ip = false
+    # --- TEMPORARY CHANGE FOR PUBLIC IP ---
+    # subnet_id        = var.private_subnet_id
+    subnet_id        = var.public_subnet_id
+    assign_public_ip = true
+    # --- END TEMPORARY CHANGE ---
     nsg_ids          = [var.control_plane_nsg_id]
   }
 
@@ -44,8 +47,11 @@ resource "oci_core_instance" "app_workers" {
   }
 
   create_vnic_details {
-    subnet_id        = var.private_subnet_id
-    assign_public_ip = false
+    # --- TEMPORARY CHANGE FOR PUBLIC IP ---
+    # subnet_id        = var.private_subnet_id
+    subnet_id        = var.public_subnet_id
+    assign_public_ip = true
+    # --- END TEMPORARY CHANGE ---
     nsg_ids          = [var.workers_nsg_id]
   }
 
@@ -87,8 +93,13 @@ resource "oci_core_instance" "db_worker" {
   }
 
   create_vnic_details {
-    subnet_id        = var.private_subnet_id
-    assign_public_ip = false
+    # --- TEMPORARY CHANGE FOR PUBLIC IP ---
+    # 1. Comment out the private subnet line
+    # subnet_id        = var.private_subnet_id
+    # 2. Uncomment/add the public subnet line and assign_public_ip
+    subnet_id        = var.public_subnet_id
+    assign_public_ip = true
+    # --- END TEMPORARY CHANGE ---
     nsg_ids          = [var.workers_nsg_id]
   }
 
@@ -109,6 +120,9 @@ resource "oci_core_instance" "db_worker" {
       })
     )
   }
+
+
+
 
   depends_on = [
     oci_core_instance.control_plane,
