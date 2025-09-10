@@ -5,20 +5,14 @@ resource "random_password" "k3s_token" {
 }
 
 # =================== CONTROL-PLANE cloud-init ===================
+# Render a single, self-contained server script with all required values injected
 data "cloudinit_config" "k3s_server_tpl" {
   gzip          = true
   base64_encode = true
 
   part {
     content_type = "text/x-shellscript"
-    filename     = "/tmp/k3s-install-server.sh" # Specify a filename for the script on the VM
-    content      = file("${path.module}/files/k3s-install-server.sh") # Use file() for raw content
-  }
-
-  part {
-    content_type = "text/x-shellscript" # It's a shell script, meant to be sourced
-    filename     = "/tmp/k3s-server-config.sh" # Name of the generated config file on the VM
-    content = templatefile("${path.module}/files/k3s-server-config.sh.tftpl", {
+    content = templatefile("${path.module}/files/k3s-install-server.sh", {
       T_K3S_VERSION          = var.k3s_version,
       T_K3S_TOKEN            = random_password.k3s_token.result,
       T_DB_USER              = var.db_user,
@@ -30,21 +24,6 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
       T_PRIVATE_LB_IP        = var.private_lb_ip_address
     })
-  }
-
-  # Ensure the main script is executed. Cloud-init executes parts in order.
-  # The last part should call the main script. Or, create a final script.
-  # Let's add a final script to source the config and run the main script.
-  part {
-    content_type = "text/x-shellscript"
-    content = <<EOT
-#!/bin/bash
-# Source the generated config file
-source /tmp/k3s-server-config.sh
-
-# Now execute the main installation script
-/tmp/k3s-install-server.sh
-EOT
   }
 }
 

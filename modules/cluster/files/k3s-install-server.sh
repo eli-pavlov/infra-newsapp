@@ -4,9 +4,17 @@
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# --- Vars provided by k3s-server-config.sh (sourced by cloud-init wrapper) ---
-# T_K3S_VERSION, T_K3S_TOKEN, T_DB_USER, etc. are now available as environment variables.
-# No need for the explicit 'VAR="VAR"' declarations here.
+# ---- Terraform-injected values (rendered via templatefile) ----
+T_K3S_VERSION="${T_K3S_VERSION}"
+T_K3S_TOKEN="${T_K3S_TOKEN}"
+T_DB_USER="${T_DB_USER}"
+T_DB_NAME_DEV="${T_DB_NAME_DEV}"
+T_DB_NAME_PROD="${T_DB_NAME_PROD}"
+T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
+T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
+T_MANIFESTS_REPO_URL="${T_MANIFACTS_REPO_URL:-${T_MANIFESTS_REPO_URL}}"  # tolerate old var name if present
+T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
+T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
 install_base_tools() {
   echo "Installing base packages..."
@@ -18,12 +26,12 @@ get_private_ip() {
   echo "Fetching instance private IP..."
   # Try OCI metadata first
   PRIVATE_IP="$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ \
-    | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')" || true
+    | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' || true)"
   # Fallback via routing table
-  if [ -z "${PRIVATE_IP:-}" ]; then # This is now pure bash syntax, no Terraform issues
-    PRIVATE_IP="$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+  if [ -z "${PRIVATE_IP:-}" ]; then
+    PRIVATE_IP="$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)"
   fi
-  if [ -z "${PRIVATE_IP:-}" ]; then # This is now pure bash syntax, no Terraform issues
+  if [ -z "${PRIVATE_IP:-}" ]; then
     echo "❌ Failed to determine private IP."
     exit 1
   fi
@@ -33,18 +41,19 @@ get_private_ip() {
 install_k3s_server() {
   echo "Installing K3s server..."
 
+  # Make sure nothing blocks k3s ports
   systemctl disable --now firewalld 2>/dev/null || true
   ufw disable 2>/dev/null || true
 
   # k3s server flags (explicit binds + SANs)
   local PARAMS="--write-kubeconfig-mode 644 \
-    --node-ip \"$PRIVATE_IP\" \
-    --advertise-address \"$PRIVATE_IP\" \
+    --node-ip $PRIVATE_IP \
+    --advertise-address $PRIVATE_IP \
     --disable traefik \
-    --tls-san \"$PRIVATE_IP\" \
-    --tls-san \"$T_PRIVATE_LB_IP\" \
+    --tls-san $PRIVATE_IP \
+    --tls-san $T_PRIVATE_LB_IP \
     --kube-apiserver-arg=bind-address=0.0.0.0 \
-    --kube-apiserver-arg=advertise-address=\"$PRIVATE_IP\" \
+    --kube-apiserver-arg=advertise-address=$PRIVATE_IP \
     --https-listen-port=6443 \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
@@ -55,17 +64,22 @@ install_k3s_server() {
 
   echo "Waiting for K3s server node to be Ready..."
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  until /usr/local/bin/kubectl get node "$PRIVATE_IP" 2>/dev/null | grep -q ' Ready'; do
-    echo "Waiting for node $PRIVATE_IP to be Ready..."
+  # Consider the node ready when at least one node reports Ready
+  until /usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
+      | awk '{print $2}' | grep -Eq '^Ready(,SchedulingDisabled)?$'; do
+    echo "Waiting for a Ready control-plane node..."
     sleep 5
   done
   echo "✅ K3s server node is Ready."
 
-  echo "Probing local API..."
+  echo "Probing API endpoints for health..."
   set +e
-  curl -k --connect-timeout 5 -sS "https://127.0.0.1:6443/healthz" && echo "Local API healthz: OK" || echo "⚠️ local /healthz probe failed"
-  curl -k --connect-timeout 5 -sS "https://$PRIVATE_IP:6443/healthz" && echo "Private IP API healthz: OK" || echo "⚠️ $PRIVATE_IP /healthz probe failed"
-  curl -k --connect-timeout 5 -sS "https://$T_PRIVATE_LB_IP:6443/ping" && echo "LB API ping: OK" || echo "⚠️ LB /ping probe failed (OK until LB backends attach and propagate)"
+  # Local apiserver
+  curl -k --connect-timeout 5 -sS "https://127.0.0.1:6443/healthz" && echo "Local API /healthz: OK" || echo "⚠️ Local /healthz probe failed"
+  # Node IP
+  curl -k --connect-timeout 5 -sS "https://$PRIVATE_IP:6443/healthz" && echo "Node IP /healthz: OK" || echo "⚠️ $PRIVATE_IP /healthz probe failed"
+  # Private LB IP (will return once backends attach and healthchecks pass)
+  curl -k --connect-timeout 5 -sS "https://$T_PRIVATE_LB_IP:6443/healthz" && echo "Private LB /healthz: OK" || echo "⚠️ Private LB /healthz probe failed (may be OK until backends register)"
   set -e
 }
 
@@ -98,7 +112,7 @@ install_helm() {
     curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
     chmod 700 get_helm.sh
     ./get_helm.sh
-    rm get_helm.sh # Clean up the script after use
+    rm get_helm.sh
   fi
 }
 
@@ -132,7 +146,8 @@ install_argo_cd() {
   if ! /usr/local/bin/kubectl get namespace argocd &> /dev/null; then
     /usr/local/bin/kubectl create namespace argocd
   fi
-  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --wait=true --timeout=5m
+  # 'kubectl apply' does not support --wait/--timeout; remove those flags to avoid hard errors
+  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
   local tolerations_json='[
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
@@ -145,7 +160,7 @@ install_argo_cd() {
   done
   /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p="${tolerations_json}" || true
 
-  echo "Waiting for Argo CD components to be ready..."
+  echo "Waiting for Argo CD components to be available..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-server --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-repo-server --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-dex-server --timeout=5m || true
@@ -201,21 +216,4 @@ bootstrap_argocd_apps() {
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml --server-side || true
   [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml --server-side || true
   [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml --server-side || true
-  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml --server-side || true
-
-  echo "Argo CD applications applied."
-}
-
-main() {
-  install_base_tools
-  get_private_ip
-  install_k3s_server
-  wait_for_all_nodes
-  install_helm
-  install_ingress_nginx
-  install_argo_cd
-  generate_secrets_and_credentials
-  bootstrap_argocd_apps
-}
-
-main "$@"
+  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml --server-side
