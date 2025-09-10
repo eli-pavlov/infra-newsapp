@@ -25,14 +25,14 @@ install_base_tools() {
 get_private_ip() {
   echo "Fetching instance private IP..."
   # Try OCI metadata first
-  # Using "$(" for command substitution rather than ` which is deprecated
-  PRIVATE_IP="$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ \
-    | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')" || true # Added quotes for robustness
+  # The jq filter and regex can confuse Terraform's template parser.
+  # We use %{literal} %{endliteral} to tell Terraform to leave these parts alone.
+  PRIVATE_IP="$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ %{literal} | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')%{endliteral}" || true
   # Fallback via routing table
-  if [ -z "${PRIVATE_IP:-}" ]; then # Corrected $$ to ${ for parameter expansion
-    PRIVATE_IP="$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')" # Added quotes
+  if [ -z "${PRIVATE_IP:-}" ]; then
+    PRIVATE_IP="$(ip -4 route get 1.1.1.1 %{literal} | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')%{endliteral}"
   fi
-  if [ -z "${PRIVATE_IP:-}" ]; then # Corrected $$ to ${ for parameter expansion
+  if [ -z "${PRIVATE_IP:-}" ]; then
     echo "❌ Failed to determine private IP."
     exit 1
   fi
@@ -42,13 +42,11 @@ get_private_ip() {
 install_k3s_server() {
   echo "Installing K3s server..."
 
-  # Be explicit and permissive for host firewalls (Ubuntu/OL)
-  # Consider 'sudo systemctl stop firewalld' if it's enabled by default on OL for example
-  systemctl disable --now firewalld 2>/dev/null || true # Ubuntu does not use firewalld by default
-  ufw disable 2>/dev/null || true # Ensure UFW is disabled on Ubuntu
+  systemctl disable --now firewalld 2>/dev/null || true
+  ufw disable 2>/dev/null || true
 
   # k3s server flags (explicit binds + SANs)
-  # Corrected $$ to $ for variable expansion
+  # Corrected $$ to $ for bash variable expansion
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip \"$PRIVATE_IP\" \
     --advertise-address \"$PRIVATE_IP\" \
@@ -66,7 +64,6 @@ install_k3s_server() {
   curl -sfL https://get.k3s.io | sh -
 
   echo "Waiting for K3s server node to be Ready..."
-  # Use the dynamically determined PRIVATE_IP for kubeconfig context for robustness
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   until /usr/local/bin/kubectl get node "$PRIVATE_IP" 2>/dev/null | grep -q ' Ready'; do
     echo "Waiting for node $PRIVATE_IP to be Ready..."
@@ -75,12 +72,11 @@ install_k3s_server() {
   echo "✅ K3s server node is Ready."
 
   echo "Probing local API..."
-  set +e # Temporarily disable exit on error for probes
+  set +e
   curl -k --connect-timeout 5 -sS "https://127.0.0.1:6443/healthz" && echo "Local API healthz: OK" || echo "⚠️ local /healthz probe failed"
   curl -k --connect-timeout 5 -sS "https://$PRIVATE_IP:6443/healthz" && echo "Private IP API healthz: OK" || echo "⚠️ $PRIVATE_IP /healthz probe failed"
-  # Note: LB /ping may still fail if LB backend is not yet reported healthy, which is expected
   curl -k --connect-timeout 5 -sS "https://$T_PRIVATE_LB_IP:6443/ping" && echo "LB API ping: OK" || echo "⚠️ LB /ping probe failed (OK until LB backends attach and propagate)"
-  set -e # Re-enable exit on error
+  set -e
 }
 
 wait_for_all_nodes() {
@@ -90,7 +86,7 @@ wait_for_all_nodes() {
   while true; do
     local ready_nodes
     ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
-      | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
+      %{literal} | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)%{endliteral}
     if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
       echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break
@@ -118,10 +114,9 @@ install_helm() {
 
 install_ingress_nginx() {
   echo "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
-  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true # Add || true for idempotency
+  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
   helm repo update
 
-  # Check if namespace exists before creating
   if ! /usr/local/bin/kubectl get namespace ingress-nginx &> /dev/null; then
     /usr/local/bin/kubectl create namespace ingress-nginx
   fi
@@ -136,7 +131,7 @@ install_ingress_nginx() {
     --set controller.nodeSelector.role=application \
     --set controller.ingressClassResource.name=nginx \
     --set controller.ingressClassByName=true \
-    --wait --timeout=5m # Add wait and timeout for robustness
+    --wait --timeout=5m
 
   echo "Waiting for ingress-nginx controller rollout..."
   /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m || true
@@ -147,25 +142,22 @@ install_argo_cd() {
   if ! /usr/local/bin/kubectl get namespace argocd &> /dev/null; then
     /usr/local/bin/kubectl create namespace argocd
   fi
-  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --wait=true --timeout=5m # Added wait/timeout
+  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --wait=true --timeout=5m
 
-  # Tolerations for control plane to allow Argo CD pods to run there if needed
-  # These are idempotent due to '|| true'
   for d in argocd-server argocd-repo-server argocd-dex-server; do
-    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[
+    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[ %{literal}
       {"op":"add","path":"/spec/template/spec/tolerations","value":[
         {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
       ]}
-    ]' || true
+    ]'%{endliteral}' || true
   done
-  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[
+  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[ %{literal}
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
       {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
     ]}
-  ]' || true
+  ]'%{endliteral}' || true
 
   echo "Waiting for Argo CD components to be ready..."
-  # Use wait for specific resources, deployments, and statefulsets
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-server --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-repo-server --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-dex-server --timeout=5m || true
@@ -175,7 +167,6 @@ install_argo_cd() {
 generate_secrets_and_credentials() {
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-  # Corrected $$ to $ for variable expansion
   ARGO_PASSWORD="$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || true)"
 
   cat << EOF > /root/credentials.txt
@@ -191,24 +182,20 @@ EOF
   echo "Credentials saved to /root/credentials.txt"
 
   for ns in default development; do
-    # Check if namespace exists before creating to prevent errors on re-run
     if ! /usr/local/bin/kubectl get namespace "$ns" &> /dev/null; then
       /usr/local/bin/kubectl create namespace "$ns"
     fi
-    # Use create or replace for secrets for idempotency (apply -f -)
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
       --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
   done
 
-  # Corrected $$ to $ for variable expansion
   DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_DEV}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
-  # Corrected $$ to $ for variable expansion
   DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_PROD}" \
@@ -217,17 +204,12 @@ EOF
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  # Clone only if not already cloned (e.g., if re-running part of the script)
   if [ ! -d "/tmp/manifests" ]; then
     git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests
   else
     echo "Manifests directory /tmp/manifests already exists. Skipping clone."
-    # Optionally: git pull --rebase origin main for updates
   fi
 
-  # Apply YAML files if they exist
-  # Use --server-side to reduce client-side overhead and better handle updates
-  # Use || true for idempotency in case file is missing
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml --server-side || true
   [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml --server-side || true
   [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml --server-side || true
