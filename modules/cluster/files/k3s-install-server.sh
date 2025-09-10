@@ -32,55 +32,8 @@ get_private_ip() {
   echo "✅ Instance private IP is $PRIVATE_IP"
 }
 
-
-TEMP_RULE_ADDED=0
-add_temp_healthcheck_rule() {
-  if [ -z "${T_PRIVATE_LB_IP:-}" ]; then
-    return 0
-  fi
-
-  if command -v nft >/dev/null 2>&1; then
-    if ! sudo nft list ruleset | grep -q "healthcheck-accept-6443"; then
-      echo "Adding temporary nftables rule to accept LB healthchecks from ${T_PRIVATE_LB_IP} -> 6443"
-      sudo nft add table inet healthcheck 2>/dev/null || true
-      sudo nft 'add chain inet healthcheck input { type filter hook input priority 0 ; }' 2>/dev/null || true
-      sudo nft add rule inet healthcheck input ip saddr ${T_PRIVATE_LB_IP} tcp dport 6443 counter accept comment "healthcheck-accept-6443" 2>/dev/null || true
-      TEMP_RULE_ADDED=1
-    fi
-  else
-    if ! sudo iptables -C INPUT -p tcp -s "${T_PRIVATE_LB_IP}" --dport 6443 -m comment --comment "healthcheck-accept-6443" -j ACCEPT >/dev/null 2>&1; then
-      echo "Adding temporary iptables rule to accept LB healthchecks from ${T_PRIVATE_LB_IP} -> 6443"
-      sudo iptables -I INPUT -p tcp -s "${T_PRIVATE_LB_IP}" --dport 6443 -m comment --comment "healthcheck-accept-6443" -j ACCEPT || true
-      TEMP_RULE_ADDED=1
-    fi
-  fi
-}
-
-remove_temp_healthcheck_rule() {
-  if [ "$TEMP_RULE_ADDED" -ne 1 ]; then
-    return 0
-  fi
-
-  echo "Removing temporary healthcheck rule."
-  if command -v nft >/dev/null 2>&1; then
-    sudo nft remove rule inet healthcheck input handle $(sudo nft list chain inet healthcheck input 2>/dev/null | nl -ba | sed -n '/healthcheck-accept-6443/ s/^\s*\([0-9]\+\).*/\1/p' || true) >/dev/null 2>&1 || true
-    sudo nft list chain inet healthcheck input >/dev/null 2>&1 || sudo nft delete table inet healthcheck >/dev/null 2>&1 || true
-  else
-    sudo iptables -D INPUT -p tcp -s "${T_PRIVATE_LB_IP}" --dport 6443 -m comment --comment "healthcheck-accept-6443" -j ACCEPT >/dev/null 2>&1 || true
-  fi
-  TEMP_RULE_ADDED=0
-}
-
 install_k3s_server() {
   echo "Installing K3s server..."
-
-  # Determine private interface to use for Flannel (route to the private LB IP)
-  PRIVATE_IFACE=$(ip -4 route get "${T_PRIVATE_LB_IP:-8.8.8.8}" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}' || true)
-  if [ -z "$PRIVATE_IFACE" ]; then
-    PRIVATE_IFACE=$(ip -4 -o addr show scope global | awk '{print $2; exit}' || true)
-  fi
-  echo "Detected flannel interface: ${PRIVATE_IFACE}"
-
   # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
@@ -89,9 +42,6 @@ install_k3s_server() {
     --tls-san $PRIVATE_IP \
     --tls-san $T_PRIVATE_LB_IP \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
-  if [ -n "$PRIVATE_IFACE" ]; then
-    PARAMS="$PARAMS --flannel-iface=$PRIVATE_IFACE"
-  fi
 
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
