@@ -1,22 +1,3 @@
-# main.tf
-
-terraform {
-  required_providers {
-    oci = {
-      source  = "oracle/oci"
-      version = "~> 7.17.0"
-    }
-    cloudinit = {
-      source  = "hashicorp/cloudinit"
-      version = "~> 2.3"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.5"
-    }
-  }
-}
-
 data "oci_objectstorage_object" "ssh_public_key" {
   namespace = var.os_namespace
   bucket    = var.tf_state_bucket
