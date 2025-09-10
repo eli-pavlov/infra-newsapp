@@ -1,0 +1,13 @@
+#!/bin/bash
+# This file is sourced by k3s-install-server.sh to provide Terraform-injected variables.
+
+export T_K3S_VERSION="${T_K3S_VERSION}"
+export T_K3S_TOKEN="${T_K3S_TOKEN}"
+export T_DB_USER="${T_DB_USER}"
+export T_DB_NAME_DEV="${T_DB_NAME_DEV}"
+export T_DB_NAME_PROD="${T_DB_NAME_PROD}"
+export T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
+export T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
+export T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+export T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
+export T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"

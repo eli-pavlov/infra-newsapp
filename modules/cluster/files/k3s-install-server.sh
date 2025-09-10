@@ -4,22 +4,9 @@
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# --- Vars injected by Terraform ---
-T_K3S_VERSION="${T_K3S_VERSION}"
-T_K3S_TOKEN="${T_K3S_TOKEN}"
-T_DB_USER="${T_DB_USER}"
-T_DB_NAME_DEV="${T_DB_NAME_DEV}"
-T_DB_NAME_PROD="${T_DB_NAME_PROD}"
-T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
-T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
-T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
-T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
-T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}" # This will be the load balancer's private IP
-
-# Variables for problematic commands, injected by Terraform
-K3S_GET_PRIVATE_IP_COMMAND="${K3S_GET_PRIVATE_IP_COMMAND}"
-IP_ROUTE_AWK_COMMAND="${IP_ROUTE_AWK_COMMAND}"
-KUBECTL_GET_NODES_FILTER="${KUBECTL_GET_NODES_FILTER}"
+# --- Vars provided by k3s-server-config.sh (sourced by cloud-init wrapper) ---
+# T_K3S_VERSION, T_K3S_TOKEN, T_DB_USER, etc. are now available as environment variables.
+# No need for the explicit 'VAR="VAR"' declarations here.
 
 install_base_tools() {
   echo "Installing base packages..."
@@ -29,13 +16,14 @@ install_base_tools() {
 
 get_private_ip() {
   echo "Fetching instance private IP..."
-  # Use the injected command string
-  PRIVATE_IP="$(eval "$K3S_GET_PRIVATE_IP_COMMAND")" || true
+  # Try OCI metadata first
+  PRIVATE_IP="$(curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/vnics/ \
+    | jq -r '.[0].privateIp' 2>/dev/null | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}')" || true
   # Fallback via routing table
-  if [ -z "${PRIVATE_IP:-}" ]; then
-    PRIVATE_IP="$(eval "$IP_ROUTE_AWK_COMMAND")"
+  if [ -z "${PRIVATE_IP:-}" ]; then # This is now pure bash syntax, no Terraform issues
+    PRIVATE_IP="$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
   fi
-  if [ -z "${PRIVATE_IP:-}" ]; then
+  if [ -z "${PRIVATE_IP:-}" ]; then # This is now pure bash syntax, no Terraform issues
     echo "❌ Failed to determine private IP."
     exit 1
   fi
@@ -87,8 +75,8 @@ wait_for_all_nodes() {
   local start_time; start_time=$(date +%s)
   while true; do
     local ready_nodes
-    # Use the injected filter string
-    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null "$KUBECTL_GET_NODES_FILTER")
+    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
+      | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
     if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
       echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break
@@ -146,8 +134,6 @@ install_argo_cd() {
   fi
   /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --wait=true --timeout=5m
 
-  # JSON for patches. The key here is to ensure the JSON is correctly formatted as a single string.
-  # Terraform variables are not used in these JSON strings, so they don't need further templating.
   local tolerations_json='[
     {"op":"add","path":"/spec/template/spec/tolerations","value":[
       {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
