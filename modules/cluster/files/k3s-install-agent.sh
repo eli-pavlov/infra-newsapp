@@ -13,6 +13,32 @@ T_K3S_URL_IP="${T_K3S_URL_IP}"
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
+# --- NEW: Function to wait for the K3s server to be ready ---
+wait_for_server() {
+  local timeout=600 # 10 minutes
+  local start_time=$(date +%s)
+  local url="https://${T_K3S_URL_IP}:6443/ping"
+
+  echo "Waiting for K3s server to be available at ${url}..."
+
+  while true; do
+    # The -k flag is necessary because the server uses a self-signed cert initially.
+    if curl -k --connect-timeout 5 --silent --output /dev/null "${url}"; then
+      echo "✅ K3s server is responsive. Proceeding with agent installation."
+      break
+    fi
+
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for K3s server."
+      exit 1
+    fi
+
+    echo "($elapsed_time/$timeout s) Server not ready yet, waiting 10 seconds..."
+    sleep 10
+  done
+}
+
 install_base_tools() {
   echo "Installing base packages (jq, e2fsprogs, util-linux, curl)..."
   apt-get update -y || true
@@ -104,6 +130,8 @@ install_k3s_agent() {
 
 main() {
   install_base_tools
+  # --- MODIFIED: Call the wait function before other steps ---
+  wait_for_server
   setup_local_db_volume
   install_k3s_agent
 }
