@@ -86,29 +86,6 @@ wait_for_all_nodes() {
   done
 }
 
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-wait_for_kubeconfig() {
-  timeout=180
-  waited=0
-  while [ ! -s "$KUBECONFIG" ]; do
-    sleep 2; waited=$((waited+2))
-    if [ "$waited" -ge "$timeout" ]; then
-      echo "kubeconfig missing after ${timeout}s"; exit 1
-    fi
-  done
-}
-
-wait_for_api() {
-  timeout=180; waited=0
-  while ! kubectl --kubeconfig="$KUBECONFIG" version --short >/dev/null 2>&1; do
-    sleep 2; waited=$((waited+2))
-    if [ "$waited" -ge "$timeout" ]; then
-      echo "API not responding after ${timeout}s"; kubectl --kubeconfig="$KUBECONFIG" get pods --all-namespaces || true; exit 1
-    fi
-  done
-}
-
 install_helm() {
   if ! command -v helm &> /dev/null; then
     echo "Installing Helm..."
