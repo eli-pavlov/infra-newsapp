@@ -5,23 +5,15 @@ resource "random_password" "k3s_token" {
 }
 
 # =================== CONTROL-PLANE cloud-init ===================
-# Render a single, self-contained server script with all required values injected
+# Single-file cloud-init for the k3s server (renders a fully self-contained script)
 data "cloudinit_config" "k3s_server_tpl" {
   gzip          = true
   base64_encode = true
 
-  # --- raw server install script: use file() because this is a plain bash script
   part {
     content_type = "text/x-shellscript"
     filename     = "/tmp/k3s-install-server.sh"
-    content      = file("${path.module}/files/k3s-install-server.sh")
-  }
-
-  # --- templated config: inject only the variables needed by the script
-  part {
-    content_type = "text/x-shellscript"
-    filename     = "/tmp/k3s-server-config.sh"
-    content = templatefile("${path.module}/files/k3s-server-config.sh.tftpl", {
+    content = templatefile("${path.module}/files/k3s-install-server.sh.tftpl", {
       T_K3S_VERSION          = var.k3s_version
       T_K3S_TOKEN            = random_password.k3s_token.result
       T_DB_USER              = var.db_user
@@ -30,48 +22,39 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_DB_SERVICE_NAME_DEV  = var.db_service_name_dev
       T_DB_SERVICE_NAME_PROD = var.db_service_name_prod
       T_MANIFESTS_REPO_URL   = var.manifests_repo_url
-      # templatefile() expects strings for interpolation -> convert numeric count to string
       T_EXPECTED_NODE_COUNT  = tostring(local.expected_total_node_count)
       T_PRIVATE_LB_IP        = var.private_lb_ip_address
     })
   }
 
-  # final part: small wrapper to source the config and run the main script
+  # wrapper part to execute the script (cloud-init will drop /tmp/k3s-install-server.sh and then run it)
   part {
     content_type = "text/x-shellscript"
-    content = <<EOT
-#!/bin/bash
-# Source the generated config file to populate environment variables
-source /tmp/k3s-server-config.sh
-
-# Execute the main server install script
-/tmp/k3s-install-server.sh
-EOT
+    filename     = "/var/lib/cloud/scripts/per-instance/run-k3s-server.sh"
+    content = <<-EOF
+      #!/bin/bash
+      set -euo pipefail
+      # Ensure the rendered script is executable and then run it
+      chmod +x /tmp/k3s-install-server.sh
+      /tmp/k3s-install-server.sh
+    EOF
   }
 }
 
-# =================== AGENT cloud-init TEMPLATES ===================
-# We create two small cloudinit bundles for agents:
-#  - k3s_agent_app_tpl   (application workers)
-#  - k3s_agent_db_tpl    (database worker)
-# Both reuse the raw agent script via file() and inject only a tiny config via templatefile()
+# =================== AGENT cloud-init TEMPLATES (fixed: single-file rendered scripts) ===================
+# k3s_agent_app_tpl   (application workers)
+# k3s_agent_db_tpl    (database worker)
+# Both now render a fully self-contained agent script via templatefile()
 
 data "cloudinit_config" "k3s_agent_app_tpl" {
   gzip          = true
   base64_encode = true
 
-  # raw agent install script (untemplated)
+  # Render full agent script (template contains exports + installer logic)
   part {
     content_type = "text/x-shellscript"
     filename     = "/tmp/k3s-install-agent.sh"
-    content      = file("${path.module}/files/k3s-install-agent.sh")
-  }
-
-  # small templated config providing only variables that must be injected
-  part {
-    content_type = "text/x-shellscript"
-    filename     = "/tmp/k3s-agent-config.sh"
-    content = templatefile("${path.module}/files/k3s-agent-config.sh.tftpl", {
+    content = templatefile("${path.module}/files/k3s-install-agent.sh.tftpl", {
       T_K3S_VERSION = var.k3s_version
       T_K3S_TOKEN   = random_password.k3s_token.result
       T_K3S_URL_IP  = var.private_lb_ip_address
@@ -80,17 +63,16 @@ data "cloudinit_config" "k3s_agent_app_tpl" {
     })
   }
 
-  # wrapper to source config and run the raw script
+  # wrapper to ensure file is executable and then run the rendered script
   part {
     content_type = "text/x-shellscript"
-    content = <<EOT
-#!/bin/bash
-# Source the generated config file to populate environment variables
-source /tmp/k3s-agent-config.sh
-
-# Execute the main agent install script
-/tmp/k3s-install-agent.sh
-EOT
+    filename     = "/var/lib/cloud/scripts/per-instance/run-k3s-agent.sh"
+    content = <<-EOT
+      #!/bin/bash
+      set -euo pipefail
+      chmod +x /tmp/k3s-install-agent.sh
+      /tmp/k3s-install-agent.sh
+    EOT
   }
 }
 
@@ -98,18 +80,11 @@ data "cloudinit_config" "k3s_agent_db_tpl" {
   gzip          = true
   base64_encode = true
 
-  # raw agent install script (untemplated)
+  # Render full agent script (template contains exports + installer logic)
   part {
     content_type = "text/x-shellscript"
     filename     = "/tmp/k3s-install-agent.sh"
-    content      = file("${path.module}/files/k3s-install-agent.sh")
-  }
-
-  # small templated config providing only variables that must be injected
-  part {
-    content_type = "text/x-shellscript"
-    filename     = "/tmp/k3s-agent-config.sh"
-    content = templatefile("${path.module}/files/k3s-agent-config.sh.tftpl", {
+    content = templatefile("${path.module}/files/k3s-install-agent.sh.tftpl", {
       T_K3S_VERSION = var.k3s_version
       T_K3S_TOKEN   = random_password.k3s_token.result
       T_K3S_URL_IP  = var.private_lb_ip_address
@@ -118,17 +93,16 @@ data "cloudinit_config" "k3s_agent_db_tpl" {
     })
   }
 
-  # wrapper to source config and run the raw script
+  # wrapper to ensure file is executable and then run the rendered script
   part {
     content_type = "text/x-shellscript"
-    content = <<EOT
-#!/bin/bash
-# Source the generated config file to populate environment variables
-source /tmp/k3s-agent-config.sh
-
-# Execute the main agent install script
-/tmp/k3s-install-agent.sh
-EOT
+    filename     = "/var/lib/cloud/scripts/per-instance/run-k3s-agent.sh"
+    content = <<-EOT
+      #!/bin/bash
+      set -euo pipefail
+      chmod +x /tmp/k3s-install-agent.sh
+      /tmp/k3s-install-agent.sh
+    EOT
   }
 }
 
