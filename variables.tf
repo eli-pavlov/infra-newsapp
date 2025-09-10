@@ -48,12 +48,6 @@ variable "cluster_name" {
   type        = string
 }
 
-variable "public_key_content" {
-  description = "The content of the public SSH key for the compute instances."
-  type        = string
-  sensitive   = true
-}
-
 variable "private_key_pem" {
   description = "The content of the OCI private key in PEM format."
   type        = string

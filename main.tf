@@ -17,7 +17,11 @@ terraform {
   }
 }
 
-
+data "oci_objectstorage_object" "ssh_public_key" {
+  namespace = var.os_namespace
+  bucket    = var.tf_state_bucket
+  object    = "oracle.key.pub"
+}
 module "network" {
   source           = "./modules/network"
   compartment_ocid = var.compartment_ocid
