@@ -50,6 +50,88 @@ EOT
   }
 }
 
+# =================== AGENT cloud-init TEMPLATES ===================
+# We create two small cloudinit bundles for agents:
+#  - k3s_agent_app_tpl   (application workers)
+#  - k3s_agent_db_tpl    (database worker)
+# Both reuse the raw agent script via file() and inject only a tiny config via templatefile()
+
+data "cloudinit_config" "k3s_agent_app_tpl" {
+  gzip          = true
+  base64_encode = true
+
+  # raw agent install script (untemplated)
+  part {
+    content_type = "text/x-shellscript"
+    filename     = "/tmp/k3s-install-agent.sh"
+    content      = file("${path.module}/files/k3s-install-agent.sh")
+  }
+
+  # small templated config providing only variables that must be injected
+  part {
+    content_type = "text/x-shellscript"
+    filename     = "/tmp/k3s-agent-config.sh"
+    content = templatefile("${path.module}/files/k3s-agent-config.sh.tftpl", {
+      T_K3S_VERSION = var.k3s_version
+      T_K3S_TOKEN   = random_password.k3s_token.result
+      T_K3S_URL_IP  = var.private_lb_ip_address
+      T_NODE_LABELS = "role=application"
+      T_NODE_TAINTS = ""
+    })
+  }
+
+  # wrapper to source config and run the raw script
+  part {
+    content_type = "text/x-shellscript"
+    content = <<EOT
+#!/bin/bash
+# Source the generated config file to populate environment variables
+source /tmp/k3s-agent-config.sh
+
+# Execute the main agent install script
+/tmp/k3s-install-agent.sh
+EOT
+  }
+}
+
+data "cloudinit_config" "k3s_agent_db_tpl" {
+  gzip          = true
+  base64_encode = true
+
+  # raw agent install script (untemplated)
+  part {
+    content_type = "text/x-shellscript"
+    filename     = "/tmp/k3s-install-agent.sh"
+    content      = file("${path.module}/files/k3s-install-agent.sh")
+  }
+
+  # small templated config providing only variables that must be injected
+  part {
+    content_type = "text/x-shellscript"
+    filename     = "/tmp/k3s-agent-config.sh"
+    content = templatefile("${path.module}/files/k3s-agent-config.sh.tftpl", {
+      T_K3S_VERSION = var.k3s_version
+      T_K3S_TOKEN   = random_password.k3s_token.result
+      T_K3S_URL_IP  = var.private_lb_ip_address
+      T_NODE_LABELS = "role=database"
+      T_NODE_TAINTS = "role=database:NoSchedule"
+    })
+  }
+
+  # wrapper to source config and run the raw script
+  part {
+    content_type = "text/x-shellscript"
+    content = <<EOT
+#!/bin/bash
+# Source the generated config file to populate environment variables
+source /tmp/k3s-agent-config.sh
+
+# Execute the main agent install script
+/tmp/k3s-install-agent.sh
+EOT
+  }
+}
+
 # =================== VNIC lookups for instance IPs ===================
 
 # Control plane
