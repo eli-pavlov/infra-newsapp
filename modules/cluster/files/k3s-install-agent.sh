@@ -1,6 +1,6 @@
 #!/bin/bash
 # K3s AGENT install script with role-aware setup.
-# - Application workers join normally.
+# - Application workers join normally...
 # - DB worker mounts the extra OCI paravirtualized block volume (no iSCSI/CSI),
 #   formats it if needed, and prepares /mnt/oci/db/dev and /mnt/oci/db/prod for Local PVs.
 set -euo pipefail
