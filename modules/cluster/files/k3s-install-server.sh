@@ -15,8 +15,6 @@ T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
 T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
-# Optional server wait timeout (seconds)
-T_SERVER_WAIT_TIMEOUT_SECONDS="${T_SERVER_WAIT_TIMEOUT_SECONDS:-300}"
 
 install_base_tools() {
   echo "Installing base packages..."
@@ -34,7 +32,7 @@ get_private_ip() {
   echo "✅ Instance private IP is $PRIVATE_IP"
 }
 
-# --- Helper: add / remove temporary host-level rule to allow LB -> 6443 (narrow scope) ---
+
 TEMP_RULE_ADDED=0
 add_temp_healthcheck_rule() {
   if [ -z "${T_PRIVATE_LB_IP:-}" ]; then
@@ -83,6 +81,8 @@ install_k3s_server() {
   fi
   echo "Detected flannel interface: ${PRIVATE_IFACE}"
 
+install_k3s_server() {
+  echo "Installing K3s server..."
   # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
@@ -91,7 +91,6 @@ install_k3s_server() {
     --tls-san $PRIVATE_IP \
     --tls-san $T_PRIVATE_LB_IP \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
-
   if [ -n "$PRIVATE_IFACE" ]; then
     PARAMS="$PARAMS --flannel-iface=$PRIVATE_IFACE"
   fi
@@ -99,35 +98,11 @@ install_k3s_server() {
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
   export INSTALL_K3S_VERSION="$T_K3S_VERSION"
-
-  echo "Starting k3s server install with: $PARAMS"
-  # Add temporary healthcheck rule before install so LB healthchecks aren't blocked during initial server start
-  add_temp_healthcheck_rule
-
   curl -sfL https://get.k3s.io | sh -
 
   echo "Waiting for K3s server node to be ready..."
-  local start_time=$(date +%s)
-  local timeout="$T_SERVER_WAIT_TIMEOUT_SECONDS"
-  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do
-    if [ $(( $(date +%s) - start_time )) -gt "$timeout" ]; then
-      echo "Timed out waiting for local kube-apiserver to report Ready after ${timeout}s; continuing — subsequent steps may wait as needed."
-      break
-    fi
-    sleep 5
-  done
-
-  # Once kube-apiserver is responding on localhost, we can safely remove the temporary host rule
-  # but if kubectl never responds we leave the rule removed (we tried).
-  if /usr/local/bin/kubectl get componentstatuses >/dev/null 2>&1; then
-    echo "Local kube-apiserver is responding; removing temporary healthcheck rule."
-    remove_temp_healthcheck_rule
-  else
-    echo "Local kube-apiserver is not responding yet; removing temporary healthcheck rule anyway to avoid stale host rules."
-    remove_temp_healthcheck_rule
-  fi
-
-  echo "K3s server install finished (server may still be starting)."
+  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
+  echo "K3s server node is running."
 }
 
 wait_for_all_nodes() {
@@ -181,7 +156,7 @@ install_ingress_nginx() {
     --set controller.ingressClassByName=true
 
   echo "Waiting for ingress-nginx controller rollout..."
-  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m || true
+  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
 }
 
 install_argo_cd() {
@@ -250,7 +225,7 @@ EOF
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
+  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests
 
   # DEV
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml
