@@ -15,7 +15,7 @@ variable "cloudflare_zone_id" {
 resource "cloudflare_record" "argocd" {
   zone_id = var.cloudflare_zone_id
   name    = "argocd"
-  value   = module.network.public_nlb_ip_address
+  content  = module.network.public_nlb_ip_address
   type    = "A"
   ttl     = 1 # Automatic
   proxied = true
@@ -25,7 +25,7 @@ resource "cloudflare_record" "argocd" {
 resource "cloudflare_record" "newsapp_dev" {
   zone_id = var.cloudflare_zone_id
   name    = "newsapp-dev"
-  value   = module.network.public_nlb_ip_address
+  content   = module.network.public_nlb_ip_address
   type    = "A"
   ttl     = 1 # Automatic
   proxied = true
@@ -35,7 +35,7 @@ resource "cloudflare_record" "newsapp_dev" {
 resource "cloudflare_record" "newsapp_prod" {
   zone_id = var.cloudflare_zone_id
   name    = "newsapp"
-  value   = module.network.public_nlb_ip_address
+  content   = module.network.public_nlb_ip_address
   type    = "A"
   ttl     = 1 # Automatic
   proxied = true
