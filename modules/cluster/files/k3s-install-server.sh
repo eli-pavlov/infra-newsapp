@@ -180,30 +180,6 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
-wait_for_secret() {
-  local namespace="$1"
-  local secret_name="$2"
-  local timeout=300 # 5 minutes
-  local start_time=$(date +%s)
-  echo "Waiting for secret '$secret_name' in namespace '$namespace'..."
-
-  while true; do
-    if /usr/local/bin/kubectl -n "$namespace" get secret "$secret_name" >/dev/null 2>&1; then
-      echo "✅ Secret '$secret_name' found."
-      break
-    fi
-
-    local elapsed_time=$(( $(date +%s) - start_time ))
-    if [ "$elapsed_time" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for secret '$secret_name'."
-      exit 1
-    fi
-
-    echo "($elapsed_time/$timeout s) Secret not ready yet, waiting 5 seconds..."
-    sleep 5
-  done
-}
-
 generate_secrets_and_credentials() {
   set -euo pipefail
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -295,7 +271,6 @@ main() {
   install_helm
   install_ingress_nginx
   install_argo_cd
-  wait_for_secret
   generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
