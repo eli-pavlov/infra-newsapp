@@ -1,3 +1,14 @@
+# modules/cluster/bastion.tf
+#
+# Creates the bastion host and a dedicated, reserved public IP address.
+
+# A reserved public IP that won't change if the instance is recreated.
+resource "oci_core_public_ip" "bastion" {
+  compartment_id = var.compartment_ocid
+  display_name   = "${var.cluster_name}-bastion-public-ip"
+  lifetime       = "RESERVED"
+}
+
 resource "oci_core_instance" "bastion" {
   availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid
@@ -6,9 +17,11 @@ resource "oci_core_instance" "bastion" {
 
   create_vnic_details {
     subnet_id        = var.public_subnet_id
-    assign_public_ip = true
+    # No longer assigning an ephemeral public IP.
+    assign_public_ip = false
     nsg_ids          = [var.bastion_nsg_id]
-    private_ip = "10.0.1.100"
+    # Assign a specific private IP for consistency.
+    private_ip       = "10.0.1.100"
   }
 
   source_details {
@@ -19,4 +32,11 @@ resource "oci_core_instance" "bastion" {
   metadata = {
     ssh_authorized_keys = var.public_key_content
   }
+}
+
+# Explicitly assign the reserved public IP to the bastion's primary VNIC.
+resource "oci_core_public_ip_assignment" "bastion_public_ip_assignment" {
+  # The bastion instance has one VNIC by default.
+  private_ip_id = data.oci_core_vnic.bastion.private_ip_id
+  public_ip_id  = oci_core_public_ip.bastion.id
 }

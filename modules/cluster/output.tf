@@ -2,7 +2,8 @@
 
 output "bastion_public_ip" {
   description = "Public IP of the bastion host for SSH access."
-  value       = data.oci_core_vnic.bastion.public_ip_address
+  # Now outputs the value of the reserved public IP resource.
+  value       = oci_core_public_ip.bastion.ip_address
 }
 
 output "control_plane_private_ip" {
