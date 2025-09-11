@@ -134,3 +134,8 @@ variable "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver."
   type        = string
 }
+variable "reserved_public_ip_ocid" {
+  description = "The OCID of the pre-reserved public IP to assign to the bastion host."
+  type        = string
+  sensitive   = true
+}
