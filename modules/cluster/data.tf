@@ -46,6 +46,11 @@ data "oci_core_vnic" "bastion" {
   vnic_id = data.oci_core_vnic_attachments.bastion.vnic_attachments[0].vnic_id
 }
 
+data "oci_core_public_ip" "bastion" {
+  # Use the reserved_public_ip_ocid variable to look up the public IP details.
+  public_ip_id = var.reserved_public_ip_ocid
+}
+
 # App workers (map by index)
 data "oci_core_vnic_attachments" "app" {
   for_each       = { for idx, inst in oci_core_instance.app_workers : idx => inst.id }

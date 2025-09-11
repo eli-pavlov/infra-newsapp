@@ -35,3 +35,7 @@ output "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver (passed into the cluster module)."
   value       = var.private_lb_backendset_name
 }
+output "bastion_public_ip" {
+  description = "Public IP of the bastion host for SSH access."
+  value       = data.oci_core_public_ip.bastion.ip_address
+}
