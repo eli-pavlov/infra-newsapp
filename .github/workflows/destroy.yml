@@ -36,7 +36,6 @@ jobs:
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
       TF_VAR_cloudflare_api_token:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_zone_id:    ${{ secrets.CLOUDFLARE_ZONE_ID }}
-      TF_VAR_reserved_public_ip_ocid: ${{ secrets.RESERVED_PUBLIC_IP_OCID }}
       
     steps:
       - name: Guard required secrets (including TF_STATE_KEY)
@@ -50,7 +49,6 @@ jobs:
              [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
              [ -z "${{ secrets.TF_STATE_BUCKET }}" ] || \
              [ -z "${{ secrets.TF_STATE_KEY }}" ] || \
-             [ -z "${{ secrets.RESERVED_PUBLIC_IP_OCID }}" ] || \
              [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
             echo "::error::One or more required secrets (incl. TF_STATE_KEY) are missing."
             exit 1

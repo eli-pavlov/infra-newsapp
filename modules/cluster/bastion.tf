@@ -1,4 +1,5 @@
 # modules/cluster/bastion.tf
+
 # Bastion compute instance
 resource "oci_core_instance" "bastion" {
   availability_domain = var.availability_domain
@@ -23,12 +24,15 @@ resource "oci_core_instance" "bastion" {
     ssh_authorized_keys = var.public_key_content
   }
 }
-resource "oci_core_public_ip_assignment" "bastion_public_ip_assignment" {
-  # The private_ip_id is retrieved from a data source in data.tf
-  private_ip_id = data.oci_core_vnic.bastion.private_ip_id
-  # The public_ip_id is the OCID passed as a variable
-  public_ip_id = var.reserved_public_ip_ocid
+
+# Creates and assigns a new reserved public IP to the bastion instance.
+resource "oci_core_public_ip" "bastion_reserved_public_ip" {
+  compartment_id = var.compartment_ocid
+  display_name   = "${var.cluster_name}-bastion-public-ip"
+  lifetime       = "RESERVED"
+  private_ip_id  = data.oci_core_vnic.bastion.private_ip_id
+
   depends_on = [
-   oci_core_instance.bastion
+    oci_core_instance.bastion
   ]
 }

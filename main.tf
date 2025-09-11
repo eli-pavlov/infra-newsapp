@@ -13,7 +13,6 @@ module "network" {
 
 module "cluster" {
   source = "./modules/cluster"
-
   region                = var.region
   availability_domain   = var.availability_domain
   compartment_ocid      = var.compartment_ocid
@@ -22,7 +21,6 @@ module "cluster" {
   os_image_id           = var.os_image_id
   bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
-  reserved_public_ip_ocid     = var.reserved_public_ip_ocid
 
   # network wiring
   public_subnet_id      = module.network.public_subnet_id

@@ -81,8 +81,3 @@ variable "manifests_repo_url" {
   type        = string
   default     = "https://github.com/eli-pavlov/newsapp-manifests.git"
 }
-variable "reserved_public_ip_ocid" {
-  description = "The OCID of the pre-reserved public IP to assign to the bastion host."
-  type        = string
-  sensitive   = true
-}
