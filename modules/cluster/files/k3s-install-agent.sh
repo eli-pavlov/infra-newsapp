@@ -15,7 +15,7 @@ T_NODE_TAINTS="${T_NODE_TAINTS}"
 
 # --- Function to wait for the K3s server to be ready ---
 wait_for_server() {
-  local timeout=600 # 10 minutes
+  local timeout=900 # 15 minutes
   local start_time=$(date +%s)
 
   echo "Waiting for K3s server to be available at https://${T_K3S_URL_IP}:6443/ping..."
