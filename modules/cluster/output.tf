@@ -1,8 +1,4 @@
 # modules/cluster/output.tf
-output "bastion_public_ip" {
-  description = "Public IP of the bastion host for SSH access."
-  value       = oci_core_public_ip.bastion_reserved_public_ip.ip_address
-}
 output "control_plane_private_ip" {
   description = "Private IP of the control-plane node."
   value       = data.oci_core_vnic.cp.private_ip_address
@@ -30,6 +26,6 @@ output "public_nlb_backend_set_https_name" {
 }
 
 output "private_lb_backendset_name" {
-  description = "Name of the backend set on the private classic LB for kube-apiserver."
+  description = "Name of the backend set on the private classic LB for kube-apiserver (passed into the cluster module)."
   value       = var.private_lb_backendset_name
 }
