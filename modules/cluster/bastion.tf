@@ -23,16 +23,6 @@ resource "oci_core_instance" "bastion" {
     ssh_authorized_keys = var.public_key_content
   }
 }
-
-# Look up the bastion VNIC (data block present elsewhere in module; kept as-is)
-data "oci_core_vnic_attachments" "bastion" {
-  compartment_id = var.compartment_ocid
-  instance_id    = oci_core_instance.bastion.id
-}
-data "oci_core_vnic" "bastion" {
-  vnic_id = data.oci_core_vnic_attachments.bastion.vnic_attachments[0].vnic_id
-}
-
 resource "oci_core_public_ip_assignment" "bastion_public_ip_assignment" {
   private_ip_id = data.oci_core_vnic.bastion.private_ip_id
   public_ip_id  = var.reserved_public_ip_ocid 
