@@ -116,6 +116,22 @@ wait_for_all_nodes() {
 }
 
 install_helm() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  timeout=300
+  interval=5
+  elapsed=0
+
+  until sudo kubectl --kubeconfig="$KUBECONFIG" get nodes >/dev/null 2>&1; do
+    sleep $interval
+    elapsed=$((elapsed + interval))
+    echo "waiting for kube-apiserver... ($elapsed/$timeout)"
+    if [ $elapsed -ge $timeout ]; then
+      echo "timed out waiting for kube-apiserver" >&2
+      exit 1
+    fi
+  done
+
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   if ! command -v helm &> /dev/null; then
     echo "Installing Helm..."
     curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
@@ -126,6 +142,21 @@ install_helm() {
 }
 
 install_ingress_nginx() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  timeout=300
+  interval=5
+  elapsed=0
+
+  until sudo kubectl --kubeconfig="$KUBECONFIG" get nodes >/dev/null 2>&1; do
+    sleep $interval
+    elapsed=$((elapsed + interval))
+    echo "waiting for kube-apiserver... ($elapsed/$timeout)"
+    if [ $elapsed -ge $timeout ]; then
+      echo "timed out waiting for kube-apiserver" >&2
+      exit 1
+    fi
+  done
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
   helm repo update
