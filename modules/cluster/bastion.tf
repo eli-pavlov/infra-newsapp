@@ -44,3 +44,19 @@ resource "oci_core_public_ip" "reserved_public_ip_assigned" {
   lifetime       = "RESERVED"
   private_ip_id  = data.oci_core_private_ips.private_ips1.private_ips[0]["id"]
 }
+
+data "oci_core_public_ips" "region_public_ips_list" {
+  compartment_id = var.compartment_ocid
+  scope          = "REGION"
+
+  filter {
+    name   = "id"
+    values = [oci_core_public_ip.reserved_public_ip_assigned.id, oci_core_public_ip.reserved_public_ip_unassigned.id]
+  }
+}
+output "public_ips" {
+  value = [
+    data.oci_core_public_ips.availability_domain_public_ips_list.public_ips,
+    data.oci_core_public_ips.region_public_ips_list.public_ips,
+  ]
+}

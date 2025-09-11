@@ -45,7 +45,7 @@ resource "oci_objectstorage_object" "infra_outputs" {
   content_type = "application/json"
 
   content = jsonencode({
-    bastion_public_ip       = module.cluster.bastion_public_ip.ip_address
+    bastion_public_ip       = module.cluster.oci_core_public_ip.reserved_public_ip_assigned.ip_address
     public_load_balancer_ip = module.network.public_nlb_ip_address
   })
 }
