@@ -7,6 +7,9 @@ resource "oci_core_public_ip" "bastion" {
   compartment_id = var.compartment_ocid
   display_name   = "${var.cluster_name}-bastion-public-ip"
   lifetime       = "RESERVED"
+  # Use the private IP of the bastion's primary VNIC for assignment.
+  # This creates an implicit dependency on the oci_core_instance resource.
+  private_ip_id  = data.oci_core_vnic.bastion.private_ip_id
 }
 
 resource "oci_core_instance" "bastion" {
@@ -32,11 +35,4 @@ resource "oci_core_instance" "bastion" {
   metadata = {
     ssh_authorized_keys = var.public_key_content
   }
-}
-
-# Explicitly assign the reserved public IP to the bastion's primary VNIC.
-resource "oci_core_public_ip_assignment" "bastion_public_ip_assignment" {
-  # The bastion instance has one VNIC by default.
-  private_ip_id = data.oci_core_vnic.bastion.private_ip_id
-  public_ip_id  = oci_core_public_ip.bastion.id
 }
