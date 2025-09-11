@@ -5,11 +5,6 @@ output "public_nlb_ip_address" {
   value       = module.network.public_nlb_ip_address
 }
 
-output "bastion_public_ip" {
-  description = "The public IP address of the bastion host for SSH access."
-  value       = module.cluster.bastion_public_ip
-}
-
 output "control_plane_private_ip" {
   description = "The private IP address of the K3s control plane node."
   value       = module.cluster.control_plane_private_ip
