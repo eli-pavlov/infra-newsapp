@@ -1,10 +1,6 @@
 # modules/cluster/nodes.tf
 
 locals {
-  # Compute total nodes automatically:
-  # 1 control-plane + app_worker_count + 1 db worker
-  expected_total_node_count = 1 + var.app_worker_count + 1
-  # Map a fixed private IP to each app worker by index
   app_worker_private_ips = {
     0 = "10.0.2.101"
     1 = "10.0.2.102"
