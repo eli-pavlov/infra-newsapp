@@ -145,8 +145,6 @@ install_ingress_nginx() {
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
     --set controller.service.type=NodePort \
-    --set controller.service.nodePorts.http=30080 \
-    --set controller.service.nodePorts.https=30443 \
     --set controller.service.externalTrafficPolicy=Local \
     --set controller.nodeSelector.role=application \
     --set controller.ingressClassResource.name=nginx \
@@ -190,7 +188,7 @@ install_and_enable_bootstrap_unit() {
   echo "Installing systemd oneshot for long bootstrap (30min timeout)..."
 
   # 1) Write an env file with the Terraform-injected variables expanded now.
-  #    This file will be sourced by the bootstrap script at runtime.
+  #     This file will be sourced by the bootstrap script at runtime.
   cat > /etc/bootstrap-env <<EOF
 export T_K3S_VERSION="${T_K3S_VERSION}"
 export T_K3S_TOKEN="${T_K3S_TOKEN}"
@@ -206,7 +204,7 @@ EOF
   chmod 600 /etc/bootstrap-env
 
   # 2) Write the bootstrap script. Use a single-quoted heredoc so variables are
-  #    evaluated at runtime by the bootstrap script, not now by cloud-init.
+  #     evaluated at runtime by the bootstrap script, not now by cloud-init.
   cat > /usr/local/bin/bootstrap-newsapp.sh <<'BOOTSTRAP'
 #!/bin/bash
 set -euo pipefail
@@ -334,11 +332,8 @@ wait_for_secret() {
 generate_secrets_and_credentials() {
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-
   wait_for_secret "argocd" "argocd-initial-admin-secret"
-
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-
   cat <<EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
@@ -350,7 +345,6 @@ Password: ${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials written to /root/credentials.txt"
-
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
@@ -358,11 +352,9 @@ EOF
       --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
-
   DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
   DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
@@ -375,7 +367,7 @@ bootstrap_main() {
   install_ingress_nginx
   install_argo_cd
   generate_secrets_and_credentials
-
+  
   if [ -n "${T_MANIFESTS_REPO_URL:-}" ]; then
     rm -rf /tmp/manifests || true
     git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
@@ -390,11 +382,11 @@ bootstrap_main() {
 bootstrap_main
 BOOTSTRAP
 
-  chmod 700 /usr/local/bin/bootstrap-newsapp.sh
-  chown root:root /usr/local/bin/bootstrap-newsapp.sh
+chmod 700 /usr/local/bin/bootstrap-newsapp.sh
+chown root:root /usr/local/bin/bootstrap-newsapp.sh
 
-  # 3) Create systemd unit (30min timeout)
-  cat > /etc/systemd/system/bootstrap-newsapp.service <<'UNIT'
+# 3) Create systemd unit (30min timeout)
+cat > /etc/systemd/system/bootstrap-newsapp.service <<'UNIT'
 [Unit]
 Description=Bootstrap newsapp (k3s/ingress/argocd/secrets)
 After=network-online.target k3s.service
@@ -411,18 +403,17 @@ StandardError=journal
 WantedBy=multi-user.target
 UNIT
 
-  # 4) reload & enable+start the unit
-  systemctl daemon-reload
-  systemctl enable --now bootstrap-newsapp.service || systemctl start bootstrap-newsapp.service || true
+# 4) reload & enable+start the unit
+systemctl daemon-reload
+systemctl enable --now bootstrap-newsapp.service || systemctl start bootstrap-newsapp.service || true
 
-  echo "bootstrap-newsapp.service installed and started. Follow logs with: sudo journalctl -u bootstrap-newsapp -f"
+echo "bootstrap-newsapp.service installed and started. Follow logs with: sudo journalctl -u bootstrap-newsapp -f"
 }
 
 bootstrap_argocd_apps() {
-  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Bootstrapping Argo CD with applications from manifest repo..."
   rm -rf /tmp/manifests || true
+  # The Terraform variable T_MANIFESTS_REPO_URL is being passed empty. Please set this variable.
   git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
 
   # DEV
