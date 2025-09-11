@@ -1,5 +1,16 @@
 # modules/cluster/nodes.tf
 
+locals {
+  # Compute total nodes automatically:
+  # 1 control-plane + app_worker_count + 1 db worker
+  expected_total_node_count = 1 + var.app_worker_count + 1
+  # Map a fixed private IP to each app worker by index
+  app_worker_private_ips = {
+    0 = "10.0.2.101"
+    1 = "10.0.2.102"
+  }
+}
+
 # =================== 1. Control Plane Node ===================
 resource "oci_core_instance" "control_plane" {
   availability_domain = var.availability_domain
@@ -17,6 +28,8 @@ resource "oci_core_instance" "control_plane" {
     #subnet_id        = var.public_subnet_id
     assign_public_ip = false
     nsg_ids          = [var.control_plane_nsg_id]
+    # Assign a specific private IP address
+    private_ip = "10.0.2.100"
   }
 
   source_details {
@@ -47,9 +60,10 @@ resource "oci_core_instance" "app_workers" {
 
   create_vnic_details {
     subnet_id        = var.private_subnet_id
-    #subnet_id        = var.public_subnet_id
     assign_public_ip = false
     nsg_ids          = [var.workers_nsg_id]
+    # Assign a specific private IP address from the local map
+    private_ip = local.app_worker_private_ips[count.index]
   }
 
   source_details {
@@ -91,9 +105,10 @@ resource "oci_core_instance" "db_worker" {
 
   create_vnic_details {
     subnet_id        = var.private_subnet_id
-    #subnet_id        = var.public_subnet_id
     assign_public_ip = false
     nsg_ids          = [var.workers_nsg_id]
+    # Assign a specific private IP address
+    private_ip = "10.0.2.103"
   }
 
   source_details {
@@ -113,9 +128,6 @@ resource "oci_core_instance" "db_worker" {
       })
     )
   }
-
-
-
 
   depends_on = [
     oci_core_instance.control_plane,

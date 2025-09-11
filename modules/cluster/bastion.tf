@@ -8,6 +8,7 @@ resource "oci_core_instance" "bastion" {
     subnet_id        = var.public_subnet_id
     assign_public_ip = true
     nsg_ids          = [var.bastion_nsg_id]
+    private_ip = "10.0.1.100"
   }
 
   source_details {
