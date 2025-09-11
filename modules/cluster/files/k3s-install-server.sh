@@ -3,7 +3,11 @@
 # and Argo CD bootstrapping.
 # Converted for Oracle Linux 9 (dnf-based) — no other behaviour changes.
 set -euo pipefail
-exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
+# Simpler robust logging to avoid SIGPIPE from tee|logger pipeline
+exec > /var/log/cloud-init-output.log 2>&1
+# Optional: enable command tracing and report failing command
+set -x
+trap 'echo "ERROR at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # --- Vars injected by Terraform ---
 T_K3S_VERSION="${T_K3S_VERSION}"
