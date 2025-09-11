@@ -51,7 +51,7 @@ data "oci_core_public_ips" "region_public_ips_list" {
 
   filter {
     name   = "id"
-    values = [oci_core_public_ip.reserved_public_ip_assigned.id, oci_core_public_ip.reserved_public_ip_unassigned.id]
+    values = [oci_core_public_ip.reserved_public_ip_assigned.id]
   }
 }
 output "public_ips" {
