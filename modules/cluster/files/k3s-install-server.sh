@@ -21,6 +21,7 @@ install_base_tools() {
   echo "Installing base packages (dnf)..."
   # Refresh metadata and install minimal tools. Keep changes minimal (no full distro upgrade).
   dnf makecache --refresh -y || true
+  dnf update -y
   dnf install -y curl jq git || true
 }
 

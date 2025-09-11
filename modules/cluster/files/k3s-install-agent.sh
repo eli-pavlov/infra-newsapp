@@ -43,6 +43,7 @@ install_base_tools() {
   echo "Installing base packages (dnf: jq, e2fsprogs, util-linux, curl)..."
   # Refresh metadata then install packages (keeping behaviour minimal/explicit)
   dnf makecache --refresh -y || true
+  dnf update -y
   dnf install -y jq e2fsprogs util-linux curl || true
 }
 
