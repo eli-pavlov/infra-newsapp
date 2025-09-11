@@ -33,9 +33,6 @@ data "oci_core_vnic" "bastion" {
   vnic_id = data.oci_core_vnic_attachments.bastion.vnic_attachments[0].vnic_id
 }
 
-# Explicitly assign the reserved public IP to the bastion's private IP.
-# Add depends_on so Terraform waits for the instance and public IP to exist
-# before attempting to resolve the vnic and perform the assignment.
 resource "oci_core_public_ip_assignment" "bastion_public_ip_assignment" {
   private_ip_id = data.oci_core_vnic.bastion.private_ip_id
   public_ip_id  = var.reserved_public_ip_ocid 
