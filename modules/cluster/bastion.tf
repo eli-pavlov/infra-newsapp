@@ -1,14 +1,13 @@
 # modules/cluster/bastion.tf
-#
-# Creates the bastion host and a dedicated, reserved public IP address.
 
-# A reserved public IP that won't change if the instance is recreated.
+# Creates a reserved public IP for the bastion host
 resource "oci_core_public_ip" "bastion" {
   compartment_id = var.compartment_ocid
   display_name   = "${var.cluster_name}-bastion-public-ip"
   lifetime       = "RESERVED"
 }
 
+# Bastion compute instance
 resource "oci_core_instance" "bastion" {
   availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid
@@ -17,11 +16,10 @@ resource "oci_core_instance" "bastion" {
 
   create_vnic_details {
     subnet_id        = var.public_subnet_id
-    # Do not assign an ephemeral public IP.
     assign_public_ip = false
     nsg_ids          = [var.bastion_nsg_id]
     # Assign a specific private IP for consistency.
-    private_ip       = "10.0.1.100"
+    private_ip = "10.0.1.100"
   }
 
   source_details {
@@ -34,9 +32,24 @@ resource "oci_core_instance" "bastion" {
   }
 }
 
+# Look up the bastion VNIC (data block present elsewhere in module; kept as-is)
+data "oci_core_vnic_attachments" "bastion" {
+  compartment_id = var.compartment_ocid
+  instance_id    = oci_core_instance.bastion.id
+}
+data "oci_core_vnic" "bastion" {
+  vnic_id = data.oci_core_vnic_attachments.bastion.vnic_attachments[0].vnic_id
+}
+
 # Explicitly assign the reserved public IP to the bastion's private IP.
-# This creates a dependency on both the instance and the public IP resource.
+# Add depends_on so Terraform waits for the instance and public IP to exist
+# before attempting to resolve the vnic and perform the assignment.
 resource "oci_core_public_ip_assignment" "bastion_public_ip_assignment" {
   private_ip_id = data.oci_core_vnic.bastion.private_ip_id
   public_ip_id  = oci_core_public_ip.bastion.id
+
+  depends_on = [
+    oci_core_instance.bastion,
+    oci_core_public_ip.bastion
+  ]
 }
