@@ -2,7 +2,6 @@
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
 # Converted for Oracle Linux 9 (dnf-based) — no other behaviour changes.
-trap '' PIPE
 set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log|logger -t user-data -s 2>/dev/console) 2>&1
 
@@ -180,12 +179,43 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
+# Add a robust wait function for the secret
+wait_for_secret() {
+  local namespace="$1"
+  local secret_name="$2"
+  local timeout=300 # 5 minutes
+  local start_time=$(date +%s)
+  echo "Waiting for secret '$secret_name' in namespace '$namespace'..."
+
+  while true; do
+    # Check if the secret exists. Redirect stdout and stderr to avoid noisy output.
+    if /usr/local/bin/kubectl -n "$namespace" get secret "$secret_name" >/dev/null 2>&1; then
+      echo "✅ Secret '$secret_name' found."
+      break
+    fi
+
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for secret '$secret_name'."
+      exit 1
+    fi
+
+    echo "($elapsed_time/$timeout s) Secret not ready yet, waiting 5 seconds..."
+    sleep 5
+  done
+}
+
 generate_secrets_and_credentials() {
   KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || true)
+  
+  # Wait for the Argo CD secret to exist before trying to read it
+  wait_for_secret "argocd" "argocd-initial-admin-secret"
+  
+  # Now that we know the secret exists, get the password
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
