@@ -81,7 +81,7 @@ wait_for_kubeconfig_and_api() {
     # Check if kubectl can access the API (basic connectivity)
     if /usr/local/bin/kubectl get nodes 2>/dev/null | grep -q 'Ready'; then
       # Additional check: ensure core components (etcd, scheduler, controller-manager) are ready
-      if /usr/local/bin/kubectl get pods -n kube-system 2>/dev/null | grep -qE '(etd|coredns|kube-proxy|kube-scheduler|kube-controller)'; then
+      if /usr/local/bin/kubectl get pods -n kube-system 2>/dev/null | grep -qE '(etcd|coredns|kube-proxy|kube-scheduler|kube-controller)'; then
         echo "✅ Kubeconfig and API are ready."
         break
       fi
