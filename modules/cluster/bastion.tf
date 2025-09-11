@@ -56,7 +56,6 @@ data "oci_core_public_ips" "region_public_ips_list" {
 }
 output "public_ips" {
   value = [
-    data.oci_core_public_ips.availability_domain_public_ips_list.public_ips,
     data.oci_core_public_ips.region_public_ips_list.public_ips,
   ]
 }
