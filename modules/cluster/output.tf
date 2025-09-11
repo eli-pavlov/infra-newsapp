@@ -1,8 +1,4 @@
 # modules/cluster/output.tf
-output "bastion_public_ip" {
-  description = "Public IP of the bastion host for SSH access."
-  value       = oci_core_public_ip.bastion_reserved_public_ip.ip_address
-}
 output "control_plane_private_ip" {
   description = "Private IP of the control-plane node."
   value       = data.oci_core_vnic.cp.private_ip_address
