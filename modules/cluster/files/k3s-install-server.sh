@@ -181,70 +181,43 @@ install_argo_cd() {
 }
 
 generate_secrets_and_credentials() {
-  set -euo pipefail
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-  # ensure kubectl exists
-  if [ ! -x /usr/local/bin/kubectl ]; then
-    echo "kubectl missing; aborting" >&2
-    return 1
-  fi
-
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d || true)
 
-  # Wait for argocd secret with a bounded timeout (10m)
-  ARGO_PASSWORD=""
-  timeout_seconds=600
-  interval=5
-  elapsed=0
-  while [ $elapsed -lt $timeout_seconds ]; do
-    if /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1; then
-      ARGO_PASSWORD=$(/usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d 2>/dev/null || true)
-      echo "Argocd admin secret found (pwd len=${#ARGO_PASSWORD})"
-      break
-    fi
-    sleep $interval
-    elapsed=$((elapsed + interval))
-    echo "Waiting for argocd secret (${elapsed}/${timeout_seconds}s)..."
-  done
-
-  if [ -z "$ARGO_PASSWORD" ]; then
-    echo "WARNING: argocd-initial-admin-secret not found after ${timeout_seconds}s; proceeding with empty password"
-  fi
-
-  cat > /root/credentials.txt <<EOF
+  cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
-Username: ${T_DB_USER:-news_user}
-Password: ${DB_PASSWORD}
+Username: ${T_DB_USER}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
 
   for ns in default development; do
-    /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" apply -f - || true
-    /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n "$ns" create secret generic postgres-credentials \
-       --from-literal=POSTGRES_USER="${T_DB_USER:-news_user}" \
-       --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
-       --dry-run=client -o yaml | /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n "$ns" apply -f - || true
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER="${T_DB_USER}" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
-  # create backend-db-connection secrets (use defaults if a var missing)
-  /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="postgresql://${T_DB_USER:-news_user}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV:-postgresql-dev}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV:-newsdb_dev}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n development apply -f - || true
+  # Match your charts: use the -client Service for app connectivity
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
+    --from-literal=DB_URI="$${DB_URI_DEV}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
-  /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="postgresql://${T_DB_USER:-news_user}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD:-postgresql-prod}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD:-newsdb_prod}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl --kubeconfig="$KUBECONFIG" -n default apply -f - || true
-
-  echo "generate_secrets_and_credentials finished successfully"
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
+    --from-literal=DB_URI="$${DB_URI_PROD}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 }
-
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
