@@ -24,9 +24,23 @@ resource "oci_core_instance" "bastion" {
   }
 }
 
-resource "oci_core_public_ip" "bastion_reserved_public_ip" {
+data "oci_core_vnic_attachments" "instance_vnics" {
+  compartment_id      = var.compartment_ocid
+  availability_domain = var.availability_domain
+  instance_id         = oci_core_instance.bastion.id
+}
+
+data "oci_core_vnic" "instance_vnic1" {
+  vnic_id = data.oci_core_vnic_attachments.instance_vnics.vnic_attachments[0]["vnic_id"]
+}
+
+data "oci_core_private_ips" "private_ips1" {
+  vnic_id = data.oci_core_vnic.instance_vnic1.id
+}
+
+resource "oci_core_public_ip" "reserved_public_ip_assigned" {
   compartment_id = var.compartment_ocid
-  display_name   = "${var.cluster_name}-bastion-public-ip"
+  display_name   = "reservedPublicIPAssigned"
   lifetime       = "RESERVED"
-  private_ip_id = oci_core_private_ip.bastion_private_ip.id
+  private_ip_id  = data.oci_core_private_ips.private_ips1.private_ips[0]["id"]
 }
