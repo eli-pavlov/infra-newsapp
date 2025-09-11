@@ -6,8 +6,8 @@ resource "random_password" "k3s_token" {
 
 # =================== CONTROL-PLANE cloud-init ===================
 data "cloudinit_config" "k3s_server_tpl" {
-  gzip          = true
-  base64_encode = true
+  gzip            = true
+  base64_encode   = true
 
   part {
     content_type = "text/x-shellscript"
