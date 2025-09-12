@@ -191,6 +191,79 @@ install_argo_cd() {
   ${KUBECTL} -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
+ensure_argocd_ingress_and_server() {
+  set -euo pipefail
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  # Create or update the Ingress resource (idempotent via kubectl apply)
+  kubectl -n argocd apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - argocd.weblightenment.com
+      secretName: argocd-tls
+  rules:
+    - host: argocd.weblightenment.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+EOF
+
+  # Re-apply the backend-protocol annotation in case the cluster mutated it
+  kubectl -n argocd annotate ingress argocd-server-ingress \
+    nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null
+
+  # Ensure the TLS stanza exists (merge is safe if it's already present)
+  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
+    "spec": {
+      "tls": [
+        {
+          "hosts": ["argocd.weblightenment.com"],
+          "secretName": "argocd-tls"
+        }
+      ]
+    }
+  }' >/dev/null
+
+  # If you do have PEMs and want to create the secret, set CERT_FILE and KEY_FILE env vars.
+  # (By default we do nothing here — matches your CLI workflow where you had no PEMs.)
+  if [[ -n "${CERT_FILE:-}" && -n "${KEY_FILE:-}" ]]; then
+    kubectl -n argocd create secret tls argocd-tls \
+      --cert="${CERT_FILE}" --key="${KEY_FILE}" --dry-run=client -o yaml | kubectl apply -f -
+    echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
+  else
+    echo "CERT_FILE/KEY_FILE not set — not creating TLS secret (Ingress will use default cert until you provide one or cert-manager provisions it)."
+  fi
+
+  # Ensure ArgoCD knows its external URL (prevents certain redirect issues)
+  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+
+  # Restart argocd-server so it picks up config changes
+  kubectl -n argocd rollout restart deployment argocd-server
+
+  echo "Ingress applied/annotated, argocd-cm.url patched, and argocd-server restarted."
+  echo "Reminder: because no TLS secret was created here, the ingress controller will fall back to the default k8s cert (the 'Kubernetes Ingress Controller Fake Certificate')."
+  echo "To avoid that and get a real cert, either:"
+  echo "  - Create the TLS secret from your PEMs (set CERT_FILE/KEY_FILE and run the function again),"
+  echo "  - OR annotate this ingress for cert-manager to provision a cert automatically."
+}
+
+
 # Per your request: do not block indefinitely waiting for the argocd-initial-admin-secret.
 # Sleep 30s to give Argo CD a chance to create it; if missing, write credentials file with placeholder.
 generate_secrets_and_credentials() {
@@ -200,7 +273,7 @@ generate_secrets_and_credentials() {
   sleep 30
 
   echo "Generating credentials and Kubernetes secrets..."
-  DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+  DB_PASSWORD=$(LC_ALL=C head -c 256 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 32)
 
   # Try to fetch Argo CD initial admin password; if missing, use placeholder "(not-found)"
   ARGO_B64=$(${KUBECTL} -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || true)

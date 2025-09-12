@@ -4,28 +4,24 @@ resource "random_password" "k3s_token" {
   special = false
 }
 
-# =================== CONTROL-PLANE cloud-init (wrapper that writes env + script) ===================
+# =================== CONTROL-PLANE cloud-init ===================
 data "cloudinit_config" "k3s_server_tpl" {
-  gzip          = true
-  base64_encode = true
+  gzip            = true
+  base64_encode   = true
 
   part {
     content_type = "text/x-shellscript"
-    content = templatefile("${path.module}/files/cloudinit-wrapper.tpl", {
-      # base64 of the *raw* k3s bootstrap script so Terraform never parses ${...} inside it
-      bootstrap_b64 = base64encode(file("${path.module}/files/k3s-install-server.sh")),
-
-      # variables to write into /etc/bootstrap-env (safe to interpolate)
-      T_K3S_VERSION           = var.k3s_version,
-      T_K3S_TOKEN             = random_password.k3s_token.result,
-      T_DB_USER               = var.db_user,
-      T_DB_NAME_DEV           = var.db_name_dev,
-      T_DB_NAME_PROD          = var.db_name_prod,
-      T_DB_SERVICE_NAME_DEV   = var.db_service_name_dev,
-      T_DB_SERVICE_NAME_PROD  = var.db_service_name_prod,
-      T_MANIFESTS_REPO_URL    = var.manifests_repo_url,
-      T_EXPECTED_NODE_COUNT   = local.expected_total_node_count,
-      T_PRIVATE_LB_IP         = var.private_lb_ip_address
+    content = templatefile("${path.module}/files/k3s-install-server.sh", {
+      T_K3S_VERSION          = var.k3s_version,
+      T_K3S_TOKEN            = random_password.k3s_token.result,
+      T_DB_USER              = var.db_user,
+      T_DB_NAME_DEV          = var.db_name_dev,
+      T_DB_NAME_PROD         = var.db_name_prod,
+      T_DB_SERVICE_NAME_DEV  = var.db_service_name_dev,
+      T_DB_SERVICE_NAME_PROD = var.db_service_name_prod,
+      T_MANIFESTS_REPO_URL   = var.manifests_repo_url,
+      T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
+      T_PRIVATE_LB_IP        = var.private_lb_ip_address
     })
   }
 }

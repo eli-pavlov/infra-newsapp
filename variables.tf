@@ -81,3 +81,8 @@ variable "manifests_repo_url" {
   type        = string
   default     = "https://github.com/eli-pavlov/newsapp-manifests.git"
 }
+variable "argocd_host" {
+  description = "Hostname for Argo CD (Cloudflare firewall target)."
+  type        = string
+  default     = "argocd.weblightenment.com"
+}
