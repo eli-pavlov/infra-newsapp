@@ -316,7 +316,8 @@ main() {
   install_helm
   install_ingress_nginx
   install_argo_cd
-  install_and_enable_bootstrap_unit
+  ensure_argocd_ingress_and_server
+  bootstrap_argocd_apps
 }
 
 main "$@"
