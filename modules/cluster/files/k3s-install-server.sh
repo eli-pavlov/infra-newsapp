@@ -145,6 +145,8 @@ install_ingress_nginx() {
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
     --set controller.service.type=NodePort \
+    --set controller.service.nodePorts.http=30080 \
+    --set controller.service.nodePorts.https=30443 \
     --set controller.service.externalTrafficPolicy=Local \
     --set controller.nodeSelector.role=application \
     --set controller.ingressClassResource.name=nginx \
@@ -181,7 +183,7 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
-# Add a robust wait function for a Kubernetes secret
+# Add a robust wait function for the secret
 wait_for_secret() {
   local namespace="$1"
   local secret_name="$2"
@@ -189,61 +191,85 @@ wait_for_secret() {
   local start_time=$(date +%s)
   echo "Waiting for secret '$secret_name' in namespace '$namespace'..."
 
-  while ! /usr/local/bin/kubectl -n "$namespace" get secret "$secret_name" >/dev/null 2>&1; do
+  while true; do
+    # Check if the secret exists. Redirect stdout and stderr to avoid noisy output.
+    if /usr/local/bin/kubectl -n "$namespace" get secret "$secret_name" >/dev/null 2>&1; then
+      echo "✅ Secret '$secret_name' found."
+      break
+    fi
+
     local elapsed_time=$(( $(date +%s) - start_time ))
     if [ "$elapsed_time" -gt "$timeout" ]; then
       echo "❌ Timed out waiting for secret '$secret_name'."
       exit 1
     fi
+
     echo "($elapsed_time/$timeout s) Secret not ready yet, waiting 5 seconds..."
     sleep 5
   done
-  echo "✅ Secret '$secret_name' found."
 }
 
 generate_secrets_and_credentials() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+  
+  # Wait for the Argo CD secret to exist before trying to read it
   wait_for_secret "argocd" "argocd-initial-admin-secret"
+  
+  # Now that we know the secret exists, get the password
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-  cat <<EOF > /root/credentials.txt
-# --- Argo CD Admin Credentials ---
-Username: admin
-Password: $${ARGO_PASSWORD}
 
-# --- PostgreSQL Database Credentials ---
-Username: $${T_DB_USER}
-Password: $${DB_PASSWORD}
-EOF
-  chmod 600 /root/credentials.txt
-  echo "Credentials written to /root/credentials.txt"
+#   cat << EOF > /root/credentials.txt
+# # --- Argo CD Admin Credentials ---
+# Username: admin
+# Password: $${ARGO_PASSWORD}
+
+# # --- PostgreSQL Database Credentials ---
+# Username: ${T_DB_USER}
+# Password: $${DB_PASSWORD}
+# EOF
+#   chmod 600 /root/credentials.txt
+#   echo "Credentials saved to /root/credentials.txt"
+
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-      --from-literal=POSTGRES_USER="$${T_DB_USER}" \
+      --from-literal=POSTGRES_USER="${T_DB_USER}" \
       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
-  DB_URI_DEV="postgresql://$${T_DB_USER}:$${DB_PASSWORD}@$${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/$${T_DB_NAME_DEV}"
+
+  # Match your charts: use the -client Service for app connectivity
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-  DB_URI_PROD="postgresql://$${T_DB_USER}:$${DB_PASSWORD}@$${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/$${T_DB_NAME_PROD}"
+    --from-literal=DB_URI="$${DB_URI_DEV}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="$${DB_URI_PROD}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 }
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
   rm -rf /tmp/manifests || true
   git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
+
   # DEV
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
   [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml   || true
+
   # PROD
   [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
   [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml   || true
+
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
+
+
 main() {
   install_base_tools
   get_private_ip
@@ -253,6 +279,8 @@ main() {
   install_helm
   install_ingress_nginx
   install_argo_cd
-  install_and_enable_bootstrap_unit
+  generate_secrets_and_credentials
+  bootstrap_argocd_apps
 }
+
 main "$@"
