@@ -221,17 +221,17 @@ generate_secrets_and_credentials() {
   # Now that we know the secret exists, get the password
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
-  cat << EOF > /root/credentials.txt
-# --- Argo CD Admin Credentials ---
-Username: admin
-Password: $${ARGO_PASSWORD}
+#   cat << EOF > /root/credentials.txt
+# # --- Argo CD Admin Credentials ---
+# Username: admin
+# Password: $${ARGO_PASSWORD}
 
-# --- PostgreSQL Database Credentials ---
-Username: ${T_DB_USER}
-Password: $${DB_PASSWORD}
-EOF
-  chmod 600 /root/credentials.txt
-  echo "Credentials saved to /root/credentials.txt"
+# # --- PostgreSQL Database Credentials ---
+# Username: ${T_DB_USER}
+# Password: $${DB_PASSWORD}
+# EOF
+#   chmod 600 /root/credentials.txt
+#   echo "Credentials saved to /root/credentials.txt"
 
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
