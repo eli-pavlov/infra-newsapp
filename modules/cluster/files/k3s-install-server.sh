@@ -80,6 +80,8 @@ install_k3s_server() {
 }
 
 wait_for_kubeconfig_and_api() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Waiting for kubeconfig and API to be fully ready..."
   local timeout=120
   local start_time
@@ -112,6 +114,8 @@ wait_for_kubeconfig_and_api() {
 }
 
 wait_for_all_nodes() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Waiting for all ${T_EXPECTED_NODE_COUNT} nodes to join and become Ready..."
   local timeout=900
   local start_time; start_time=$(date +%s)
