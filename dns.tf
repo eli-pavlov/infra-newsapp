@@ -27,8 +27,8 @@ variable "cloudflare_argocd_ruleset_action" {
 }
 
 locals {
-  # join admin CIDRs into a Cloudflare set literal: 1.2.3.4/32, 5.6.0.0/24
-  admin_cidrs_set = join(", ", var.admin_cidrs)
+  # join admin CIDRs into a Cloudflare set literal: "1.2.3.4/32 5.6.0.0/24"
+  admin_cidrs_set = join(" ", var.admin_cidrs)
 
   # Cloudflare expression: match requests to the host and not from any admin CIDR
   argocd_expr = format("(http.host == \"%s\" and not ip.src in {%s})", var.argocd_host, local.admin_cidrs_set)
