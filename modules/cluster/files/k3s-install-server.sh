@@ -183,6 +183,69 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
+ensure_argocd_ingress_and_server() {
+  set -euo pipefail
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  kubectl -n argocd apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - argocd.weblightenment.com
+      secretName: argocd-tls
+  rules:
+    - host: argocd.weblightenment.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+EOF
+
+  kubectl -n argocd annotate ingress argocd-server-ingress \
+    nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
+
+  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
+    "spec": {
+      "tls": [
+        {
+          "hosts": ["argocd.weblightenment.com"],
+          "secretName": "argocd-tls"
+        }
+      ]
+    }
+  }' >/dev/null || true
+
+  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
+    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
+      --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "$${TMPDIR}/argocd-tls.yaml" && \
+    /usr/local/bin/kubectl apply -f "$${TMPDIR}/argocd-tls.yaml" || true
+    echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
+  else
+    echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
+  fi
+
+  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+  kubectl -n argocd rollout restart deployment argocd-server || true
+
+  echo "Ingress/annotations applied and argocd-server restarted."
+}
+
+
+
+
 generate_secrets_and_credentials() {
   KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
