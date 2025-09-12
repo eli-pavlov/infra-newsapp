@@ -12,7 +12,7 @@ variable "cloudflare_zone_id" {
 }
 
 # Create A record for argocd.weblightenment.com
-resource "cloudflare_record" "argocd" {
+resource "cloudflare_dns_record" "argocd" {
   zone_id = var.cloudflare_zone_id
   name    = "argocd"
   content   = module.network.public_nlb_ip_address
@@ -34,26 +34,26 @@ locals {
   argocd_expr = format("(http.host == \"%s\" and not ip.src in {%s})", var.argocd_host, local.admin_cidrs_set)
 }
 
-# resource "cloudflare_ruleset" "argocd_admin_only" {
-#   zone_id     = var.cloudflare_zone_id
-#   name        = "argocd-admin-only"
-#   kind        = "zone"
-#   phase       = "http_request_firewall_custom"
-#   description = "Challenge/block requests to argocd host that do not originate from admin CIDRs."
-#   rules = [
-#     {
-#       description = "Block/Challenge non-admin access to ArgoCD host"
-#       expression  = local.argocd_expr
-#       action      = var.cloudflare_argocd_ruleset_action  # challenge | block
-#       enabled     = true
-#       ref         = "argocd-admin-only-rule"
-#     }
-#   ]
-# }
+resource "cloudflare_ruleset" "argocd_admin_only" {
+  zone_id     = var.cloudflare_zone_id
+  name        = "argocd-admin-only"
+  kind        = "zone"
+  phase       = "http_request_firewall_custom"
+  description = "Challenge/block requests to argocd host that do not originate from admin CIDRs."
+  rules = [
+    {
+      description = "Block/Challenge non-admin access to ArgoCD host"
+      expression  = local.argocd_expr
+      action      = var.cloudflare_argocd_ruleset_action  # challenge | block
+      enabled     = true
+      ref         = "argocd-admin-only-rule"
+    }
+  ]
+}
 
 
 # Create A record for newsapp-dev.weblightenment.com
-resource "cloudflare_record" "newsapp_dev" {
+resource "cloudflare_dns_record" "newsapp_dev" {
   zone_id = var.cloudflare_zone_id
   name    = "newsapp-dev"
   content   = module.network.public_nlb_ip_address
@@ -63,7 +63,7 @@ resource "cloudflare_record" "newsapp_dev" {
 }
 
 # Create A record for newsapp.weblightenment.com
-resource "cloudflare_record" "newsapp_prod" {
+resource "cloudflare_dns_record" "newsapp_prod" {
   zone_id = var.cloudflare_zone_id
   name    = "newsapp"
   content   = module.network.public_nlb_ip_address
