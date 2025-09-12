@@ -31,3 +31,7 @@ output "public_nlb_backend_set_https_name" {
 output "private_lb_backendset_name" {
   value = module.network.private_lb_backendset_name
 }
+output "bastion_public_ip" {
+  description = "The public IP address of the bastion host for SSH access."
+  value       = module.cluster.bastion_public_ip
+}
