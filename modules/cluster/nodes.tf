@@ -113,7 +113,15 @@ resource "oci_core_instance" "db_worker" {
   }
   metadata = {
     ssh_authorized_keys = var.public_key_content
-    user_data = data.cloudinit_config.k3s_server_tpl.rendered
+    user_data = base64encode(
+      templatefile("${path.module}/files/k3s-install-agent.sh", {
+        T_K3S_VERSION = var.k3s_version
+        T_K3S_TOKEN   = random_password.k3s_token.result
+        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_NODE_LABELS = "role=application",
+        T_NODE_TAINTS = ""
+      })
+    )
   }
 
   depends_on = [
