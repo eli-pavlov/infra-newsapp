@@ -190,9 +190,27 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
+install_argo_cd() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  echo "Installing Argo CD..."
+  /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml > "$${TMPDIR}/argocd-ns.yaml" && \
+  /usr/local/bin/kubectl apply -f "$${TMPDIR}/argocd-ns.yaml" || true
+  
+  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml || true
+
+  for d in argocd-server argocd-repo-server argocd-dex-server; do
+    /usr/local/bin/kubectl -n argocd patch deployment "$$d" --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
+  done
+
+  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
+
+  echo "Waiting for Argo CD components to be ready..."
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployments --all --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
+}
+
 ensure_argocd_ingress_and_server() {
   set -euo pipefail
-  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   kubectl -n argocd apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
@@ -237,9 +255,9 @@ EOF
   }' >/dev/null || true
 
   if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
-    "$${KUBECTL}" -n argocd create secret tls argocd-tls \
+    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
       --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "$${TMPDIR}/argocd-tls.yaml" && \
-    "$${KUBECTL}" apply -f "$${TMPDIR}/argocd-tls.yaml" || true
+    /usr/local/bin/kubectl apply -f "$${TMPDIR}/argocd-tls.yaml" || true
     echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
   else
     echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
@@ -323,6 +341,7 @@ main() {
   install_helm
   install_ingress_nginx
   install_argo_cd
+  ensure_argocd_ingress_and_server
   generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
