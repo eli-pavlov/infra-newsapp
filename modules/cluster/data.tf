@@ -4,12 +4,6 @@ resource "random_password" "k3s_token" {
   special = false
 }
 
-# K3s token for cluster join authentication
-resource "random_password" "k3s_token" {
-  length  = 55
-  special = false
-}
-
 # =================== CONTROL-PLANE cloud-init (wrapper that writes env + script) ===================
 data "cloudinit_config" "k3s_server_tpl" {
   gzip          = true
