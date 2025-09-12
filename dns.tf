@@ -12,7 +12,7 @@ variable "cloudflare_zone_id" {
 }
 
 # Create A record for argocd.weblightenment.com
-resource "cloudflare_record" "argocd" {
+resource "cloudflare_dns_record" "argocd" {
   zone_id = var.cloudflare_zone_id
   name    = "argocd"
   content   = module.network.public_nlb_ip_address
