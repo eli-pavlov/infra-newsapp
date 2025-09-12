@@ -183,95 +183,62 @@ install_argo_cd() {
 }
 
 
-
 generate_secrets_and_credentials() {
   echo "Sleeping 30 seconds to allow Argo CD to initialize (no blocking wait for secret)..."
   sleep 30
-
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
-  # Capture the base64 password string, then decode safely
-  ARGO_B64=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null || true)
-  if [ -n "${ARGO_B64:-}" ]; then
-    ARGO_PASSWORD=$(base64 -d <<< "$ARGO_B64" 2>/dev/null || true)
-  else
-    ARGO_PASSWORD=""
-  fi
-
-  # Write credentials file (use double-dollar escapes if this content is later template-processed by Terraform)
-  cat << 'CRED_EOF' > /root/credentials.txt
+  cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
 
 # --- PostgreSQL Database Credentials ---
-Username: $${T_DB_USER}
+Username: ${T_DB_USER}
 Password: $${DB_PASSWORD}
-CRED_EOF
+EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
 
-  # Create namespaces and secrets via temporary yaml files (avoid piping long producers)
   for ns in default development; do
-    nsfile=$(mktemp /tmp/ns-XXXXXX.yaml)
-    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml > "$nsfile" || true
-    /usr/local/bin/kubectl apply -f "$nsfile" || true
-    rm -f "$nsfile" || true
-
-    # postgres-credentials secret (render the yaml then apply)
-    secfile=$(mktemp /tmp/postgres-secret-XXXXXX.yaml)
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
-      --dry-run=client -o yaml > "$secfile" || true
-    /usr/local/bin/kubectl apply -f "$secfile" || true
-    rm -f "$secfile" || true
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
-  # DB URIs and backend-db-connection secret (temp files)
-  dbdev_uri="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
-  devfile=$(mktemp /tmp/dburi-dev-XXXXXX.yaml)
-  /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="${dbdev_uri}" --dry-run=client -o yaml > "$devfile" || true
-  /usr/local/bin/kubectl apply -f "$devfile" || true
-  rm -f "$devfile" || true
 
-  dbprod_uri="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
-  prodfile=$(mktemp /tmp/dburi-prod-XXXXXX.yaml)
+  # Match your charts: use the -client Service for app connectivity
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
+    --from-literal=DB_URI="$${DB_URI_DEV}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="${dbprod_uri}" --dry-run=client -o yaml > "$prodfile" || true
-  /usr/local/bin/kubectl apply -f "$prodfile" || true
-  rm -f "$prodfile" || true
+    --from-literal=DB_URI="$${DB_URI_PROD}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 }
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
   rm -rf /tmp/manifests || true
-  if [ -n "${T_MANIFESTS_REPO_URL:-}" ]; then
-    git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
+  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
 
-    # DEV
-    if [ -f /tmp/manifests/clusters/dev/apps/project.yaml ]; then
-      /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
-    fi
-    if [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]; then
-      /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml || true
-    fi
+  # DEV
+  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
+  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml   || true
 
-    # PROD
-    if [ -f /tmp/manifests/clusters/prod/apps/project.yaml ]; then
-      /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
-    fi
-    if [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]; then
-      /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml || true
-    fi
-  else
-    echo "No manifests repo URL provided; skipping ArgoCD app bootstrapping."
-  fi
+  # PROD
+  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
+  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml   || true
 
-  echo "Argo CD applications applied (if manifests present)."
+  echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
 
 
