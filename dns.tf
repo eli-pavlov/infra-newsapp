@@ -53,7 +53,7 @@ resource "cloudflare_ruleset" "argocd_admin_only" {
 
 
 # Create A record for newsapp-dev.weblightenment.com
-resource "cloudflare_record" "newsapp_dev" {
+resource "cloudflare_dns_record" "newsapp_dev" {
   zone_id = var.cloudflare_zone_id
   name    = "newsapp-dev"
   content   = module.network.public_nlb_ip_address
@@ -63,7 +63,7 @@ resource "cloudflare_record" "newsapp_dev" {
 }
 
 # Create A record for newsapp.weblightenment.com
-resource "cloudflare_record" "newsapp_prod" {
+resource "cloudflare_dns_record" "newsapp_prod" {
   zone_id = var.cloudflare_zone_id
   name    = "newsapp"
   content   = module.network.public_nlb_ip_address
