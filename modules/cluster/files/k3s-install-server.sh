@@ -214,10 +214,7 @@ generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
-  
-  # Wait for the Argo CD secret to exist before trying to read it
-  wait_for_secret "argocd" "argocd-initial-admin-secret"
-  
+    
   # Now that we know the secret exists, get the password
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
@@ -279,6 +276,7 @@ main() {
   install_helm
   install_ingress_nginx
   install_argo_cd
+  wait_for_secret
   generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
