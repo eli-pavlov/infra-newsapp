@@ -1,9 +1,8 @@
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
-# and Argo CD bootstrapping.
-# Converted for Oracle Linux 9 (dnf-based) — no other behaviour changes.
+# and Argo CD bootstrapping. This script incorporates robust execution patterns.
 set -euo pipefail
-# Simpler robust logging to avoid SIGPIPE from tee|logger pipeline
+# Simpler robust logging
 exec > /var/log/cloud-init-output.log 2>&1
 # Optional: enable command tracing and report failing command
 set -x
@@ -21,22 +20,36 @@ T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 
+# Create a private temp dir and ensure cleanup
+TMPDIR=$(mktemp -d -t bootstrap.XXXXXX)
+cleanup() {
+  rm -rf "$TMPDIR"
+}
+trap cleanup EXIT
+
 install_base_tools() {
   echo "Installing base packages (dnf)..."
-  # Refresh metadata and install minimal tools. Keep changes minimal (no full distro upgrade).
   dnf makecache --refresh -y || true
   dnf update -y
-  dnf install -y curl jq git || true
+  # Add python3 for secure password generation
+  dnf install -y curl jq git openssl python3 || true
 }
 
-systemctl disable firewalld --now
+systemctl disable firewalld --now || true
 
 get_private_ip() {
   echo "Fetching instance private IP from metadata (OCI metadata endpoint)..."
-  # OCI metadata path. Header Authorization shown in original script — preserved.
-  PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
-  if [ -z "$PRIVATE_IP" ] || [ "$PRIVATE_IP" = "null" ]; then
-    echo "❌ Failed to fetch private IP."
+  local vnics_json="$TMPDIR/vnics.json"
+  # Save to file instead of piping into jq
+  if ! curl -s -H "Authorization: Bearer Oracle" -L "http://169.254.169.254/opc/v2/vnics/" -o "$vnics_json"; then
+    echo "❌ Failed to fetch VNICS from metadata"
+    exit 1
+  fi
+
+  PRIVATE_IP=$(jq -r '.[0].privateIp' "$vnics_json" 2>/dev/null || true)
+  if [ -z "${PRIVATE_IP:-}" ] || [ "$PRIVATE_IP" = "null" ]; then
+    echo "❌ Failed to parse private IP from metadata."
+    cat "$vnics_json"
     exit 1
   fi
   echo "✅ Instance private IP is $PRIVATE_IP"
@@ -44,7 +57,6 @@ get_private_ip() {
 
 install_k3s_server() {
   echo "Installing K3s server..."
-  # Add TLS SANs for both the node's own IP and the private LB IP
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
     --advertise-address $PRIVATE_IP \
@@ -57,11 +69,17 @@ install_k3s_server() {
   export K3S_TOKEN="$T_K3S_TOKEN"
   export INSTALL_K3S_VERSION="$T_K3S_VERSION"
 
-  # Use upstream installer (works on OL9). Keep exact behaviour as original script.
-  curl -sfL https://get.k3s.io | sh -
+  # Safer than `curl | sh` — download the installer and run it explicitly
+  local k3s_installer="$TMPDIR/get-k3s.sh"
+  if ! curl -sfL -o "$k3s_installer" "https://get.k3s.io"; then
+    echo "❌ Failed to download k3s installer."
+    exit 1
+  fi
+  chmod 700 "$k3s_installer"
+  echo "Running k3s installer with INSTALL_K3S_EXEC=${INSTALL_K3S_EXEC}"
+  sh "$k3s_installer"
 
   echo "Waiting for K3s server node to be ready..."
-  # Wait until kubectl from k3s observes this node Ready
   while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
   echo "K3s server node is running."
 }
@@ -72,15 +90,12 @@ wait_for_kubeconfig_and_api() {
   local start_time
   start_time=$(date +%s)
   while true; do
-    # Check if kubeconfig exists
     if [ ! -f /etc/rancher/k3s/k3s.yaml ]; then
       echo "Waiting for kubeconfig file to be created..."
       sleep 5
       continue
     fi
-    # Check if kubectl can access the API (basic connectivity)
     if /usr/local/bin/kubectl get nodes 2>/dev/null | grep -q 'Ready'; then
-      # Additional check: ensure core components (etcd, scheduler, controller-manager) are ready
       if /usr/local/bin/kubectl get pods -n kube-system 2>/dev/null | grep -qE '(etcd|coredns|kube-proxy|kube-scheduler|kube-controller)'; then
         echo "✅ Kubeconfig and API are ready."
         break
@@ -125,22 +140,21 @@ install_helm() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   if ! command -v helm &> /dev/null; then
     echo "Installing Helm..."
-    curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-    chmod 700 /tmp/get_helm.sh
-    /tmp/get_helm.sh
-    rm -f /tmp/get_helm.sh
+    curl -fsSL -o "$TMPDIR/get_helm.sh" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 "$TMPDIR/get_helm.sh"
+    "$TMPDIR/get_helm.sh"
   fi
 }
 
 install_ingress_nginx() {
   KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  echo "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
-  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-  helm repo update
-  /usr/local/bin/kubectl create namespace ingress-nginx || true
+  echo "Installing ingress-nginx via Helm..."
+  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
+  helm repo update || true
+  /usr/local/bin/kubectl create namespace ingress-nginx --dry-run=client -o yaml > "$TMPDIR/ingress-ns.yaml" && \
+  /usr/local/bin/kubectl apply -f "$TMPDIR/ingress-ns.yaml" || true
 
-  # Explicitly create 'nginx' IngressClass to match your Ingress manifests
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.kind=DaemonSet \
@@ -150,125 +164,155 @@ install_ingress_nginx() {
     --set controller.service.externalTrafficPolicy=Local \
     --set controller.nodeSelector.role=application \
     --set controller.ingressClassResource.name=nginx \
-    --set controller.ingressClassByName=true
+    --set controller.ingressClassByName=true || true
 
   echo "Waiting for ingress-nginx controller rollout..."
-  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
+  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m || true
 }
 
 install_argo_cd() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Installing Argo CD..."
-  /usr/local/bin/kubectl create namespace argocd || true
-  # Apply upstream install (includes CRDs)
-  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml > "$TMPDIR/argocd-ns.yaml" && \
+  /usr/local/bin/kubectl apply -f "$TMPDIR/argocd-ns.yaml" || true
+  
+  /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml || true
 
-  # Tolerate control-plane taint where applicable
   for d in argocd-server argocd-repo-server argocd-dex-server; do
-    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[
-      {"op":"add","path":"/spec/template/spec/tolerations","value":[
-        {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
-      ]}
-    ]' || true
+    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
   done
 
-  # The application controller is a StatefulSet; patch that too
-  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[
-    {"op":"add","path":"/spec/template/spec/tolerations","value":[
-      {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
-    ]}
-  ]' || true
+  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
 
   echo "Waiting for Argo CD components to be ready..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployments --all --timeout=5m || true
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
-# Add a robust wait function for the secret
-wait_for_secret() {
-  local namespace="$1"
-  local secret_name="$2"
-  local timeout=300 # 5 minutes
-  local start_time=$(date +%s)
-  echo "Waiting for secret '$secret_name' in namespace '$namespace'..."
+ensure_argocd_ingress_and_server() {
+  set -euo pipefail
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  kubectl -n argocd apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+    - hosts:
+        - argocd.weblightenment.com
+      secretName: argocd-tls
+  rules:
+    - host: argocd.weblightenment.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+EOF
 
-  while true; do
-    # Check if the secret exists. Redirect stdout and stderr to avoid noisy output.
-    if /usr/local/bin/kubectl -n "$namespace" get secret "$secret_name" >/dev/null 2>&1; then
-      echo "✅ Secret '$secret_name' found."
-      break
-    fi
+  kubectl -n argocd annotate ingress argocd-server-ingress \
+    nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
 
-    local elapsed_time=$(( $(date +%s) - start_time ))
-    if [ "$elapsed_time" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for secret '$secret_name'."
-      exit 1
-    fi
+  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
+    "spec": {
+      "tls": [
+        {
+          "hosts": ["argocd.weblightenment.com"],
+          "secretName": "argocd-tls"
+        }
+      ]
+    }
+  }' >/dev/null || true
 
-    echo "($elapsed_time/$timeout s) Secret not ready yet, waiting 5 seconds..."
-    sleep 5
-  done
+  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
+    "$${KUBECTL}" -n argocd create secret tls argocd-tls \
+      --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "$${TMPDIR}/argocd-tls.yaml" && \
+    "$${KUBECTL}" apply -f "$${TMPDIR}/argocd-tls.yaml" || true
+    echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
+  else
+    echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
+  fi
+
+  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+  kubectl -n argocd rollout restart deployment argocd-server || true
+
+  echo "Ingress/annotations applied and argocd-server restarted."
 }
 
 generate_secrets_and_credentials() {
   KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  sleep 30 # Wait a bit for Argo CD to initialize properly
   echo "Generating credentials and Kubernetes secrets..."
-  DB_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+  # Use python for more robust password generation
+  DB_PASSWORD=$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))')
   
-  # Wait for the Argo CD secret to exist before trying to read it
   wait_for_secret "argocd" "argocd-initial-admin-secret"
   
-  # Now that we know the secret exists, get the password
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
-#   cat << EOF > /root/credentials.txt
-# # --- Argo CD Admin Credentials ---
-# Username: admin
-# Password: $${ARGO_PASSWORD}
+  cat > /root/credentials.txt <<EOF
+# --- Argo CD Admin Credentials ---
+Username: admin
+Password: ${ARGO_PASSWORD}
 
-# # --- PostgreSQL Database Credentials ---
-# Username: ${T_DB_USER}
-# Password: $${DB_PASSWORD}
-# EOF
-#   chmod 600 /root/credentials.txt
-#   echo "Credentials saved to /root/credentials.txt"
+# --- PostgreSQL Database Credentials ---
+Username: ${T_DB_USER}
+Password: ${DB_PASSWORD}
+EOF
+  chmod 600 /root/credentials.txt
+  echo "Credentials saved to /root/credentials.txt"
 
   for ns in default development; do
-    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml > "$TMPDIR/${ns}-ns.yaml" && \
+    /usr/local/bin/kubectl apply -f "$TMPDIR/${ns}-ns.yaml" || true
+    
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+      --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+      --dry-run=client -o yaml > "$TMPDIR/${ns}-postgres-creds.yaml" && \
+    /usr/local/bin/kubectl apply -f "$TMPDIR/${ns}-postgres-creds.yaml" || true
   done
 
-  # Match your charts: use the -client Service for app connectivity
-  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_DEV}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="${DB_URI_DEV}" \
+    --dry-run=client -o yaml > "$TMPDIR/backend-db-connection-dev.yaml" && \
+  /usr/local/bin/kubectl apply -f "$TMPDIR/backend-db-connection-dev.yaml" || true
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_PROD}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="${DB_URI_PROD}" \
+    --dry-run=client -o yaml > "$TMPDIR/backend-db-connection-prod.yaml" && \
+  /usr/local/bin/kubectl apply -f "$TMPDIR/backend-db-connection-prod.yaml" || true
 }
 
 bootstrap_argocd_apps() {
+  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Bootstrapping Argo CD with applications from manifest repo..."
   rm -rf /tmp/manifests || true
   git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
 
-  # DEV
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
   [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml   || true
-
-  # PROD
   [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
   [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml   || true
 
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
-
 
 main() {
   install_base_tools
@@ -279,7 +323,8 @@ main() {
   install_helm
   install_ingress_nginx
   install_argo_cd
-  install_and_enable_bootstrap_unit
+  generate_secrets_and_credentials
+  bootstrap_argocd_apps
 }
 
 main "$@"
