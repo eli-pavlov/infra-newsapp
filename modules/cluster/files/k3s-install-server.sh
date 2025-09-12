@@ -269,9 +269,6 @@ bootstrap_argocd_apps() {
   echo "Argo CD applications applied. Argo will now sync the cluster state."
 }
 
-
-
-
 main() {
   install_base_tools
   get_private_ip
