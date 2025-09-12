@@ -40,7 +40,6 @@ resource "cloudflare_ruleset" "argocd_admin_only" {
   kind        = "zone"
   phase       = "http_request_firewall_custom"
   description = "Challenge/block requests to argocd host that do not originate from admin CIDRs."
-
   rules = [
     {
       description = "Block/Challenge non-admin access to ArgoCD host"
