@@ -6,10 +6,11 @@ set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 # --- Vars injected by Terraform (must match modules/cluster/nodes.tf) ---
-T_RKE2_VERSION="${T_RKE2_VERSION}"   # will be used as INSTALL_RKE2_VERSION
+# These are template variables provided by the templatefile() call.
+T_RKE2_VERSION="${T_RKE2_VERSION}"
 T_RKE2_TOKEN="${T_RKE2_TOKEN}"
-T_RKE2_URL_IP="${T_RKE2_URL_IP}"     # registration / fixed registration address (LB or server IP)
-T_RKE2_PORT="${T_RKE2_PORT}"         # port, e.g. ":9345"
+T_RKE2_URL_IP="${T_RKE2_URL_IP}"
+T_RKE2_PORT="${T_RKE2_PORT}"         # expects a value like ":9345"
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
@@ -20,7 +21,7 @@ wait_for_server() {
   echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}${T_RKE2_PORT}/ping..."
 
   while true; do
-    # registration uses port 9345 (RKE2 registration endpoint)
+    # registration uses the port specified (commonly 9345)
     if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_RKE2_URL_IP}${T_RKE2_PORT}/ping"; then
       echo "✅ RKE2 server registration endpoint is responsive. Proceeding with agent installation."
       break
@@ -48,6 +49,7 @@ install_base_tools() {
 systemctl disable firewalld --now || true
 
 setup_local_db_volume() {
+  # If labels indicate "role=database" then prepare local DB block device; otherwise skip.
   echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
 
   echo "Preparing local block volume for DB (paravirtualized attach)..."
@@ -115,28 +117,35 @@ token: "${T_RKE2_TOKEN}"
 # node labels (if any)
 EOF
 
-  # append node-labels and node-taints, if provided (T_NODE_LABELS/T_NODE_TAINTS must be newline/list compatible)
-  if [ -n "${T_NODE_LABELS}" ]; then
+  # append node-labels and node-taints, if provided (T_NODE_LABELS/T_NODE_TAINTS must be space-separated strings)
+  if [ -n "$T_NODE_LABELS" ]; then
     echo "node-label:" >> /etc/rancher/rke2/config.yaml
     # Expecting labels in format "k=v k2=v2"
-    for lb in ${T_NODE_LABELS}; do
+    for lb in $T_NODE_LABELS; do
       echo "  - \"${lb}\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
-  if [ -n "${T_NODE_TAINTS}" ]; then
+  if [ -n "$T_NODE_TAINTS" ]; then
     echo "node-taint:" >> /etc/rancher/rke2/config.yaml
-    for tt in ${T_NODE_TAINTS}; do
+    for tt in $T_NODE_TAINTS; do
       echo "  - \"${tt}\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
   # Export installer/version variables (reuse your T_RKE2_VERSION)
-  export INSTALL_RKE2_VERSION="${T_RKE2_VERSION:-}"
+  INSTALL_RKE2_VERSION="$T_RKE2_VERSION"
+  export INSTALL_RKE2_VERSION
   export INSTALL_RKE2_TYPE="agent"
 
+  # Provide a simple runtime default (avoid using ${VAR:-default} which Terraform's template parser rejects)
+  ver="$INSTALL_RKE2_VERSION"
+  if [ -z "$ver" ]; then
+    ver="latest"
+  fi
+
   # Run the installer (uses agent mode)
-  echo "Running RKE2 agent installer (version: ${INSTALL_RKE2_VERSION:-latest})..."
+  echo "Running RKE2 agent installer (version: $ver)..."
   curl -sfL https://get.rke2.io | sh -
 
   # Enable & start agent
