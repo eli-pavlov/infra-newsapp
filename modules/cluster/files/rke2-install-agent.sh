@@ -2,7 +2,8 @@
 # RKE2 AGENT install script with role-aware setup.
 # This script has been escaped to be compatible with Terraform's templatefile function.
 set -euo pipefail
-exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1
+exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1\
+
 # --- Vars injected by Terraform ---
 T_RKE2_VERSION="${T_RKE2_VERSION}"
 T_RKE2_TOKEN="${T_RKE2_TOKEN}"
@@ -10,6 +11,7 @@ T_RKE2_URL_IP="${T_RKE2_URL_IP}"
 T_RKE2_PORT="${T_RKE2_PORT}"
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
+
 wait_for_server() {
   local timeout=900 # 15 minutes
   local start_time=$(date +%s)
@@ -28,13 +30,19 @@ wait_for_server() {
     sleep 10
   done
 }
+
+
 install_base_tools() {
   echo "Installing base packages (dnf: jq, e2fsprogs, util-linux, curl)..."
   dnf makecache --refresh -y || true
   dnf update -y
   dnf install -y jq e2fsprogs util-linux curl || true
 }
+
+
 systemctl disable firewalld --now || true
+
+
 setup_local_db_volume() {
   echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
   echo "Preparing local block volume for DB (paravirtualized attach)..."
@@ -79,6 +87,8 @@ setup_local_db_volume() {
   fi
   echo "✅ DB volume ready at /mnt/oci/db (PV paths: /mnt/oci/db/dev, /mnt/oci/db/prod)."
 }
+
+
 install_rke2_agent() {
   echo "Joining RKE2 cluster at https://${T_RKE2_URL_IP}:${T_RKE2_PORT} (registration) and K8s API at :6443"
   mkdir -p /etc/rancher/rke2
@@ -110,10 +120,13 @@ EOF
   systemctl enable --now rke2-agent.service
   echo "✅ RKE2 agent setup complete. Agent service enabled and started."
 }
+
+
 main() {
   install_base_tools
   wait_for_server
   setup_local_db_volume
   install_rke2_agent
 }
+
 main "$@"
