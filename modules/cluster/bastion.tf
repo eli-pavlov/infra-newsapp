@@ -50,8 +50,7 @@ resource "oci_core_public_ip" "reserved_public_ip_assigned" {
   }
 
   lifecycle {
-    prevent_destroy = var.protect_reserved_public_ip
-
+    prevent_destroy = "true"
   }
 }
 
