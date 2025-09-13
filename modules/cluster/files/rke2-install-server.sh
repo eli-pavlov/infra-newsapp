@@ -95,12 +95,12 @@ EOF
     fi
     elapsed=$(( $(date +%s) - start_time ))
     if [ "$elapsed" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for RKE2 server node to become Ready (elapsed ${elapsed}s)."
+      echo "❌ Timed out waiting for RKE2 server node to become Ready (elapsed $${elapsed}s)."
       "$kubectl_bin" --kubeconfig=/etc/rancher/rke2/rke2.yaml cluster-info || true
       journalctl -u rke2-server -n 200 --no-pager || true
       exit 1
     fi
-    echo "Waiting for node Ready... (${elapsed}/${timeout}s)"
+    echo "Waiting for node Ready... ($${elapsed}/${timeout}s)"
     sleep 5
   done
 }
@@ -128,12 +128,12 @@ wait_for_kubeconfig_and_api() {
 
     elapsed_time=$(( $(date +%s) - start_time ))
     if [ "$elapsed_time" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for RKE2 kubeconfig and API readiness (${elapsed_time}s)."
+      echo "❌ Timed out waiting for RKE2 kubeconfig and API readiness ($${elapsed_time}s)."
       "$kubectl_bin" --kubeconfig=/etc/rancher/rke2/rke2.yaml cluster-info || true
       exit 1
     fi
 
-    echo "(${elapsed_time}/${timeout}s) Waiting for RKE2 kubeconfig and API readiness..."
+    echo "($${elapsed_time}/${timeout}s) Waiting for RKE2 kubeconfig and API readiness..."
     sleep 5
   done
 }
@@ -156,7 +156,7 @@ wait_for_all_nodes() {
       /usr/local/bin/kubectl get nodes || true
       exit 1
     fi
-    echo "($elapsed_time/$timeout s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
+    echo "($${elapsed_time}/${timeout} s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
     sleep 15
   done
 }
@@ -266,8 +266,8 @@ EOF
 
   if [[ -n "$CERT_FILE" && -n "$KEY_FILE" ]]; then
     /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-      --cert="$CERT_FILE" --key="$KEY_FILE" --dry-run=client -o yaml > "${TMPDIR:-/tmp}/argocd-tls.yaml" && \
-    /usr/local/bin/kubectl apply -f "${TMPDIR:-/tmp}/argocd-tls.yaml" || true
+      --cert="$CERT_FILE" --key="$KEY_FILE" --dry-run=client -o yaml > "$${TMPDIR:-/tmp}/argocd-tls.yaml" && \
+    /usr/local/bin/kubectl apply -f "$${TMPDIR:-/tmp}/argocd-tls.yaml" || true
     echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
   else
     echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
