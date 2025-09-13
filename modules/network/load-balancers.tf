@@ -77,11 +77,6 @@ resource "oci_load_balancer_listener" "private_lb_listener_api" {
   default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset_api.name
   port                       = 6443
   protocol                   = "TCP"
-
-  connection_configuration {
-    # 1 hour idle timeout — allow long-lived connections (tunnels/websockets)
-    idle_timeout = 3600
-  }
 }
 
 # --- ADD THIS NEW BACKEND SET AND LISTENER FOR RKE2 ---
@@ -102,7 +97,4 @@ resource "oci_load_balancer_listener" "private_lb_listener_registration" {
   default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset_registration.name
   port                       = 9345
   protocol                   = "TCP"
-  connection_configuration {
-    idle_timeout = 3600
-  }
 }
