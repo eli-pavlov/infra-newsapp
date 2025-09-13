@@ -29,7 +29,7 @@ install_base_tools() {
   dnf install -y curl jq git || true
 }
 
-systemctl disable firewalld --now
+systemctl disable firewalld --now || true
 
 get_private_ip() {
   echo "Fetching instance private IP from metadata (OCI metadata endpoint)..."
@@ -47,7 +47,6 @@ install_rke2_server() {
 
   # Keep variable names you already inject from Terraform:
   # T_RKE2_VERSION (used as RKE2 version), T_RKE2_TOKEN, PRIVATE_IP, T_PRIVATE_LB_IP
-  # Use plain assignment (no shell-default syntax that includes ':' which Terraform would choke on).
   export INSTALL_RKE2_VERSION="${T_RKE2_VERSION}"
   export INSTALL_RKE2_EXEC="server"
 
@@ -56,7 +55,7 @@ install_rke2_server() {
   chmod 700 /etc/rancher/rke2
 
   # Write RKE2 config (token, node IPs, tls-san, kubeconfig mode, taints)
-  # Use $T_RKE2_TOKEN and $PRIVATE_IP (shell variables) — avoid ${...} so templatefile() won't try to parse them.
+  # Use $T_RKE2_TOKEN and $PRIVATE_IP (shell variables) — keep those without ${} to avoid template parsing.
   cat > /etc/rancher/rke2/config.yaml <<EOF
 token: $T_RKE2_TOKEN
 node-ip: $PRIVATE_IP
@@ -95,12 +94,12 @@ EOF
     fi
     elapsed=$(( $(date +%s) - start_time ))
     if [ "$elapsed" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for RKE2 server node to become Ready (elapsed $${elapsed}s)."
+      printf '❌ Timed out waiting for RKE2 server node to become Ready (elapsed %ds).\n' "$elapsed"
       "$kubectl_bin" --kubeconfig=/etc/rancher/rke2/rke2.yaml cluster-info || true
       journalctl -u rke2-server -n 200 --no-pager || true
       exit 1
     fi
-    echo "Waiting for node Ready... ($${elapsed}/${timeout}s)"
+    printf 'Waiting for node Ready... (%d/%d s)\n' "$elapsed" "$timeout"
     sleep 5
   done
 }
@@ -128,12 +127,12 @@ wait_for_kubeconfig_and_api() {
 
     elapsed_time=$(( $(date +%s) - start_time ))
     if [ "$elapsed_time" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for RKE2 kubeconfig and API readiness ($${elapsed_time}s)."
+      printf '❌ Timed out waiting for RKE2 kubeconfig and API readiness (%ds).\n' "$elapsed_time"
       "$kubectl_bin" --kubeconfig=/etc/rancher/rke2/rke2.yaml cluster-info || true
       exit 1
     fi
 
-    echo "($${elapsed_time}/${timeout}s) Waiting for RKE2 kubeconfig and API readiness..."
+    printf '(%d/%d s) Waiting for RKE2 kubeconfig and API readiness...\n' "$elapsed_time" "$timeout"
     sleep 5
   done
 }
@@ -156,7 +155,7 @@ wait_for_all_nodes() {
       /usr/local/bin/kubectl get nodes || true
       exit 1
     fi
-    echo "($${elapsed_time}/${timeout} s) Currently $ready_nodes/$T_EXPECTED_NODE_COUNT nodes are Ready. Waiting..."
+    printf '(%d/%d s) Currently %d/%s nodes are Ready. Waiting...\n' "$elapsed_time" "$timeout" "$ready_nodes" "$T_EXPECTED_NODE_COUNT"
     sleep 15
   done
 }
@@ -222,7 +221,7 @@ install_argo_cd() {
 ensure_argocd_ingress_and_server() {
   set -euo pipefail
   export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-  kubectl -n argocd apply -f - <<'EOF'
+  /usr/local/bin/kubectl -n argocd apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -250,10 +249,10 @@ spec:
                   number: 80
 EOF
 
-  kubectl -n argocd annotate ingress argocd-server-ingress \
+  /usr/local/bin/kubectl -n argocd annotate ingress argocd-server-ingress \
     nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
 
-  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
+  /usr/local/bin/kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
     "spec": {
       "tls": [
         {
@@ -273,8 +272,8 @@ EOF
     echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
   fi
 
-  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
-  kubectl -n argocd rollout restart deployment argocd-server || true
+  /usr/local/bin/kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+  /usr/local/bin/kubectl -n argocd rollout restart deployment argocd-server || true
 
   echo "Ingress/annotations applied and argocd-server restarted."
 }
