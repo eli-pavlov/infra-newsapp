@@ -1,5 +1,5 @@
 #!/bin/bash
-# K3s SERVER install, tooling, secret generation, ingress-nginx install,
+# RKE2 SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
 # Converted for Oracle Linux 9 (dnf-based) — no other behaviour changes.
 set -euo pipefail
@@ -10,8 +10,8 @@ set -x
 trap 'echo "ERROR at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # --- Vars injected by Terraform ---
-T_K3S_VERSION="${T_K3S_VERSION}"
-T_K3S_TOKEN="${T_K3S_TOKEN}"
+T_RKE2_VERSION="${T_RKE2_VERSION}"
+T_RKE2_TOKEN="${T_RKE2_TOKEN}"
 T_DB_USER="${T_DB_USER}"
 T_DB_NAME_DEV="${T_DB_NAME_DEV}"
 T_DB_NAME_PROD="${T_DB_NAME_PROD}"
@@ -42,60 +42,103 @@ get_private_ip() {
   echo "✅ Instance private IP is $PRIVATE_IP"
 }
 
-install_k3s_server() {
-  echo "Installing K3s server..."
-  # Add TLS SANs for both the node's own IP and the private LB IP
-  local PARAMS="--write-kubeconfig-mode 644 \
-    --node-ip $PRIVATE_IP \
-    --advertise-address $PRIVATE_IP \
-    --disable traefik \
-    --tls-san $PRIVATE_IP \
-    --tls-san $T_PRIVATE_LB_IP \
-    --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
+install_rke2_server() {
+  echo "Installing RKE2 server..."
 
-  export INSTALL_K3S_EXEC="$PARAMS"
-  export K3S_TOKEN="$T_K3S_TOKEN"
-  export INSTALL_K3S_VERSION="$T_K3S_VERSION"
+  # Keep variable names you already inject from Terraform:
+  # T_RKE2_VERSION (used as RKE2 version), T_RKE2_TOKEN, PRIVATE_IP, T_PRIVATE_LB_IP
+  export INSTALL_RKE2_VERSION="${T_RKE2_VERSION:-}"
+  # INSTALL_RKE2_EXEC is kept for compatibility (alias to INSTALL_RKE2_TYPE)
+  export INSTALL_RKE2_EXEC="server"
 
-  # Use upstream installer (works on OL9). Keep exact behaviour as original script.
-  curl -sfL https://get.k3s.io | sh -
+  # Ensure config dir exists
+  mkdir -p /etc/rancher/rke2
+  chmod 700 /etc/rancher/rke2
 
-  echo "Waiting for K3s server node to be ready..."
-  # Wait until kubectl from k3s observes this node Ready
-  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
-  echo "K3s server node is running."
-}
+  # Write RKE2 config (token, node IPs, tls-san, kubeconfig mode, taints)
+  cat > /etc/rancher/rke2/config.yaml <<EOF
+token: ${T_RKE2_TOKEN}
+node-ip: ${PRIVATE_IP}
+advertise-address: ${PRIVATE_IP}
+write-kubeconfig-mode: "0644"
+tls-san:
+  - ${PRIVATE_IP}
+  - ${T_PRIVATE_LB_IP}
+# If you want the node to register with control-plane taint (like your k3s kubelet-arg)
+node-taint:
+  - "node-role.kubernetes.io/control-plane=true:NoSchedule"
+# preserve any other kubelet args if needed; example:
+kubelet-arg:
+  - "register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
+EOF
 
-wait_for_kubeconfig_and_api() {
-  echo "Waiting for kubeconfig and API to be fully ready..."
-  local timeout=120
+  # Install via upstream RKE2 installer (wrapper chooses RPM/tarball as appropriate)
+  echo "Running RKE2 installer (version: ${INSTALL_RKE2_VERSION:-latest})..."
+  curl -sfL https://get.rke2.io | sh -
+
+  # Enable & start the rke2-server service
+  systemctl enable --now rke2-server.service
+
+  echo "Waiting for RKE2 server node to be Ready..."
+  # Use bundled kubectl binary path to avoid PATH issues
+  local kubectl=/var/lib/rancher/rke2/bin/kubectl
+  export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+
+  # Wait until kubectl observes this node Ready (sensible timeout)
   local start_time
   start_time=$(date +%s)
+  local timeout=900   # 15 minutes, you can shorten if desired
   while true; do
-    # Check if kubeconfig exists
-    if [ ! -f /etc/rancher/k3s/k3s.yaml ]; then
-      echo "Waiting for kubeconfig file to be created..."
-      sleep 5
-      continue
+    if [ -x "$kubectl" ] && "$kubectl" --kubeconfig=/etc/rancher/rke2/rke2.yaml get nodes 2>/dev/null | grep -q 'Ready'; then
+      echo "RKE2 server node is Ready."
+      break
     fi
-    # Check if kubectl can access the API (basic connectivity)
-    if /usr/local/bin/kubectl get nodes 2>/dev/null | grep -q 'Ready'; then
-      # Additional check: ensure core components (etcd, scheduler, controller-manager) are ready
-      if /usr/local/bin/kubectl get pods -n kube-system 2>/dev/null | grep -qE '(etcd|coredns|kube-proxy|kube-scheduler|kube-controller)'; then
-        echo "✅ Kubeconfig and API are ready."
-        break
-      fi
-    fi
-    local elapsed_time=$(( $(date +%s) - start_time ))
-    if [ "$elapsed_time" -gt "$timeout" ]; then
-      echo "❌ Timed out waiting for kubeconfig and API readiness."
-      /usr/local/bin/kubectl cluster-info || true
+    local elapsed=$(( $(date +%s) - start_time ))
+    if [ "$elapsed" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for RKE2 server node to become Ready (elapsed ${elapsed}s)."
+      $kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml cluster-info || true
+      journalctl -u rke2-server -n 200 --no-pager || true
       exit 1
     fi
-    echo "($elapsed_time/$timeout s) Waiting for kubeconfig and API readiness..."
+    echo "Waiting for node Ready... (${elapsed}/${timeout}s)"
     sleep 5
   done
 }
+
+wait_for_kubeconfig_and_api() {
+  echo "Waiting for kubeconfig and API to be fully ready (RKE2)..."
+  local timeout=120
+  local start_time
+  start_time=$(date +%s)
+  local kubectl=/var/lib/rancher/rke2/bin/kubectl
+
+  while true; do
+    if [ ! -f /etc/rancher/rke2/rke2.yaml ]; then
+      echo "Waiting for /etc/rancher/rke2/rke2.yaml to be created..."
+      sleep 5
+      continue
+    fi
+
+    # Basic API connectivity check (kube-system pod list + node Ready)
+    if "$kubectl" --kubeconfig=/etc/rancher/rke2/rke2.yaml get nodes 2>/dev/null | grep -q 'Ready'; then
+      if "$kubectl" --kubeconfig=/etc/rancher/rke2/rke2.yaml get pods -n kube-system 2>/dev/null | grep -qE '(etcd|coredns|kube-proxy|kube-scheduler|kube-controller)'; then
+        echo "✅ RKE2 kubeconfig and API are ready."
+        break
+      fi
+    fi
+
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for RKE2 kubeconfig and API readiness (${elapsed_time}s)."
+      $kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml cluster-info || true
+      exit 1
+    fi
+
+    echo "(${elapsed_time}/${timeout}s) Waiting for RKE2 kubeconfig and API readiness..."
+    sleep 5
+  done
+}
+
 
 wait_for_all_nodes() {
   echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
@@ -121,8 +164,8 @@ wait_for_all_nodes() {
 }
 
 install_helm() {
-  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+  export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
   if ! command -v helm &> /dev/null; then
     echo "Installing Helm..."
     curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
@@ -133,8 +176,8 @@ install_helm() {
 }
 
 install_ingress_nginx() {
-  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+  export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
   echo "Installing ingress-nginx via Helm (DaemonSet + NodePorts 30080/30443)..."
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
   helm repo update
@@ -185,7 +228,8 @@ install_argo_cd() {
 
 ensure_argocd_ingress_and_server() {
   set -euo pipefail
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+  export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
   kubectl -n argocd apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -247,8 +291,8 @@ EOF
 
 
 generate_secrets_and_credentials() {
-  KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+  export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))')
@@ -307,7 +351,7 @@ bootstrap_argocd_apps() {
 main() {
   install_base_tools
   get_private_ip
-  install_k3s_server
+  install_rke2_server
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm

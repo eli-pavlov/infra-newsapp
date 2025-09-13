@@ -134,3 +134,9 @@ variable "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver."
   type        = string
 }
+
+variable "rke2_version" {
+  description = "The version of RKE2 to install (if empty, falls back to k3s_version)."
+  type        = string
+  default     = "1.33.4"
+}

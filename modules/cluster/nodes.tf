@@ -36,7 +36,7 @@ resource "oci_core_instance" "control_plane" {
   metadata = {
     ssh_authorized_keys = var.public_key_content
     # cloudinit_config already base64-encodes; pass rendered directly
-    user_data = data.cloudinit_config.k3s_server_tpl.rendered
+    user_data = data.cloudinit_config.rke2_server_tpl.rendered
   }
 }
 
@@ -71,9 +71,9 @@ resource "oci_core_instance" "app_workers" {
     ssh_authorized_keys = var.public_key_content
     user_data = base64encode(
       templatefile("${path.module}/files/k3s-install-agent.sh", {
-        T_K3S_VERSION = var.k3s_version
-        T_K3S_TOKEN   = random_password.k3s_token.result
-        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_RKE2_VERSION = var.rke2_version,
+        T_RKE2_TOKEN   = random_password.rke2_token.result,
+        T_RKE2_URL_IP  = var.private_lb_ip_address,
         T_NODE_LABELS = "role=application",
         T_NODE_TAINTS = ""
       })
@@ -115,9 +115,9 @@ resource "oci_core_instance" "db_worker" {
     ssh_authorized_keys = var.public_key_content
     user_data = base64encode(
       templatefile("${path.module}/files/k3s-install-agent.sh", {
-        T_K3S_VERSION = var.k3s_version
-        T_K3S_TOKEN   = random_password.k3s_token.result
-        T_K3S_URL_IP  = var.private_lb_ip_address,
+        T_RKE2_VERSION = var.rke2_version,
+        T_RKE2_TOKEN   = random_password.rke2_token.result,
+        T_RKE2_URL_IP  = var.private_lb_ip_address,
         T_NODE_LABELS = "role=db",
         T_NODE_TAINTS = ""
       })
