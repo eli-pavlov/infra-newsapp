@@ -47,9 +47,18 @@ output "public_nlb_backend_set_https_name" {
   value = oci_network_load_balancer_backend_set.public_nlb_backends["https"].name
 }
 
+# Backend set name for kube-apiserver (6443)
 output "private_lb_backendset_name" {
-  value = oci_load_balancer_backend_set.private_lb_backendset.name
+  description = "Backend set name on the private load balancer for the kube-apiserver (6443)."
+  value       = oci_load_balancer_backend_set.private_lb_backendset_api.name
 }
+
+# Backend set name for RKE2 registration endpoint (9345)
+output "private_lb_backendset_registration_name" {
+  description = "Backend set name on the private load balancer for RKE2 registration (9345)."
+  value       = oci_load_balancer_backend_set.private_lb_backendset_registration.name
+}
+
 output "private_subnet_cidr" {
   value = oci_core_subnet.private.cidr_block
 }
