@@ -15,17 +15,17 @@ T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
 # Fixed (well-known) RKE2 registration port used by the cluster (you can use T_RKE2_PORT if you prefer)
-RKE2_REG_PORT="${T_RKE2_PORT:-9345}"
+RKE2_REG_PORT="$T_RKE2_PORT"
 
 wait_for_server() {
   local timeout=900 # 15 minutes
   local start_time=$(date +%s)
 
-  echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}:${RKE2_REG_PORT}/ping..."
+  echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}:$RKE2_REG_PORT/ping..."
 
   while true; do
     # registration uses the port specified (commonly 9345)
-    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_RKE2_URL_IP}:${RKE2_REG_PORT}/ping"; then
+    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_RKE2_URL_IP}:$RKE2_REG_PORT/ping"; then
       echo "✅ RKE2 server registration endpoint is responsive. Proceeding with agent installation."
       break
     fi
@@ -107,7 +107,7 @@ setup_local_db_volume() {
 }
 
 install_rke2_agent() {
-  echo "Joining RKE2 cluster at https://${T_RKE2_URL_IP}:${RKE2_REG_PORT} (registration) and K8s API at :6443"
+  echo "Joining RKE2 cluster at https://${T_RKE2_URL_IP}:$RKE2_REG_PORT (registration) and K8s API at :6443"
 
   # Create agent config dir and file
   mkdir -p /etc/rancher/rke2
@@ -115,7 +115,7 @@ install_rke2_agent() {
 
   # Build config.yaml for the agent (server + token + labels/taints)
   cat > /etc/rancher/rke2/config.yaml <<EOF
-server: "https://${T_RKE2_URL_IP}:${RKE2_REG_PORT}"
+server: "https://${T_RKE2_URL_IP}:$RKE2_REG_PORT"
 token: "${T_RKE2_TOKEN}"
 # node labels (if any)
 EOF
