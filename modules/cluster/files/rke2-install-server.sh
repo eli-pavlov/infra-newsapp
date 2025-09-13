@@ -125,12 +125,14 @@ wait_for_kubeconfig_and_api() {
   done
 }
 
+
 wait_for_all_nodes() {
   echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
   timeout=900
   start_time=$(date +%s)
   while true; do
-    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
+    ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null \
+      | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
     if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
       echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready. Proceeding."
       break
@@ -184,6 +186,7 @@ install_argo_cd() {
   /usr/local/bin/kubectl create namespace argocd || true
   /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
+  # Tolerate control-plane taint where applicable
   for d in argocd-server argocd-repo-server argocd-dex-server; do
     /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[
       {"op":"add","path":"/spec/template/spec/tolerations","value":[
@@ -206,7 +209,7 @@ install_argo_cd() {
 ensure_argocd_ingress_and_server() {
   set -euo pipefail
   export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-  /usr/local/bin/kubectl -n argocd apply -f - <<'EOF'
+  kubectl -n argocd apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -234,9 +237,10 @@ spec:
                   number: 80
 EOF
 
-  /usr/local/bin/kubectl -n argocd annotate ingress argocd-server-ingress nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
+  kubectl -n argocd annotate ingress argocd-server-ingress \
+    nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
 
-  /usr/local/bin/kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
+  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
     "spec": {
       "tls": [
         {
@@ -247,17 +251,19 @@ EOF
     }
   }' >/dev/null || true
 
-  # Write TLS secret to a fixed temp path (avoid ${TMPDIR})
-  if [[ -n "${CERT_FILE:-}" && -n "${KEY_FILE:-}" ]]; then
-    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls --cert="$CERT_FILE" --key="$KEY_FILE" --dry-run=client -o yaml > /tmp/argocd-tls.yaml && \
-    /usr/local/bin/kubectl apply -f /tmp/argocd-tls.yaml || true
+  # NOTE: escape any shell parameter expansions that would be parsed by Terraform.
+  # Use $${...} for shell expansions so templatefile() does not try to interpolate them.
+  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
+    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
+      --cert="$CERT_FILE" --key="$KEY_FILE" --dry-run=client -o yaml > $${TMPDIR:-/tmp}/argocd-tls.yaml && \
+    /usr/local/bin/kubectl apply -f $${TMPDIR:-/tmp}/argocd-tls.yaml || true
     echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
   else
     echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
   fi
 
-  /usr/local/bin/kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
-  /usr/local/bin/kubectl -n argocd rollout restart deployment argocd-server || true
+  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+  kubectl -n argocd rollout restart deployment argocd-server || true
 
   echo "Ingress/annotations applied and argocd-server restarted."
 }
@@ -268,6 +274,7 @@ generate_secrets_and_credentials() {
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))')
 
+  # Now that we know the secret exists, get the password
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
   cat <<EOF > /root/credentials.txt
@@ -284,14 +291,21 @@ EOF
 
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials --from-literal=POSTGRES_USER="$T_DB_USER" --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER="$T_DB_USER" \
+      --from-literal=POSTGRES_PASSWORD="$DB_PASSWORD" \
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
   DB_URI_DEV="postgresql://$T_DB_USER:$DB_PASSWORD@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/$T_DB_NAME_DEV"
-  /usr/local/bin/kubectl -n development create secret generic backend-db-connection --from-literal=DB_URI="$DB_URI_DEV" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+  /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
+    --from-literal=DB_URI="$DB_URI_DEV" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
   DB_URI_PROD="postgresql://$T_DB_USER:$DB_PASSWORD@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/$T_DB_NAME_PROD"
-  /usr/local/bin/kubectl -n default create secret generic backend-db-connection --from-literal=DB_URI="$DB_URI_PROD" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+  /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
+    --from-literal=DB_URI="$DB_URI_PROD" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 }
 
 bootstrap_argocd_apps() {
@@ -299,9 +313,11 @@ bootstrap_argocd_apps() {
   rm -rf /tmp/manifests || true
   git clone "$T_MANIFESTS_REPO_URL" /tmp/manifests || true
 
+  # DEV
   [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
   [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml   || true
 
+  # PROD
   [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
   [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml   || true
 
