@@ -10,6 +10,11 @@ resource "oci_network_load_balancer_network_load_balancer" "public_nlb" {
   is_private                     = false
   is_preserve_source_destination = false
   network_security_group_ids     = [oci_core_network_security_group.public_lb.id]
+  timeouts {
+    create = "5m"
+    update = "5m"
+    delete = "5m"
+  }
 }
 
 resource "oci_network_load_balancer_backend_set" "public_nlb_backends" {
@@ -50,6 +55,11 @@ resource "oci_load_balancer_load_balancer" "private_lb" {
   is_private                 = true
   subnet_ids                 = [oci_core_subnet.private.id] # Place LB in private subnet
   network_security_group_ids = [oci_core_network_security_group.private_lb.id]
+  timeouts {
+  create = "5m"
+  update = "5m"
+  delete = "5m"
+}
 }
 
 resource "oci_load_balancer_backend_set" "private_lb_backendset_api" {
