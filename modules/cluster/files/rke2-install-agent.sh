@@ -13,7 +13,7 @@ T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
 wait_for_server() {
-  local timeout=900 # 15 minutes
+  local timeout=1200 # 15 minutes
   local start_time=$(date +%s)
   echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}:${T_RKE2_PORT}/ping..."
   while true; do

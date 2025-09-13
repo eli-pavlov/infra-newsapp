@@ -93,6 +93,7 @@ install_rke2_server() {
 
   # Write RKE2 config (use shell variables for runtime values)
   cat > /etc/rancher/rke2/config.yaml <<EOF
+cni: cilium
 token: $T_RKE2_TOKEN
 node-ip: $PRIVATE_IP
 advertise-address: $PRIVATE_IP
