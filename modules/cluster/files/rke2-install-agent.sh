@@ -9,6 +9,7 @@ exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/cons
 T_RKE2_VERSION="${T_RKE2_VERSION}"   # will be used as INSTALL_RKE2_VERSION
 T_RKE2_TOKEN="${T_RKE2_TOKEN}"
 T_RKE2_URL_IP="${T_RKE2_URL_IP}"     # registration / fixed registration address (LB or server IP)
+T_RKE2_PORT="${T_RKE2_PORT}"         # port, e.g. ":9345"
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
@@ -16,11 +17,11 @@ wait_for_server() {
   local timeout=900 # 15 minutes
   local start_time=$(date +%s)
 
-  echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}:9345/ping..."
+  echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}${T_RKE2_PORT}/ping..."
 
   while true; do
     # registration uses port 9345 (RKE2 registration endpoint)
-    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_RKE2_URL_IP}:9345/ping"; then
+    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_RKE2_URL_IP}${T_RKE2_PORT}/ping"; then
       echo "✅ RKE2 server registration endpoint is responsive. Proceeding with agent installation."
       break
     fi
@@ -101,7 +102,7 @@ setup_local_db_volume() {
 }
 
 install_rke2_agent() {
-  echo "Joining RKE2 cluster at https://${T_RKE2_URL_IP}:9345 (registration) and K8s API at :6443"
+  echo "Joining RKE2 cluster at https://${T_RKE2_URL_IP}${T_RKE2_PORT} (registration) and K8s API at :6443"
 
   # Create agent config dir and file
   mkdir -p /etc/rancher/rke2
@@ -109,21 +110,21 @@ install_rke2_agent() {
 
   # Build config.yaml for the agent (server + token + labels/taints)
   cat > /etc/rancher/rke2/config.yaml <<EOF
-server: "https://${T_RKE2_URL_IP}:9345"
+server: "https://${T_RKE2_URL_IP}${T_RKE2_PORT}"
 token: "${T_RKE2_TOKEN}"
 # node labels (if any)
 EOF
 
   # append node-labels and node-taints, if provided (T_NODE_LABELS/T_NODE_TAINTS must be newline/list compatible)
-  if [ -n "${T_NODE_LABELS:-}" ]; then
+  if [ -n "${T_NODE_LABELS}" ]; then
     echo "node-label:" >> /etc/rancher/rke2/config.yaml
-    # Expecting labels in format "k=v k2=v2" or JSON-like; convert to YAML list
+    # Expecting labels in format "k=v k2=v2"
     for lb in ${T_NODE_LABELS}; do
       echo "  - \"${lb}\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
-  if [ -n "${T_NODE_TAINTS:-}" ]; then
+  if [ -n "${T_NODE_TAINTS}" ]; then
     echo "node-taint:" >> /etc/rancher/rke2/config.yaml
     for tt in ${T_NODE_TAINTS}; do
       echo "  - \"${tt}\"" >> /etc/rancher/rke2/config.yaml
