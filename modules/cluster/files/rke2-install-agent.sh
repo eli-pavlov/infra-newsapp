@@ -3,11 +3,13 @@
 # - Application workers join normally.
 # - DB worker mounts the extra OCI paravirtualized block volume and prepares PV paths.
 set -euo pipefail
+
+# Send output to cloud-init log and syslog (avoid `${...}` here so templatefile() doesn't trip)
 exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 # --- Vars injected by Terraform (must match modules/cluster/nodes.tf) ---
 # These are template variables provided by the templatefile() call and must
-# remain as ${...} so templatefile() substitutes them.
+# remain on the right-hand side as ${...} so templatefile() substitutes them.
 T_RKE2_VERSION="${T_RKE2_VERSION}"
 T_RKE2_TOKEN="${T_RKE2_TOKEN}"
 T_RKE2_URL_IP="${T_RKE2_URL_IP}"
@@ -15,8 +17,9 @@ T_RKE2_PORT="${T_RKE2_PORT}"         # expects a numeric value e.g. 9345
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
-# Use a runtime variable for the registration port (shell-only usage below).
-RKE2_REG_PORT="$T_RKE2_PORT"
+# Use shell variables (plain $VAR) throughout the script so Terraform doesn't parse them.
+# RKE2 registration port (shell variable)
+RKE2_REG_PORT=$T_RKE2_PORT
 
 wait_for_server() {
   local timeout=900 # 15 minutes
@@ -37,7 +40,7 @@ wait_for_server() {
       exit 1
     fi
 
-    echo "($elapsed_time/$timeout s) Server not ready yet, waiting 10 seconds..."
+    echo "($elapsed_time/$timeout) Server not ready yet, waiting 10 seconds..."
     sleep 10
   done
 }
@@ -137,12 +140,12 @@ EOF
     done
   fi
 
-  # Export installer/version variables (reuse your T_RKE2_VERSION)
+  # Export installer/version variables (reuse the injected variable)
   INSTALL_RKE2_VERSION="$T_RKE2_VERSION"
   export INSTALL_RKE2_VERSION
   export INSTALL_RKE2_TYPE="agent"
 
-  # Provide a simple runtime default (avoid using ${VAR:-default} which Terraform's template parser would catch)
+  # Provide a simple runtime default in shell (safe — Terraform has already substituted top placeholders)
   ver="$INSTALL_RKE2_VERSION"
   if [ -z "$ver" ]; then
     ver="latest"
