@@ -10,11 +10,12 @@ exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/cons
 T_RKE2_VERSION="${T_RKE2_VERSION}"
 T_RKE2_TOKEN="${T_RKE2_TOKEN}"
 T_RKE2_URL_IP="${T_RKE2_URL_IP}"
+T_RKE2_PORT="${T_RKE2_PORT}"         # expects a numeric value e.g. 9345
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
-# Fixed (well-known) RKE2 registration port used by the cluster (avoid passing ':9345' via template)
-RKE2_REG_PORT=9345
+# Fixed (well-known) RKE2 registration port used by the cluster (you can use T_RKE2_PORT if you prefer)
+RKE2_REG_PORT="${T_RKE2_PORT:-9345}"
 
 wait_for_server() {
   local timeout=900 # 15 minutes
@@ -140,7 +141,7 @@ EOF
   export INSTALL_RKE2_VERSION
   export INSTALL_RKE2_TYPE="agent"
 
-  # Provide a simple runtime default (avoid using ${VAR:-default} which Terraform's template parser rejects)
+  # Provide a simple runtime default (this fallback runs only after Terraform substitution; safe here)
   ver="$INSTALL_RKE2_VERSION"
   if [ -z "$ver" ]; then
     ver="latest"
