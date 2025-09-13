@@ -91,6 +91,7 @@ resource "oci_load_balancer_backend_set" "private_lb_backendset_registration" {
   }
 }
 
+
 resource "oci_load_balancer_listener" "private_lb_listener_registration" {
   name                       = "k8s_rke2_registration_listener"
   load_balancer_id           = oci_load_balancer_load_balancer.private_lb.id
