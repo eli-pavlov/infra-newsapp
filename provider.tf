@@ -16,6 +16,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5.9.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 }
 
@@ -30,3 +34,4 @@ provider "oci" {
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
+
