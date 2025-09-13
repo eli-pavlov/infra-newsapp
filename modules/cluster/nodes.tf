@@ -73,7 +73,6 @@ resource "oci_core_instance" "app_workers" {
       templatefile("${path.module}/files/rke2-install-agent.sh", {
         T_RKE2_VERSION = var.rke2_version,
         T_RKE2_TOKEN   = random_password.rke2_token.result,
-        T_RKE2_PORT = ":9345",
         T_RKE2_URL_IP  = var.private_lb_ip_address,
         T_NODE_LABELS = "role=application",
         T_NODE_TAINTS = ""
@@ -118,7 +117,6 @@ resource "oci_core_instance" "db_worker" {
       templatefile("${path.module}/files/rke2-install-agent.sh", {
         T_RKE2_VERSION = var.rke2_version,
         T_RKE2_TOKEN   = random_password.rke2_token.result,
-        T_RKE2_PORT = ":9345",
         T_RKE2_URL_IP  = var.private_lb_ip_address,
         T_NODE_LABELS = "role=db",
         T_NODE_TAINTS = ""
