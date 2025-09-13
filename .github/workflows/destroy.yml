@@ -88,4 +88,5 @@ jobs:
             -backend-config="region=${{ secrets.OCI_REGION }}"
 
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve -input=false -lock-timeout=15m -parallelism=10
+        run: force-unlock efc209e6-21e4-d249-cc53-739cb89c32c7
+        run: terraform destroy -auto-approve -input=false -lock-timeout=15m -parallelism=10 
