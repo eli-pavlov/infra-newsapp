@@ -196,6 +196,22 @@ resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from
   }
 }
 
+resource "oci_core_network_security_group_security_rule" "cp_registration_healthcheck_in_from_subnet" {
+  network_security_group_id = oci_core_network_security_group.control_plane.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source_type               = "CIDR_BLOCK"
+  source                    = var.private_subnet_cidr
+  description               = "Allow LB health checks from within the private subnet to RKE2 registration (9345)"
+
+  tcp_options {
+    destination_port_range {
+      min = 9345
+      max = 9345
+    }
+  }
+}
+
 # 3) Workers:
 #    - allow NodePorts (30000-32767) from the public LB (TCP & UDP)
 #    - allow SSH from bastion
