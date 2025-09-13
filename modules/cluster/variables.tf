@@ -95,14 +95,6 @@ variable "db_volume_size_gb" {
   type        = number
   default     = 50
 }
-
-# --- K3S VARIABLES ---
-variable "k3s_version" {
-  description = "The version of K3s to install."
-  type        = string
-  default     = "v1.28.8+k3s1"
-}
-
 variable "public_nlb_id" {
   description = "The OCID of the public Network Load Balancer."
   type        = string
@@ -138,5 +130,5 @@ variable "private_lb_backendset_name" {
 variable "rke2_version" {
   description = "The version of RKE2 to install (if empty, falls back to k3s_version)."
   type        = string
-  default     = "1.33.4"
+  default     = "v1.33.4+rke2r1"
 }

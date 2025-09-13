@@ -70,7 +70,7 @@ resource "oci_core_instance" "app_workers" {
   metadata = {
     ssh_authorized_keys = var.public_key_content
     user_data = base64encode(
-      templatefile("${path.module}/files/k3s-install-agent.sh", {
+      templatefile("${path.module}/files/rke2-install-agent.sh", {
         T_RKE2_VERSION = var.rke2_version,
         T_RKE2_TOKEN   = random_password.rke2_token.result,
         T_RKE2_URL_IP  = var.private_lb_ip_address,
