@@ -132,3 +132,9 @@ variable "rke2_version" {
   type        = string
   default     = "v1.33.4+rke2r1"
 }
+
+variable "protect_reserved_public_ip" {
+  description = "If true, Terraform will refuse to destroy the reserved public IP. Set to false to allow intentional removal."
+  type        = bool
+  default     = true
+}

@@ -43,6 +43,16 @@ resource "oci_core_public_ip" "reserved_public_ip_assigned" {
   display_name   = "reservedPublicIPAssigned"
   lifetime       = "RESERVED"
   private_ip_id  = data.oci_core_private_ips.private_ips1.private_ips[0]["id"]
+
+  freeform_tags = {
+    managed_by = "terraform"
+    purpose    = "bastion"
+  }
+
+  lifecycle {
+    prevent_destroy = var.protect_reserved_public_ip
+
+  }
 }
 
 data "oci_core_public_ips" "region_public_ips_list" {

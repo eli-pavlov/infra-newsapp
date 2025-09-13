@@ -72,7 +72,7 @@ resource "oci_load_balancer_listener" "private_lb_listener_api" {
 
 # --- ADD THIS NEW BACKEND SET AND LISTENER FOR RKE2 ---
 resource "oci_load_balancer_backend_set" "private_lb_backendset_registration" {
-  name             = "k8s_rke2_registration_backend_set"
+  name             = "k8s_rke2_reg_backend_set"
   load_balancer_id = oci_load_balancer_load_balancer.private_lb.id
   policy           = "ROUND_ROBIN"
   health_checker {
