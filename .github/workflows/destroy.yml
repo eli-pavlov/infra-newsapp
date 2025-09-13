@@ -87,6 +87,8 @@ jobs:
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}"
 
+      - name: unlock state
+        run: terraform force-unlock efc209e6-21e4-d249-cc53-739cb89c32c7
+
       - name: Terraform Destroy
-        run: force-unlock efc209e6-21e4-d249-cc53-739cb89c32c7
         run: terraform destroy -auto-approve -input=false -lock-timeout=15m -parallelism=10 
