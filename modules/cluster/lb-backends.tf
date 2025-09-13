@@ -40,11 +40,7 @@ resource "oci_network_load_balancer_backend" "http" {
   weight                   = 1
   is_backup                = false
   is_offline               = false
-  
-  depends_on = [
-  oci_network_load_balancer_network_load_balancer.public_nlb,
-  oci_network_load_balancer_backend_set.public_nlb_backends["https"]
-  ]
+
 }
 
 resource "oci_network_load_balancer_backend" "https" {
@@ -58,8 +54,4 @@ resource "oci_network_load_balancer_backend" "https" {
   is_backup                = false
   is_offline               = false
 
-  depends_on = [
-  oci_network_load_balancer_network_load_balancer.public_nlb,
-  oci_network_load_balancer_backend_set.public_nlb_backends["https"]
-  ]
 }
