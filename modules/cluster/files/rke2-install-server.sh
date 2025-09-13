@@ -39,6 +39,47 @@ get_private_ip() {
   echo "✅ Instance private IP is $PRIVATE_IP"
 }
 
+
+# Ensure kernel modules, iptables, NetworkManager config, and sysctl needed for Canal
+ensure_network_prereqs() {
+  echo "==> Ensuring networking prerequisites (iptables, vxlan, sysctl, NetworkManager config)..."
+
+  # Install iptables/xtables if missing (Canal requires iptables)
+  if ! command -v iptables >/dev/null 2>&1; then
+    echo "Installing iptables/xtables..."
+    dnf install -y iptables iptables-services xtables-nft || dnf install -y iptables xtables-nft || true
+  fi
+
+  # Load vxlan kernel module (flannel/canal VXLAN)
+  if ! lsmod | grep -q '^vxlan'; then
+    modprobe vxlan || true
+  fi
+
+  # Ensure forwarding sysctl is persistent
+  cat > /etc/sysctl.d/90-rke2.conf <<'EOF'
+net.ipv4.ip_forward=1
+net.ipv4.conf.all.forwarding=1
+net.ipv6.conf.all.forwarding=1
+EOF
+  sysctl --system || true
+
+  # Configure NetworkManager to ignore CNI-managed interfaces to avoid it interfering with veth/vxlan
+  cat > /etc/NetworkManager/conf.d/rke2-canal.conf <<'EOF'
+[keyfile]
+unmanaged-devices=interface-name:flannel*;interface-name:cali*;interface-name:tunl*;interface-name:vxlan.calico;interface-name:vxlan-v6.calico;interface-name:wireguard.cali;interface-name:wg-v6.cali
+EOF
+  # reload NetworkManager (if present) to pick up unmanaged-devices
+  if systemctl is-active --quiet NetworkManager; then
+    systemctl reload NetworkManager || systemctl restart NetworkManager || true
+  fi
+
+  # Ensure CNI host paths exist (init container copies files into these paths)
+  mkdir -p /opt/cni/bin /etc/cni/net.d /var/lib/calico /var/lib/cni
+  chmod 755 /opt/cni/bin /etc/cni/net.d
+  echo "==> Network prereqs done."
+}
+
+
 install_rke2_server() {
   echo "Installing RKE2 server..."
 
@@ -92,6 +133,110 @@ EOF
     printf 'Waiting for node Ready... (%d/%d s)\n' "$elapsed" "$timeout"
     sleep 5
   done
+}
+
+create_kubectl_wrapper() {
+  echo "==> Locating rke2 kubectl binary..."
+  # possible locations
+  candidates=(
+    /var/lib/rancher/rke2/bin/kubectl
+    /var/lib/rancher/rke2/data/current/bin/kubectl
+    /var/lib/rancher/rke2/data/*/bin/kubectl
+  )
+
+  found=""
+  for c in "${candidates[@]}"; do
+    for f in $(compgen -G "$c"); do
+      [ -x "$f" ] && { found="$f"; break 2; }
+    done
+  done
+
+  if [ -z "$found" ]; then
+    echo "kubectl not yet available; will wait up to 120s..."
+    retries=24
+    while [ $retries -gt 0 ]; do
+      for c in "${candidates[@]}"; do
+        for f in $(compgen -G "$c"); do
+          [ -x "$f" ] && { found="$f"; break 3; }
+        done
+      done
+      sleep 5
+      retries=$((retries-1))
+    done
+  fi
+
+  if [ -z "$found" ]; then
+    echo "Warning: rke2 kubectl binary not found after wait. Some kubectl calls may fail until RKE2 finishes extracting."
+    return 0
+  fi
+
+  echo "Found kubectl at: $found"
+  # create a small wrapper so users can run 'kubectl' without remembering kubeconfig location
+  cat > /usr/local/bin/kubectl <<EOF
+#!/bin/bash
+# wrapper to call rke2 kubectl with the server kubeconfig
+KUBECTL_BIN="${found}"
+KUBECONFIG_FILE="/etc/rancher/rke2/rke2.yaml"
+
+if [ ! -x "\$KUBECTL_BIN" ]; then
+  echo "kubectl binary '\$KUBECTL_BIN' not found or not executable" >&2
+  exit 2
+fi
+
+# If KUBECONFIG env is already set, respect it; otherwise use rke2 kubeconfig
+if [ -n "\${KUBECONFIG:-}" ]; then
+  exec "\$KUBECTL_BIN" "\$@"
+else
+  exec "\$KUBECTL_BIN" --kubeconfig="\$KUBECONFIG_FILE" "\$@"
+fi
+EOF
+  chmod 0755 /usr/local/bin/kubectl
+  echo "Created /usr/local/bin/kubectl wrapper."
+}
+
+# Remove cloudprovider 'uninitialized' taint which prevents system pods scheduling
+remove_uninitialized_taint() {
+  echo "==> Removing cloudprovider uninitialized taint (if present)..."
+  # tolerant attempts to remove any variant
+  if /usr/local/bin/kubectl get node "${PRIVATE_HOSTNAME:-newsapp-control-plane}" &>/dev/null; then
+    /usr/local/bin/kubectl taint nodes "${PRIVATE_HOSTNAME:-newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized- || \
+    /usr/local/bin/kubectl taint nodes "${PRIVATE_HOSTNAME:-newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized:NoSchedule- || true
+    echo "Taint removal attempted."
+  else
+    echo "kubectl cannot talk to API; skipping taint removal for now."
+  fi
+}
+
+# Add toleration to rke2-canal daemonset so Canal can run on control-plane nodes
+patch_canal_tolerations() {
+  echo "==> Ensuring rke2-canal tolerates control-plane taint..."
+  if ! /usr/local/bin/kubectl -n kube-system get daemonset rke2-canal >/dev/null 2>&1; then
+    echo "rke2-canal not found yet, skipping patch (will rely on taint removal)."
+    return 0
+  fi
+
+  # Check whether toleration already present
+  if /usr/local/bin/kubectl -n kube-system get daemonset rke2-canal -o json | grep -q '"node-role.kubernetes.io/control-plane"'; then
+    echo "toleration already exists on rke2-canal."
+    return 0
+  fi
+
+  # Patch (strategic merge patch will merge tolerations)
+  /usr/local/bin/kubectl -n kube-system patch daemonset rke2-canal --type='merge' -p '{
+    "spec": {
+      "template": {
+        "spec": {
+          "tolerations": [
+            {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
+          ]
+        }
+      }
+    }
+  }' || true
+
+  echo "Patched rke2-canal tolerations (if api accepted). Deleting canal pods so they restart with new toleration..."
+  /usr/local/bin/kubectl -n kube-system delete pod -l k8s-app=canal --ignore-not-found || true
+  /usr/local/bin/kubectl -n kube-system rollout status daemonset/rke2-canal --timeout=5m || true
 }
 
 wait_for_kubeconfig_and_api() {
@@ -326,9 +471,13 @@ bootstrap_argocd_apps() {
 
 main() {
   install_base_tools
+  ensure_network_prereqs   
   get_private_ip
   install_rke2_server
+  create_kubectl_wrapper
   wait_for_kubeconfig_and_api
+  remove_uninitialized_taint
+  patch_canal_tolerations
   wait_for_all_nodes
   install_helm
   install_ingress_nginx
