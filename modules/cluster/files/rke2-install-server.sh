@@ -184,7 +184,7 @@ if [ ! -x "\$KUBECTL_BIN" ]; then
 fi
 
 # If KUBECONFIG env is already set, respect it; otherwise use rke2 kubeconfig
-if [ -n "\${KUBECONFIG:-}" ]; then
+if [ -n "$${KUBECONFIG:-}" ]; then
   exec "\$KUBECTL_BIN" "\$@"
 else
   exec "\$KUBECTL_BIN" --kubeconfig="\$KUBECONFIG_FILE" "\$@"
@@ -198,9 +198,9 @@ EOF
 remove_uninitialized_taint() {
   echo "==> Removing cloudprovider uninitialized taint (if present)..."
   # tolerant attempts to remove any variant
-  if /usr/local/bin/kubectl get node "${PRIVATE_HOSTNAME:-newsapp-control-plane}" &>/dev/null; then
-    /usr/local/bin/kubectl taint nodes "${PRIVATE_HOSTNAME:-newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized- || \
-    /usr/local/bin/kubectl taint nodes "${PRIVATE_HOSTNAME:-newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized:NoSchedule- || true
+  if /usr/local/bin/kubectl get node "$${PRIVATE_HOSTNAME:-newsapp-control-plane}" &>/dev/null; then
+    /usr/local/bin/kubectl taint nodes "$${PRIVATE_HOSTNAME:-newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized- || \
+    /usr/local/bin/kubectl taint nodes "$${PRIVATE_HOSTNAME:-newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized:NoSchedule- || true
     echo "Taint removal attempted."
   else
     echo "kubectl cannot talk to API; skipping taint removal for now."
