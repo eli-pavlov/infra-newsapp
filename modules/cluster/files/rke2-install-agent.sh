@@ -118,6 +118,7 @@ EOF
   echo "Running RKE2 agent installer (version: $ver)..."
   curl -sfL https://get.rke2.io | sh -
   systemctl enable --now rke2-agent.service
+  sudo ln -sf /var/lib/rancher/rke2/bin/kubectl /usr/local/bin/kubectl
   echo "✅ RKE2 agent setup complete. Agent service enabled and started."
 }
 

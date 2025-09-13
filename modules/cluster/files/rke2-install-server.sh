@@ -73,6 +73,7 @@ EOF
   echo "Waiting for RKE2 server node to be Ready..."
   kubectl_bin=/var/lib/rancher/rke2/bin/kubectl
   export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+  sudo ln -sf /var/lib/rancher/rke2/bin/kubectl /usr/local/bin/kubectl
 
   start_time=$(date +%s)
   timeout=900
@@ -124,7 +125,6 @@ wait_for_kubeconfig_and_api() {
     sleep 5
   done
 }
-
 
 wait_for_all_nodes() {
   echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
