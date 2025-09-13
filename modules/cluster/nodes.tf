@@ -120,7 +120,7 @@ resource "oci_core_instance" "db_worker" {
         T_RKE2_TOKEN   = random_password.rke2_token.result,
         T_RKE2_URL_IP  = var.private_lb_ip_address,
         T_RKE2_PORT    = 9345, 
-        T_NODE_LABELS = "role=db",
+        T_NODE_LABELS = "role=database",
         T_NODE_TAINTS = ""
       })
     )
