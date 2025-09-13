@@ -23,7 +23,7 @@ resource "cloudflare_dns_record" "argocd" {
 variable "cloudflare_argocd_ruleset_action" {
   description = "Cloudflare ruleset action for requests to argocd_host not from admin CIDRs"
   type        = string
-  default     = "challenge"
+  default     = "block"
 }
 
 locals {
