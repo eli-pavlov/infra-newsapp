@@ -127,6 +127,11 @@ variable "private_lb_backendset_name" {
   type        = string
 }
 
+variable "private_lb_backendset_registration_name" {
+  description = "Name of the backend set on the private classic LB for RKE2 registration."
+  type        = string
+}
+
 variable "rke2_version" {
   description = "The version of RKE2 to install (if empty, falls back to k3s_version)."
   type        = string

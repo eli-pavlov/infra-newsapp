@@ -10,6 +10,20 @@ resource "oci_load_balancer_backend" "kube_api" {
   offline          = false
 }
 
+# --- ADD THIS NEW BACKEND RESOURCE ---
+# --- Backends for the PRIVATE (Classic) LB -> RKE2 Registration:9345 ---
+resource "oci_load_balancer_backend" "rke2_registration" {
+  load_balancer_id = var.private_lb_id
+  backendset_name  = var.private_lb_backendset_registration_name
+  ip_address       = data.oci_core_vnic.cp.private_ip_address
+  port             = 9345
+  weight           = 1
+  backup           = false
+  drain            = false
+  offline          = false
+}
+
+
 # Helper map of app worker IPs
 locals {
   app_worker_ips = { for idx, vnic in data.oci_core_vnic.app : tostring(idx) => vnic.private_ip_address }
