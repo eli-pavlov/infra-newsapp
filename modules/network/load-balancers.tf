@@ -55,6 +55,7 @@ resource "oci_load_balancer_load_balancer" "private_lb" {
   is_private                 = true
   subnet_ids                 = [oci_core_subnet.private.id] # Place LB in private subnet
   network_security_group_ids = [oci_core_network_security_group.private_lb.id]
+  is_preserve_source_destination = true
   timeouts {
   create = "5m"
   update = "5m"
@@ -78,6 +79,11 @@ resource "oci_load_balancer_listener" "private_lb_listener_api" {
   default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset_api.name
   port                       = 6443
   protocol                   = "TCP"
+
+  connection_configuration {
+    # 1 hour idle timeout — allow long-lived connections (tunnels/websockets)
+    idle_timeout = 3600
+  }
 }
 
 # --- ADD THIS NEW BACKEND SET AND LISTENER FOR RKE2 ---
@@ -98,4 +104,7 @@ resource "oci_load_balancer_listener" "private_lb_listener_registration" {
   default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset_registration.name
   port                       = 9345
   protocol                   = "TCP"
+  connection_configuration {
+    idle_timeout = 3600
+  }
 }

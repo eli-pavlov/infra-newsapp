@@ -148,6 +148,20 @@ resource "oci_core_network_security_group_security_rule" "cp_registration_in_fro
     }
   }
 }
+resource "oci_core_network_security_group_security_rule" "cp_registration_in_from_lb_ip" {
+  network_security_group_id = oci_core_network_security_group.control_plane.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source_type               = "CIDR_BLOCK"
+  source                    = oci_load_balancer_load_balancer.private_lb.ip_address_details[0].ip_address
+
+  tcp_options {
+    destination_port_range {
+      min = 9345
+      max = 9345
+    }
+  }
+}
 
 resource "oci_core_network_security_group_security_rule" "private_lb_registration_from_workers" {
   network_security_group_id = oci_core_network_security_group.private_lb.id
