@@ -196,21 +196,6 @@ resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "cp_registration_in_from_privatelb" {
-  network_security_group_id = oci_core_network_security_group.control_plane.id
-  direction                   = "INGRESS"
-  protocol                    = "6" # TCP
-  source_type                 = "NETWORK_SECURITY_GROUP"
-  source                      = oci_core_network_security_group.private_lb.id
-
-  tcp_options {
-    destination_port_range {
-      min = 9345
-      max = 9345
-    }
-  }
-}
-
 # 3) Workers:
 #    - allow NodePorts (30000-32767) from the public LB (TCP & UDP)
 #    - allow SSH from bastion
