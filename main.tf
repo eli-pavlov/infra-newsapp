@@ -36,6 +36,7 @@ module "cluster" {
   public_nlb_backend_set_https_name = module.network.public_nlb_backend_set_https_name
   private_lb_backendset_name        = module.network.private_lb_backendset_name
   private_lb_backendset_registration_name = module.network.private_lb_backendset_registration_name
+  depends_on = [module.network]
 
 }
 
