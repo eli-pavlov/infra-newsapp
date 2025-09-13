@@ -137,28 +137,34 @@ EOF
 
 create_kubectl_wrapper() {
   echo "==> Locating rke2 kubectl binary..."
-  # possible locations
-  candidates=(
-    /var/lib/rancher/rke2/bin/kubectl
-    /var/lib/rancher/rke2/data/current/bin/kubectl
-    /var/lib/rancher/rke2/data/*/bin/kubectl
-  )
-
   found=""
-  for c in "${candidates[@]}"; do
-    for f in $(compgen -G "$c"); do
-      [ -x "$f" ] && { found="$f"; break 2; }
+
+  if [ -z "$found" ]; then
+    f="/var/lib/rancher/rke2/bin/kubectl"
+    [ -x "$f" ] && found="$f"
+  fi
+
+  if [ -z "$found" ]; then
+    f="/var/lib/rancher/rke2/data/current/bin/kubectl"
+    [ -x "$f" ] && found="$f"
+  fi
+
+  if [ -z "$found" ]; then
+    for f in /var/lib/rancher/rke2/data/*/bin/kubectl; do
+      [ -x "$f" ] && { found="$f"; break; }
     done
-  done
+  fi
 
   if [ -z "$found" ]; then
     echo "kubectl not yet available; will wait up to 120s..."
     retries=24
     while [ $retries -gt 0 ]; do
-      for c in "${candidates[@]}"; do
-        for f in $(compgen -G "$c"); do
-          [ -x "$f" ] && { found="$f"; break 3; }
-        done
+      f="/var/lib/rancher/rke2/bin/kubectl"
+      [ -x "$f" ] && { found="$f"; break; }
+      f="/var/lib/rancher/rke2/data/current/bin/kubectl"
+      [ -x "$f" ] && { found="$f"; break; }
+      for f in /var/lib/rancher/rke2/data/*/bin/kubectl; do
+        [ -x "$f" ] && { found="$f"; break 2; }
       done
       sleep 5
       retries=$((retries-1))
@@ -175,7 +181,7 @@ create_kubectl_wrapper() {
   cat > /usr/local/bin/kubectl <<EOF
 #!/bin/bash
 # wrapper to call rke2 kubectl with the server kubeconfig
-KUBECTL_BIN="${found}"
+KUBECTL_BIN="$found"
 KUBECONFIG_FILE="/etc/rancher/rke2/rke2.yaml"
 
 if [ ! -x "\$KUBECTL_BIN" ]; then
@@ -184,7 +190,7 @@ if [ ! -x "\$KUBECTL_BIN" ]; then
 fi
 
 # If KUBECONFIG env is already set, respect it; otherwise use rke2 kubeconfig
-if [ -n "$${KUBECONFIG:-$${''}}" ]; then
+if [ -n "\$KUBECONFIG" ]; then
   exec "\$KUBECTL_BIN" "\$@"
 else
   exec "\$KUBECTL_BIN" --kubeconfig="\$KUBECONFIG_FILE" "\$@"
@@ -198,9 +204,13 @@ EOF
 remove_uninitialized_taint() {
   echo "==> Removing cloudprovider uninitialized taint (if present)..."
   # tolerant attempts to remove any variant
-  if /usr/local/bin/kubectl get node "$${PRIVATE_HOSTNAME:-$${''}newsapp-control-plane}" &>/dev/null; then
-    /usr/local/bin/kubectl taint nodes "$${PRIVATE_HOSTNAME:-$${''}newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized- || \
-    /usr/local/bin/kubectl taint nodes "$${PRIVATE_HOSTNAME:-$${''}newsapp-control-plane}" node.cloudprovider.kubernetes.io/uninitialized:NoSchedule- || true
+  node_name="\$PRIVATE_HOSTNAME"
+  if [ -z "\$node_name" ]; then
+    node_name="newsapp-control-plane"
+  fi
+  if /usr/local/bin/kubectl get node "\$node_name" &>/dev/null; then
+    /usr/local/bin/kubectl taint nodes "\$node_name" node.cloudprovider.kubernetes.io/uninitialized- || \
+    /usr/local/bin/kubectl taint nodes "\$node_name" node.cloudprovider.kubernetes.io/uninitialized:NoSchedule- || true
     echo "Taint removal attempted."
   else
     echo "kubectl cannot talk to API; skipping taint removal for now."
