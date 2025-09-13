@@ -134,52 +134,6 @@ resource "oci_core_network_security_group_security_rule" "cp_api_in_from_private
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "cp_registration_in_from_privatelb" {
-  network_security_group_id = oci_core_network_security_group.control_plane.id
-  direction                   = "INGRESS"
-  protocol                    = "6" # TCP
-  source_type                 = "NETWORK_SECURITY_GROUP"
-  source                      = oci_core_network_security_group.private_lb.id
-
-  tcp_options {
-    destination_port_range {
-      min = 9345
-      max = 9345
-    }
-  }
-}
-
-resource "oci_core_network_security_group_security_rule" "private_lb_registration_from_workers" {
-  network_security_group_id = oci_core_network_security_group.private_lb.id
-  direction                 = "INGRESS"
-  protocol                  = "6"
-  source_type               = "NETWORK_SECURITY_GROUP"
-  source                    = oci_core_network_security_group.workers.id
-
-  tcp_options {
-    destination_port_range {
-      min = 9345
-      max = 9345
-    }
-  }
-}
-
-# Allow private_lb to reach control_plane on 9345
-resource "oci_core_network_security_group_security_rule" "private_lb_to_cp_registration_egress" {
-  network_security_group_id = oci_core_network_security_group.private_lb.id
-  direction                 = "EGRESS"
-  protocol                  = "6"
-  destination_type          = "NETWORK_SECURITY_GROUP"
-  destination               = oci_core_network_security_group.control_plane.id
-
-  tcp_options {
-    destination_port_range {
-      min = 9345
-      max = 9345
-    }
-  }
-}
-
 resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from_subnet" {
   network_security_group_id = oci_core_network_security_group.control_plane.id
   direction                   = "INGRESS"
@@ -192,22 +146,6 @@ resource "oci_core_network_security_group_security_rule" "cp_healthcheck_in_from
     destination_port_range {
       min = 6443
       max = 6443
-    }
-  }
-}
-
-resource "oci_core_network_security_group_security_rule" "cp_registration_healthcheck_in_from_subnet" {
-  network_security_group_id = oci_core_network_security_group.control_plane.id
-  direction                 = "INGRESS"
-  protocol                  = "6" # TCP
-  source_type               = "CIDR_BLOCK"
-  source                    = var.private_subnet_cidr
-  description               = "Allow LB health checks from within the private subnet to RKE2 registration (9345)"
-
-  tcp_options {
-    destination_port_range {
-      min = 9345
-      max = 9345
     }
   }
 }

@@ -1,3 +1,4 @@
+# modules/network/load-balancers.tf
 
 #==================================================================
 # 1. Public Network Load Balancer (for NGINX Ingress)
@@ -8,12 +9,8 @@ resource "oci_network_load_balancer_network_load_balancer" "public_nlb" {
   display_name                   = "k8s-public-nlb"
   subnet_id                      = oci_core_subnet.public.id
   is_private                     = false
+  is_preserve_source_destination = false
   network_security_group_ids     = [oci_core_network_security_group.public_lb.id]
-  timeouts {
-    create = "5m"
-    update = "5m"
-    delete = "5m"
-  }
 }
 
 resource "oci_network_load_balancer_backend_set" "public_nlb_backends" {
@@ -54,14 +51,9 @@ resource "oci_load_balancer_load_balancer" "private_lb" {
   is_private                 = true
   subnet_ids                 = [oci_core_subnet.private.id] # Place LB in private subnet
   network_security_group_ids = [oci_core_network_security_group.private_lb.id]
-  timeouts {
-  create = "5m"
-  update = "5m"
-  delete = "5m"
-}
 }
 
-resource "oci_load_balancer_backend_set" "private_lb_backendset_api" {
+resource "oci_load_balancer_backend_set" "private_lb_backendset" {
   name             = "k8s_kube_api_backend_set"
   load_balancer_id = oci_load_balancer_load_balancer.private_lb.id
   policy           = "ROUND_ROBIN"
@@ -71,30 +63,10 @@ resource "oci_load_balancer_backend_set" "private_lb_backendset_api" {
   }
 }
 
-resource "oci_load_balancer_listener" "private_lb_listener_api" {
+resource "oci_load_balancer_listener" "private_lb_listener" {
   name                       = "k8s_kube_api_listener"
   load_balancer_id           = oci_load_balancer_load_balancer.private_lb.id
-  default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset_api.name
+  default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset.name
   port                       = 6443
-  protocol                   = "TCP"
-}
-
-# --- ADD THIS NEW BACKEND SET AND LISTENER FOR RKE2 ---
-resource "oci_load_balancer_backend_set" "private_lb_backendset_registration" {
-  name             = "k8s_rke2_reg_backend_set"
-  load_balancer_id = oci_load_balancer_load_balancer.private_lb.id
-  policy           = "ROUND_ROBIN"
-  health_checker {
-    protocol = "TCP"
-    port     = 9345
-  }
-}
-
-
-resource "oci_load_balancer_listener" "private_lb_listener_registration" {
-  name                       = "k8s_rke2_registration_listener"
-  load_balancer_id           = oci_load_balancer_load_balancer.private_lb.id
-  default_backend_set_name   = oci_load_balancer_backend_set.private_lb_backendset_registration.name
-  port                       = 9345
   protocol                   = "TCP"
 }
