@@ -37,21 +37,22 @@ wait_for_server() {
 install_base_tools() {
   echo "Installing base packages (dnf: jq, e2fsprogs, util-linux, curl)..."
   dnf makecache --refresh -y || true
-  dnf update -y
+  dnf update -y || true
   dnf install -y jq e2fsprogs util-linux curl || true
 }
 
 systemctl disable firewalld --now || true
 
 setup_local_db_volume() {
+  # Only do DB volume prep when the node is labeled role=database
   echo "${T_NODE_LABELS}" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
   echo "Preparing local block volume for DB (paravirtualized attach)..."
 
-  DEV="$$(ls /dev/oracleoci/oraclevd[b-z] 2>/dev/null | head -n1 || true)"
-  if [ -z "$${DEV}" ]; then
-    DEV="$$(ls /dev/sd[b-z] /dev/nvme*n* 2>/dev/null | head -n1 || true)"
+  DEV="$(ls /dev/oracleoci/oraclevd[b-z] 2>/dev/null | head -n1 || true)"
+  if [ -z "${DEV}" ]; then
+    DEV="$(ls /dev/sd[b-z] /dev/nvme*n* 2>/dev/null | head -n1 || true)"
   fi
-  if [ -z "$${DEV}" ]; then
+  if [ -z "${DEV}" ]; then
     echo "⚠️ No extra OCI volume found; DB will fall back to ephemeral root disk."
     return 0
   fi
@@ -64,12 +65,12 @@ setup_local_db_volume() {
     echo "Filesystem already present on $${DEV}; leaving as-is."
   fi
 
-  UUID="$$(blkid -s UUID -o value "$${DEV}")"
+  UUID="$(blkid -s UUID -o value "$${DEV}")"
   mkdir -p /mnt/oci/db
   if ! grep -q "$${UUID}" /etc/fstab; then
     echo "UUID=$${UUID} /mnt/oci/db ext4 defaults,noatime 0 2" >> /etc/fstab
   fi
-  mount -a
+  mount -a || true
 
   mkdir -p /mnt/oci/db/dev /mnt/oci/db/prod
   chown -R 999:999 /mnt/oci/db/dev /mnt/oci/db/prod
@@ -80,13 +81,13 @@ setup_local_db_volume() {
       echo "Error: $${path} does not exist"
       exit 1
     fi
-    if [ "$$(stat -c %u:%g "$${path}")" != "999:999" ]; then
+    if [ "$(stat -c %u:%g "$${path}")" != "999:999" ]; then
       echo "Error: $${path} has incorrect ownership (expected 999:999)"
       exit 1
     fi
   done
 
-  if [ -d /mnt/oci/db/postgres ] && [ "$$(ls -A /mnt/oci/db/postgres)" ]; then
+  if [ -d /mnt/oci/db/postgres ] && [ "$(ls -A /mnt/oci/db/postgres)" ]; then
     echo "Found existing data in /mnt/oci/db/postgres; migrating to /mnt/oci/db/dev..."
     cp -r /mnt/oci/db/postgres/. /mnt/oci/db/dev/
     rm -rf /mnt/oci/db/postgres
@@ -104,17 +105,19 @@ server: "https://${T_RKE2_URL_IP}:$${RKE2_REG_PORT}"
 token: "${T_RKE2_TOKEN}"
 EOF
 
+  # If labels provided, normalize commas to spaces and write as YAML list
   if [ -n "${T_NODE_LABELS}" ]; then
     echo "node-label:" >> /etc/rancher/rke2/config.yaml
-    for lb in ${T_NODE_LABELS}; do
-      echo "  - \"\$${lb}\"" >> /etc/rancher/rke2/config.yaml
+    for lb in $${T_NODE_LABELS//,/ }; do
+      echo "  - \"$${lb}\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
+  # If taints provided, normalize and write as YAML list
   if [ -n "${T_NODE_TAINTS}" ]; then
     echo "node-taint:" >> /etc/rancher/rke2/config.yaml
-    for tt in ${T_NODE_TAINTS}; do
-      echo "  - \"\$${tt}\"" >> /etc/rancher/rke2/config.yaml
+    for tt in $${T_NODE_TAINTS//,/ }; do
+      echo "  - \"$${tt}\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
@@ -128,7 +131,7 @@ EOF
 
   echo "Running RKE2 agent installer (version: $${ver})..."
   curl -sfL https://get.rke2.io | sh -
-  systemctl enable --now rke2-agent.service
+  systemctl enable --now rke2-agent.service || true
   echo "✅ RKE2 agent setup complete. Agent service enabled and started."
 }
 

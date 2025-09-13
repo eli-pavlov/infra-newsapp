@@ -75,7 +75,7 @@ EOF
   export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
   start_time=$(date +%s)
-  timeout=1200
+  timeout=900
   while true; do
     if [ -x "$kubectl_bin" ] && "$kubectl_bin" --kubeconfig=/etc/rancher/rke2/rke2.yaml get nodes 2>/dev/null | grep -q 'Ready'; then
       echo "RKE2 server node is Ready."
