@@ -6,7 +6,8 @@ set -euo pipefail
 exec > >(tee /var/log/cloud-init-output.log | logger -t user-data -s 2>/dev/console) 2>&1
 
 # --- Vars injected by Terraform (must match modules/cluster/nodes.tf) ---
-# These are template variables provided by the templatefile() call.
+# These are template variables provided by the templatefile() call and must
+# remain as ${...} so templatefile() substitutes them.
 T_RKE2_VERSION="${T_RKE2_VERSION}"
 T_RKE2_TOKEN="${T_RKE2_TOKEN}"
 T_RKE2_URL_IP="${T_RKE2_URL_IP}"
@@ -14,18 +15,18 @@ T_RKE2_PORT="${T_RKE2_PORT}"         # expects a numeric value e.g. 9345
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
 
-# Fixed (well-known) RKE2 registration port used by the cluster (you can use T_RKE2_PORT if you prefer)
+# Use a runtime variable for the registration port (shell-only usage below).
 RKE2_REG_PORT="$T_RKE2_PORT"
 
 wait_for_server() {
   local timeout=900 # 15 minutes
   local start_time=$(date +%s)
 
-  echo "Waiting for RKE2 registration endpoint at https://${T_RKE2_URL_IP}:$RKE2_REG_PORT/ping..."
+  echo "Waiting for RKE2 registration endpoint at https://$T_RKE2_URL_IP:$RKE2_REG_PORT/ping..."
 
   while true; do
     # registration uses the port specified (commonly 9345)
-    if curl -k --connect-timeout 5 --silent --output /dev/null "https://${T_RKE2_URL_IP}:$RKE2_REG_PORT/ping"; then
+    if curl -k --connect-timeout 5 --silent --output /dev/null "https://$T_RKE2_URL_IP:$RKE2_REG_PORT/ping"; then
       echo "✅ RKE2 server registration endpoint is responsive. Proceeding with agent installation."
       break
     fi
@@ -36,7 +37,7 @@ wait_for_server() {
       exit 1
     fi
 
-    echo "(${elapsed_time}/${timeout}s) Server not ready yet, waiting 10 seconds..."
+    echo "($elapsed_time/$timeout s) Server not ready yet, waiting 10 seconds..."
     sleep 10
   done
 }
@@ -107,7 +108,7 @@ setup_local_db_volume() {
 }
 
 install_rke2_agent() {
-  echo "Joining RKE2 cluster at https://${T_RKE2_URL_IP}:$RKE2_REG_PORT (registration) and K8s API at :6443"
+  echo "Joining RKE2 cluster at https://$T_RKE2_URL_IP:$RKE2_REG_PORT (registration) and K8s API at :6443"
 
   # Create agent config dir and file
   mkdir -p /etc/rancher/rke2
@@ -115,8 +116,8 @@ install_rke2_agent() {
 
   # Build config.yaml for the agent (server + token + labels/taints)
   cat > /etc/rancher/rke2/config.yaml <<EOF
-server: "https://${T_RKE2_URL_IP}:$RKE2_REG_PORT"
-token: "${T_RKE2_TOKEN}"
+server: "https://$T_RKE2_URL_IP:$RKE2_REG_PORT"
+token: "$T_RKE2_TOKEN"
 # node labels (if any)
 EOF
 
@@ -125,14 +126,14 @@ EOF
     echo "node-label:" >> /etc/rancher/rke2/config.yaml
     # Expecting labels in format "k=v k2=v2"
     for lb in $T_NODE_LABELS; do
-      echo "  - \"${lb}\"" >> /etc/rancher/rke2/config.yaml
+      echo "  - \"$lb\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
   if [ -n "$T_NODE_TAINTS" ]; then
     echo "node-taint:" >> /etc/rancher/rke2/config.yaml
     for tt in $T_NODE_TAINTS; do
-      echo "  - \"${tt}\"" >> /etc/rancher/rke2/config.yaml
+      echo "  - \"$tt\"" >> /etc/rancher/rke2/config.yaml
     done
   fi
 
@@ -141,7 +142,7 @@ EOF
   export INSTALL_RKE2_VERSION
   export INSTALL_RKE2_TYPE="agent"
 
-  # Provide a simple runtime default (this fallback runs only after Terraform substitution; safe here)
+  # Provide a simple runtime default (avoid using ${VAR:-default} which Terraform's template parser would catch)
   ver="$INSTALL_RKE2_VERSION"
   if [ -z "$ver" ]; then
     ver="latest"
