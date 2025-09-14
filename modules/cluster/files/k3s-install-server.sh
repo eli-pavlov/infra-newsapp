@@ -317,14 +317,40 @@ EOF
 }
 
 bootstrap_argocd_apps() {
-  echo "Bootstrapping Argo CD with applications from manifest repo..."
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  # Apply project and stack for dev
-  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/project.yaml || true
-  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/stack.yaml || true
-  # Apply project and stack for prod
-  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/project.yaml || true
-  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/stack.yaml || true
+  echo "Bootstrapping Argo CD with applications from manifest repo..."
+  rm -rf /tmp/manifests || true
+  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
+  # DEV
+  if [ -f /tmp/manifests/clusters/dev/apps/project.yaml ]; then
+    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || { echo "Failed to apply newsapp-dev project"; exit 1; }
+    echo "Applied newsapp-dev project"
+  else
+    echo "Error: /tmp/manifests/clusters/dev/apps/project.yaml not found"
+    exit 1
+  fi
+  if [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]; then
+    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml || { echo "Failed to apply newsapp-dev application"; exit 1; }
+    echo "Applied newsapp-dev application"
+  else
+    echo "Error: /tmp/manifests/clusters/dev/apps/stack.yaml not found"
+    exit 1
+  fi
+  # PROD
+  if [ -f /tmp/manifests/clusters/prod/apps/project.yaml ]; then
+    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || { echo "Failed to apply newsapp-prod project"; exit 1; }
+    echo "Applied newsapp-prod project"
+  else
+    echo "Error: /tmp/manifests/clusters/prod/apps/project.yaml not found"
+    exit 1
+  fi
+  if [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]; then
+    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml || { echo "Failed to apply newsapp-prod application"; exit 1; }
+    echo "Applied newsapp-prod application"
+  else
+    echo "Error: /tmp/manifests/clusters/prod/apps/stack.yaml not found"
+    exit 1
+  fi
   echo "Waiting for Argo CD to sync applications..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod --timeout=5m || true
