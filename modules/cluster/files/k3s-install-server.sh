@@ -318,44 +318,24 @@ EOF
 
 bootstrap_argocd_apps() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  echo "Bootstrapping Argo CD with applications from manifest repo..."
-  rm -rf /tmp/manifests || true
-  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
-  # DEV
-  if [ -f /tmp/manifests/clusters/dev/apps/project.yaml ]; then
-    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || { echo "Failed to apply newsapp-dev project"; exit 1; }
-    echo "Applied newsapp-dev project"
-  else
-    echo "Error: /tmp/manifests/clusters/dev/apps/project.yaml not found"
-    exit 1
-  fi
-  if [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]; then
-    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml || { echo "Failed to apply newsapp-dev application"; exit 1; }
-    echo "Applied newsapp-dev application"
-  else
-    echo "Error: /tmp/manifests/clusters/dev/apps/stack.yaml not found"
-    exit 1
-  fi
-  # PROD
-  if [ -f /tmp/manifests/clusters/prod/apps/project.yaml ]; then
-    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || { echo "Failed to apply newsapp-prod project"; exit 1; }
-    echo "Applied newsapp-prod project"
-  else
-    echo "Error: /tmp/manifests/clusters/prod/apps/project.yaml not found"
-    exit 1
-  fi
-  if [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]; then
-    /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml || { echo "Failed to apply newsapp-prod application"; exit 1; }
-    echo "Applied newsapp-prod application"
-  else
-    echo "Error: /tmp/manifests/clusters/prod/apps/stack.yaml not found"
-    exit 1
-  fi
+  echo "Bootstrapping Argo CD with Application CRs from remote manifest repo..."
+
+  # Apply Project & Application CRs for dev and prod directly from remote repo (raw URLs).
+  # This avoids local clone + direct app manifest applies; ArgoCD will fetch app manifests from the repo.
+  /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/eli-pavlov/newsapp-manifests/main/clusters/dev/apps/project.yaml" || { echo "Failed to apply dev project"; exit 1; }
+  /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/eli-pavlov/newsapp-manifests/main/clusters/dev/apps/stack.yaml" || { echo "Failed to apply newsapp-dev application"; exit 1; }
+
+  /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/eli-pavlov/newsapp-manifests/main/clusters/prod/apps/project.yaml" || { echo "Failed to apply prod project"; exit 1; }
+  /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/eli-pavlov/newsapp-manifests/main/clusters/prod/apps/stack.yaml" || { echo "Failed to apply newsapp-prod application"; exit 1; }
+
+  # Wait for Argo CD to reconcile & sync the remote apps
   echo "Waiting for Argo CD to sync applications..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod --timeout=5m || true
-  echo "Argo CD applications applied and synced."
+
+  echo "Argo CD Application CRs applied (from remote repo)."
 }
+
 
 main() {
   install_base_tools
