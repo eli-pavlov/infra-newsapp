@@ -196,7 +196,7 @@ metadata:
   namespace: argocd
   annotations:
     kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   tls:
@@ -213,7 +213,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80
 EOF
 
   kubectl -n argocd annotate ingress argocd-server-ingress \
