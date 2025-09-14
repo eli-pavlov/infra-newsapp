@@ -219,7 +219,7 @@ EOF
 
   if [[ -n "${CERT_FILE:-}" && -n "${KEY_FILE:-}" ]]; then
     /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-      --cert="${CERT_FILE}" --key="${KEY_FILE}" --dry-run=client -o yaml > "/tmp/argocd-tls.yaml" && \
+      --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "/tmp/argocd-tls.yaml" && \
     /usr/local/bin/kubectl apply -f "/tmp/argocd-tls.yaml" || true
     echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
   else
