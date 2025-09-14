@@ -207,7 +207,7 @@ ensure_argocd_ingress_and_server() {
       SAN="DNS:argocd.weblightenment.com"
       # ${T_PRIVATE_LB_IP} is a Terraform-injected variable (rendered at template time)
       if [ -n "$${T_PRIVATE_LB_IP:-}" ]; then
-        SAN="$${SAN},IP:$$T_PRIVATE_LB_IP}"
+        SAN="$${SAN},IP:$T_PRIVATE_LB_IP}"
       fi
 
       # Preferred: use -addext if openssl supports it, otherwise write a small config file.
