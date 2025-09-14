@@ -318,18 +318,17 @@ EOF
 
 bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
-  rm -rf /tmp/manifests || true
-  git clone "${T_MANIFESTS_REPO_URL}" /tmp/manifests || true
-
-  # DEV
-  [ -f /tmp/manifests/clusters/dev/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/project.yaml || true
-  [ -f /tmp/manifests/clusters/dev/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/dev/apps/stack.yaml   || true
-
-  # PROD
-  [ -f /tmp/manifests/clusters/prod/apps/project.yaml ] && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/project.yaml || true
-  [ -f /tmp/manifests/clusters/prod/apps/stack.yaml ]   && /usr/local/bin/kubectl apply -f /tmp/manifests/clusters/prod/apps/stack.yaml   || true
-
-  echo "Argo CD applications applied. Argo will now sync the cluster state."
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  # Apply project and stack for dev
+  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/project.yaml" || true
+  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/stack.yaml" || true
+  # Apply project and stack for prod
+  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/project.yaml" || true
+  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/stack.yaml" || true
+  echo "Waiting for Argo CD to sync applications..."
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod --timeout=5m || true
+  echo "Argo CD applications applied and synced."
 }
 
 main() {
