@@ -170,10 +170,10 @@ ensure_argocd_ingress_and_server() {
       openssl req -x509 -nodes -days 365 \
         -subj "/CN=argocd.weblightenment.com" \
         -newkey rsa:2048 \
-        -keyout "${TMPDIR}/tls.key" -out "${TMPDIR}/tls.crt"
+        -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt"
       kubectl -n argocd create secret tls argocd-tls \
-        --cert="${TMPDIR}/tls.crt" --key="${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f -
-      rm -rf "${TMPDIR}"
+        --cert="$${TMPDIR}/tls.crt" --key="$${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f -
+      rm -rf "$${TMPDIR}"
       echo "Self-signed argocd-tls secret created."
     else
       echo "argocd-tls already exists; not overwriting."
