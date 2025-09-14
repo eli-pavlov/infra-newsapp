@@ -156,6 +156,151 @@ install_ingress_nginx() {
   /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
 }
 
+#!/bin/bash
+# K3s SERVER install, tooling, secret generation, ingress-nginx install,
+# cert-manager install, and Argo CD bootstrapping.
+set -euo pipefail
+exec > /var/log/cloud-init-output.log 2>&1
+set -x
+trap 'echo "ERROR at line $LINENO: $BASH_COMMAND" >&2' ERR
+
+# --- Vars injected by Terraform ---
+T_K3S_VERSION="${T_K3S_VERSION}"
+T_K3S_TOKEN="${T_K3S_TOKEN}"
+T_DB_USER="${T_DB_USER}"
+T_DB_NAME_DEV="${T_DB_NAME_DEV}"
+T_DB_NAME_PROD="${T_DB_NAME_PROD}"
+T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
+T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
+T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
+T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
+T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
+
+install_base_tools() {
+  echo "Installing base packages (dnf)..."
+  dnf makecache --refresh -y || true
+  dnf update -y
+  dnf install -y curl jq git || true
+}
+
+systemctl disable firewalld --now
+
+get_private_ip() {
+  echo "Fetching instance private IP from metadata..."
+  PRIVATE_IP=$(curl -s -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].privateIp')
+  if [ -z "$PRIVATE_IP" ] || [ "$PRIVATE_IP" = "null" ]; then
+    echo "❌ Failed to fetch private IP."
+    exit 1
+  fi
+  echo "✅ Instance private IP is $PRIVATE_IP"
+}
+
+install_k3s_server() {
+  echo "Installing K3s server..."
+  local PARAMS="--write-kubeconfig-mode 644 \
+    --node-ip $PRIVATE_IP \
+    --advertise-address $PRIVATE_IP \
+    --disable traefik \
+    --tls-san $PRIVATE_IP \
+    --tls-san $T_PRIVATE_LB_IP \
+    --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
+
+  export INSTALL_K3S_EXEC="$PARAMS"
+  export K3S_TOKEN="$T_K3S_TOKEN"
+  export INSTALL_K3S_VERSION="$T_K3S_VERSION"
+
+  curl -sfL https://get.k3s.io | sh -
+
+  echo "Waiting for K3s server node to be ready..."
+  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
+}
+
+wait_for_kubeconfig_and_api() {
+  echo "Waiting for kubeconfig and API to be fully ready..."
+  local timeout=120
+  local start_time=$(date +%s)
+  while true; do
+    if [ -f /etc/rancher/k3s/k3s.yaml ] && /usr/local/bin/kubectl get nodes 2>/dev/null | grep -q 'Ready'; then
+      echo "✅ Kubeconfig and API are ready."
+      break
+    fi
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for kubeconfig and API readiness."
+      exit 1
+    fi
+    sleep 5
+  done
+}
+
+wait_for_all_nodes() {
+  echo "Waiting for all $T_EXPECTED_NODE_COUNT nodes to join and become Ready..."
+  local timeout=900
+  local start_time=$(date +%s)
+  while true; do
+    local ready_nodes=$(/usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | awk '{print $2}' | grep -Ec '^Ready(,SchedulingDisabled)?$' || true)
+    if [ "$ready_nodes" -eq "$T_EXPECTED_NODE_COUNT" ]; then
+      echo "✅ All $T_EXPECTED_NODE_COUNT nodes are Ready."
+      break
+    fi
+    local elapsed_time=$(( $(date +%s) - start_time ))
+    if [ "$elapsed_time" -gt "$timeout" ]; then
+      echo "❌ Timed out waiting for all nodes to become Ready."
+      /usr/local/bin/kubectl get nodes || true
+      exit 1
+    fi
+    sleep 15
+  done
+}
+
+install_helm() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  if ! command -v helm &> /dev/null; then
+    echo "Installing Helm..."
+    curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 /tmp/get_helm.sh
+    /tmp/get_helm.sh
+  fi
+}
+
+install_ingress_nginx() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  echo "Installing ingress-nginx via Helm..."
+  /usr/local/bin/kubectl create namespace ingress-nginx || true
+  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+  helm repo update
+  helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+    --namespace ingress-nginx \
+    --set controller.kind=DaemonSet \
+    --set controller.service.type=NodePort \
+    --set controller.service.nodePorts.http=30080 \
+    --set controller.service.nodePorts.https=30443 \
+    --set controller.service.externalTrafficPolicy=Local \
+    --set controller.nodeSelector.role=application \
+    --set controller.ingressClassResource.name=nginx \
+    --set controller.ingressClassByName=true
+  echo "Waiting for ingress-nginx controller rollout..."
+  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m
+}
+
+# --- NEW FUNCTION ---
+install_cert_manager() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  echo "Installing cert-manager via Helm..."
+  helm repo add jetstack https://charts.jetstack.io
+  helm repo update
+  helm upgrade --install cert-manager jetstack/cert-manager \
+    --namespace cert-manager \
+    --create-namespace \
+    --version v1.14.4 \
+    --set installCRDs=true
+  echo "Waiting for cert-manager webhook to be ready..."
+  /usr/local/bin/kubectl -n cert-manager wait \
+    --for=condition=Available deployment/cert-manager-webhook \
+    --timeout=5m
+  echo "✅ cert-manager is ready."
+}
+
 install_argo_cd() {
   echo "Installing Argo CD..."
   /usr/local/bin/kubectl create namespace argocd || true
@@ -183,10 +328,11 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
 }
 
+
 ensure_argocd_ingress_and_server() {
-  set -euo pipefail
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  kubectl -n argocd apply -f - <<'EOF'
+  echo "Applying Argo CD Ingress resource with self-signed cert via cert-manager..."
+  /usr/local/bin/kubectl -n argocd apply -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -194,13 +340,14 @@ metadata:
   namespace: argocd
   annotations:
     kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "selfsigned"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   tls:
     - hosts:
         - argocd.weblightenment.com
-      secretName: argocd-tls
+      secretName: argocd-tls-selfsigned
   rules:
     - host: argocd.weblightenment.com
       http:
@@ -213,37 +360,9 @@ spec:
                 port:
                   number: 80
 EOF
-
-  kubectl -n argocd annotate ingress argocd-server-ingress \
-    nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
-
-  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
-    "spec": {
-      "tls": [
-        {
-          "hosts": ["argocd.weblightenment.com"],
-          "secretName": "argocd-tls"
-        }
-      ]
-    }
-  }' >/dev/null || true
-
-  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
-    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-      --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "$${TMPDIR}/argocd-tls.yaml" && \
-    /usr/local/bin/kubectl apply -f "$${TMPDIR}/argocd-tls.yaml" || true
-    echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
-  else
-    echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
-  fi
-
-  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
-  kubectl -n argocd rollout restart deployment argocd-server || true
-
-  echo "Ingress/annotations applied and argocd-server restarted."
+  echo "Patching argocd-cm with the correct URL..."
+  /usr/local/bin/kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
 }
-
-
 
 
 generate_secrets_and_credentials() {
@@ -311,9 +430,16 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
+  
+  # Install prerequisites before Argo CD
   install_ingress_nginx
+  install_cert_manager
+  
+  # Install and configure Argo CD
   install_argo_cd
   ensure_argocd_ingress_and_server
+
+  # Generate app secrets and bootstrap Argo
   generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
