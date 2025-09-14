@@ -9,6 +9,7 @@ module "network" {
   region           = var.region
   admin_cidrs      = var.admin_cidrs
   cloudflare_cidrs = var.cloudflare_cidrs
+  
 }
 
 module "cluster" {
@@ -21,7 +22,6 @@ module "cluster" {
   os_image_id           = var.os_image_id
   bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
-  cloudflare_api_token   = var.cloudflare_api_token
 
   # network wiring
   public_subnet_id      = module.network.public_subnet_id
