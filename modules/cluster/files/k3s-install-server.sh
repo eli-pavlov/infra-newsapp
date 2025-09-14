@@ -123,27 +123,6 @@ install_helm() {
   fi
 }
 
-install_ingress_nginx() {
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  echo "Installing ingress-nginx via Helm..."
-  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-  helm repo update
-  /usr/local/bin/kubectl create namespace ingress-nginx || true
-
-  helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-    --namespace ingress-nginx \
-    --set controller.kind=DaemonSet \
-    --set controller.service.type=NodePort \
-    --set controller.service.nodePorts.http=30080 \
-    --set controller.service.nodePorts.https=30443 \
-    --set controller.service.externalTrafficPolicy=Local \
-    --set controller.nodeSelector.role=application \
-    --set controller.ingressClassResource.name=nginx \
-    --set controller.ingressClassByName=true
-
-  /usr/local/bin/kubectl -n ingress-nginx rollout status ds/ingress-nginx-controller --timeout=5m || true
-}
-
 install_argo_cd() {
   echo "Installing Argo CD..."
   /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
@@ -175,62 +154,41 @@ ensure_argocd_ingress_and_server() {
   set -euo pipefail
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
-  kubectl -n argocd apply -f - <<'EOF'
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: argocd-server-ingress
-  namespace: argocd
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-spec:
-  tls:
-    - hosts:
-        - argocd.weblightenment.com
-      secretName: argocd-tls
-  rules:
-    - host: argocd.weblightenment.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: argocd-server
-                port:
-                  number: 80
-EOF
+  # Create argocd namespace if missing (safe no-op)
+  kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null || true
 
-  # Keep existing annotate/patch style from your original script
-  kubectl -n argocd annotate ingress argocd-server-ingress nginx.ingress.kubernetes.io/backend-protocol='HTTPS' --overwrite >/dev/null || true
-
-  kubectl -n argocd patch ingress argocd-server-ingress --type='merge' -p '{
-    "spec": {
-      "tls": [
-        {
-          "hosts": ["argocd.weblightenment.com"],
-          "secretName": "argocd-tls"
-        }
-      ]
-    }
-  }' >/dev/null || true
-
-  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
-    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-      --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "/tmp/argocd-tls.yaml" && \
-    /usr/local/bin/kubectl apply -f "/tmp/argocd-tls.yaml" || true
-    echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
+  # Create TLS secret: use provided cert/key if present, otherwise generate a short-lived self-signed cert
+  if [[ -n "${CERT_FILE:-}" && -n "${KEY_FILE:-}" ]]; then
+    kubectl -n argocd create secret tls argocd-tls \
+      --cert="${CERT_FILE}" --key="${KEY_FILE}" --dry-run=client -o yaml | kubectl apply -f - || true
+    echo "Created/updated argocd-tls from provided cert/key."
   else
-    echo "CERT_FILE/KEY_FILE not set — not creating TLS secret."
+    # create a self-signed cert only if secret doesn't already exist
+    if ! kubectl -n argocd get secret argocd-tls >/dev/null 2>&1; then
+      echo "No CERT_FILE/KEY_FILE provided and argocd-tls secret missing — creating self-signed cert for argocd.weblightenment.com"
+      TMPDIR=$(mktemp -d)
+      openssl req -x509 -nodes -days 365 \
+        -subj "/CN=argocd.weblightenment.com" \
+        -newkey rsa:2048 \
+        -keyout "${TMPDIR}/tls.key" -out "${TMPDIR}/tls.crt"
+      kubectl -n argocd create secret tls argocd-tls \
+        --cert="${TMPDIR}/tls.crt" --key="${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f -
+      rm -rf "${TMPDIR}"
+      echo "Self-signed argocd-tls secret created."
+    else
+      echo "argocd-tls already exists; not overwriting."
+    fi
   fi
 
+  # Patch argocd-cm url so UI links are correct
   kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+
+  # Restart argocd-server to pick up any secret/config changes
   kubectl -n argocd rollout restart deployment argocd-server || true
 
-  echo "Ingress/annotations applied and argocd-server restarted."
+  echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
 }
+
 
 add_connected_repositories() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -391,7 +349,6 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
-  install_ingress_nginx
   install_argo_cd
   ensure_argocd_ingress_and_server
   add_connected_repositories
