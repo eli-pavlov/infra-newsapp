@@ -298,13 +298,14 @@ PY
     ARGO_PASSWORD="(unknown)"
   fi
 
+  # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
-Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Username: $${T_DB_USER}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
@@ -312,25 +313,25 @@ EOF
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-      --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+      --from-literal=POSTGRES_USER="$${T_DB_USER}" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
   # backend DB connection secrets expected by charts
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  DB_URI_DEV="postgresql://$${T_DB_USER}:$${DB_PASSWORD}@$${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/$${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="$${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://$${T_DB_USER}:$${DB_PASSWORD}@$${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/$${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
-  if [ -n "${T_CLOUDFLARE_API_TOKEN:-}" ]; then
+  if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
-      --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+      --from-literal=api-token="$${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     echo "cloudflare-api-token-secret created/updated in cert-manager."
   else
     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
@@ -339,7 +340,7 @@ EOF
 
 bootstrap_argocd_apps() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  echo "Bootstrapping Argo CD Applications from manifests repo: ${T_MANIFESTS_REPO_URL}"
+  echo "Bootstrapping Argo CD Applications from manifests repo: $${T_MANIFESTS_REPO_URL}"
 
   # Ensure repo is cloned locally (robust against raw URL issues).
   TMP_MANIFESTS_DIR="/tmp/newsapp-manifests"
@@ -348,8 +349,8 @@ bootstrap_argocd_apps() {
     git -C "$TMP_MANIFESTS_DIR" pull --ff-only || true
   else
     # clone, but do not fail cluster bootstrap if clone fails (let ArgoCD still be able to fetch via registered repo)
-    if ! git clone --depth 1 "${T_MANIFESTS_REPO_URL}" "$TMP_MANIFESTS_DIR"; then
-      echo "Warning: git clone failed for ${T_MANIFESTS_REPO_URL}; continuing and attempting to apply remote raw manifests where possible."
+    if ! git clone --depth 1 "$${T_MANIFESTS_REPO_URL}" "$TMP_MANIFESTS_DIR"; then
+      echo "Warning: git clone failed for $${T_MANIFESTS_REPO_URL}; continuing and attempting to apply remote raw manifests where possible."
     fi
   fi
 
@@ -363,12 +364,12 @@ bootstrap_argocd_apps() {
   else
     # Fallback: attempt raw.githubusercontent URLs (best-effort)
     # Try to convert possible GitHub HTTPS url to raw.githubusercontent pattern if it looks like github.com
-    if echo "${T_MANIFESTS_REPO_URL}" | grep -q 'github.com'; then
-      base=$(echo "${T_MANIFESTS_REPO_URL}" | sed -E 's#https://github.com/([^/]+/[^/]+)(.git)?#\1#')
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/dev/apps/project.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/dev/apps/stack.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/prod/apps/project.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/prod/apps/stack.yaml" || true
+    if echo "$${T_MANIFESTS_REPO_URL}" | grep -q 'github.com'; then
+      base=$(echo "$${T_MANIFESTS_REPO_URL}" | sed -E 's#https://github.com/([^/]+/[^/]+)(.git)?#\1#')
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/dev/apps/project.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/dev/apps/stack.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/project.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/stack.yaml" || true
     else
       echo "No local clone and not a GitHub URL; skipping direct apply of remote files (ArgoCD should be able to fetch manifests using the registered repository secret)."
     fi
