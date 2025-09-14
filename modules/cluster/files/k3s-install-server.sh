@@ -342,6 +342,7 @@ main() {
   install_ingress_nginx
   install_argo_cd
   ensure_argocd_ingress_and_server
+  add_connected_repositories
   generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
