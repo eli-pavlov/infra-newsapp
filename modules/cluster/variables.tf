@@ -134,3 +134,11 @@ variable "private_lb_backendset_name" {
   description = "Name of the backend set on the private classic LB for kube-apiserver."
   type        = string
 }
+
+# Cloudflare API token used by the instance user-data to create cert-manager secret
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token (sensitive). Passed into instance user-data to create cert-manager secret."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

@@ -6,7 +6,6 @@ set -euo pipefail
 # Simpler robust logging to avoid SIGPIPE from tee|logger pipeline
 exec > /var/log/cloud-init-output.log 2>&1
 # Optional: enable command tracing and report failing command
-set -x
 trap 'echo "ERROR at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # --- Vars injected by Terraform ---
@@ -20,6 +19,9 @@ T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
 T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
+T_CLOUDFLARE_API_TOKEN="${T_CLOUDFLARE_API_TOKEN}"
+
+set -x
 
 install_base_tools() {
   echo "Installing base packages (dnf)..."
@@ -314,6 +316,44 @@ EOF
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_PROD}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+
+ if [[ -n "${T_CLOUDFLARE_API_TOKEN:-}" ]]; then
+    echo "Creating cert-manager Cloudflare API token secret..."
+
+    # ensure cert-manager namespace exists
+    kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f - || true
+
+    # Avoid leaking the token into the logs: disable xtrace briefly if enabled
+    XTRACE_WAS_SET=0
+    if [[ "${-}" == *x* ]]; then
+      XTRACE_WAS_SET=1
+      set +x
+    fi
+
+    # create a YAML manifest (owner-only perms), apply, then remove it
+    cat > /tmp/cloudflare-api-token-secret.yaml <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cloudflare-api-token
+  namespace: cert-manager
+type: Opaque
+stringData:
+  api-token: "${T_CLOUDFLARE_API_TOKEN}"
+EOF
+    chmod 600 /tmp/cloudflare-api-token-secret.yaml
+    kubectl apply -f /tmp/cloudflare-api-token-secret.yaml || true
+    shred -u /tmp/cloudflare-api-token-secret.yaml || rm -f /tmp/cloudflare-api-token-secret.yaml || true
+
+    # restore xtrace if it was set
+    if [ "$XTRACE_WAS_SET" -eq 1 ]; then
+      set -x
+    fi
+
+    echo "cloudflare-api-token secret created/updated in cert-manager namespace."
+  else
+    echo "T_CLOUDFLARE_API_TOKEN not set — skipping creation of cloudflare-api-token secret."
+  fi
 }
 
 bootstrap_argocd_apps() {

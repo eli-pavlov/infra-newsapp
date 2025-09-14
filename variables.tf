@@ -86,3 +86,10 @@ variable "argocd_host" {
   type        = string
   default     = "argocd.weblightenment.com"
 }
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token used for DNS operations and cert-manager."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
