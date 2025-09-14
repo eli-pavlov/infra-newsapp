@@ -302,30 +302,30 @@ install_cert_manager() {
 }
 
 install_argo_cd() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Installing Argo CD..."
   /usr/local/bin/kubectl create namespace argocd || true
-  # Apply upstream install (includes CRDs)
   /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-  # Tolerate control-plane taint where applicable
-  for d in argocd-server argocd-repo-server argocd-dex-server; do
-    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[
-      {"op":"add","path":"/spec/template/spec/tolerations","value":[
-        {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
-      ]}
-    ]' || true
-  done
-
-  # The application controller is a StatefulSet; patch that too
-  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[
-    {"op":"add","path":"/spec/template/spec/tolerations","value":[
-      {"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}
-    ]}
-  ]' || true
 
   echo "Waiting for Argo CD components to be ready..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployments --all --timeout=5m || true
-  /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m || true
+
+  echo "Patching Argo CD server to handle ingress proxy (prevent redirect loops)..."
+  # This is the critical patch. It adds the '--insecure' flag to the argocd-server command.
+  /usr/local/bin/kubectl -n argocd patch deployment argocd-server --type='json' -p='[
+    {"op": "add", "path": "/spec/template/spec/containers/0/command/-", "value": "--insecure"}
+  ]'
+
+  # Tolerate control-plane taint where applicable
+  for d in argocd-server argocd-repo-server argocd-dex-server; do
+    /usr/local/bin/kubectl -n argocd patch deployment "$d" --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
+  done
+  /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
+
+  # Wait for the patched deployment to roll out successfully
+  echo "Waiting for patched Argo CD server to roll out..."
+  /usr/local/bin/kubectl -n argocd rollout status deployment/argocd-server --timeout=2m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-repo-server --timeout=2m || true
 }
 
 
@@ -341,7 +341,7 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: "nginx"
     cert-manager.io/cluster-issuer: "selfsigned"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    # The incorrect "backend-protocol" annotation is now removed.
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   tls:
