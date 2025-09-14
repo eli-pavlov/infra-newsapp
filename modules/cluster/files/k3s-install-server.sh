@@ -159,7 +159,7 @@ ensure_argocd_ingress_and_server() {
 
   # Helper: cleanup tmpdir on exit
   TMPDIR="$(mktemp -d)"
-  trap 'rm -rf "$TMPDIR"' EXIT
+  trap 'rm -rf "$${TMPDIR}"' EXIT
 
   # If user provided CERT_FILE/KEY_FILE env vars at runtime, prefer those.
   # NOTE: in template files we escape runtime-only vars as $${VAR} so Terraform won't replace them.
@@ -174,11 +174,11 @@ ensure_argocd_ingress_and_server() {
 
     # If CERT_FILE looks like a PEM block, write it to temporary files
     if echo "$${CERT_FILE}" | grep -q "-----BEGIN"; then
-      printf '%s\n' "$${CERT_FILE}" > "${TMPDIR}/argocd-tls.crt"
-      printf '%s\n' "$${KEY_FILE}"  > "${TMPDIR}/argocd-tls.key"
-      CERT_PATH="${TMPDIR}/argocd-tls.crt"
-      KEY_PATH="${TMPDIR}/argocd-tls.key"
-      chmod 600 "${CERT_PATH}" "${KEY_PATH}"
+      printf '%s\n' "$${CERT_FILE}" > "$${TMPDIR}/argocd-tls.crt"
+      printf '%s\n' "$${KEY_FILE}"  > "$${TMPDIR}/argocd-tls.key"
+      CERT_PATH="$${TMPDIR}/argocd-tls.crt"
+      KEY_PATH="$${TMPDIR}/argocd-tls.key"
+      chmod 600 "$${CERT_PATH}" "$${KEY_PATH}"
     else
       # Treat as file paths; ensure readable
       if [ ! -f "$${CERT_FILE}" ] || [ ! -r "$${CERT_FILE}" ]; then
@@ -195,7 +195,7 @@ ensure_argocd_ingress_and_server() {
 
     # Apply into cluster (create or update)
     kubectl -n argocd create secret tls argocd-tls \
-      --cert="${CERT_PATH}" --key="${KEY_PATH}" --dry-run=client -o yaml | kubectl apply -f - || true
+      --cert="$${CERT_PATH}" --key="$${KEY_PATH}" --dry-run=client -o yaml | kubectl apply -f - || true
 
     echo "Created/updated argocd-tls from provided cert/key."
   else
@@ -207,7 +207,7 @@ ensure_argocd_ingress_and_server() {
       SAN="DNS:argocd.weblightenment.com"
       # ${T_PRIVATE_LB_IP} is a Terraform-injected variable (rendered at template time)
       if [ -n "${T_PRIVATE_LB_IP:-}" ]; then
-        SAN="${SAN},IP:${T_PRIVATE_LB_IP}"
+        SAN="$${SAN},IP:${T_PRIVATE_LB_IP}"
       fi
 
       # Preferred: use -addext if openssl supports it, otherwise write a small config file.
@@ -220,11 +220,11 @@ ensure_argocd_ingress_and_server() {
         openssl req -x509 -nodes -days 365 \
           -subj "/CN=argocd.weblightenment.com" \
           -newkey rsa:2048 \
-          -addext "subjectAltName=${SAN}" \
-          -keyout "${TMPDIR}/tls.key" -out "${TMPDIR}/tls.crt"
+          -addext "subjectAltName=$${SAN}" \
+          -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt"
       else
         # fallback: create minimal openssl config with SAN
-        cat > "${TMPDIR}/openssl.cnf" <<EOF
+        cat > "$${TMPDIR}/openssl.cnf" <<EOF
 [ req ]
 distinguished_name = req_distinguished_name
 x509_extensions = v3_req
@@ -234,20 +234,20 @@ prompt = no
 CN = argocd.weblightenment.com
 
 [ v3_req ]
-subjectAltName = ${SAN}
+subjectAltName = $${SAN}
 EOF
         openssl req -x509 -nodes -days 365 \
           -newkey rsa:2048 \
-          -keyout "${TMPDIR}/tls.key" -out "${TMPDIR}/tls.crt" \
-          -config "${TMPDIR}/openssl.cnf" -extensions v3_req
+          -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt" \
+          -config "$${TMPDIR}/openssl.cnf" -extensions v3_req
       fi
 
-      chmod 600 "${TMPDIR}/tls.key" "${TMPDIR}/tls.crt"
+      chmod 600 "$${TMPDIR}/tls.key" "$${TMPDIR}/tls.crt"
 
       kubectl -n argocd create secret tls argocd-tls \
-        --cert="${TMPDIR}/tls.crt" --key="${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f - || true
+        --cert="$${TMPDIR}/tls.crt" --key="$${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f - || true
 
-      echo "Self-signed argocd-tls secret created (CN=argocd.weblightenment.com, SAN=${SAN})."
+      echo "Self-signed argocd-tls secret created (CN=argocd.weblightenment.com, SAN=$${SAN})."
     else
       echo "argocd-tls already exists; not overwriting."
     fi
@@ -261,6 +261,53 @@ EOF
 
   echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
 }
+
+
+add_connected_repositories() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  echo "Creating repository secrets in argocd namespace..."
+
+  # 1) Add your manifests repo as an argocd repository secret (public or private)
+  /usr/local/bin/kubectl -n argocd apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: newsapp-manifests
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: ${T_MANIFESTS_REPO_URL}
+EOF
+
+  # 2) Add Jetstack helm repo as a repo secret (so ArgoCD can fetch cert-manager chart)
+  /usr/local/bin/kubectl -n argocd apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jetstack-helm
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: helm
+  url: https://charts.jetstack.io
+EOF
+
+  echo "Repository secrets applied."
+}
+
+generate_secrets_and_credentials() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  sleep 30
+  echo "Generating credentials and Kubernetes secrets..."
+
+  DB_PASSWORD=$(python3 - <<'PY'
+import secrets,string
+print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
+PY
+)
 
 
 
