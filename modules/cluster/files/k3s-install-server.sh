@@ -282,22 +282,18 @@ generate_secrets_and_credentials() {
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
   DB_PASSWORD=$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))')
-  
   # Now that we know the secret exists, get the password
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
-
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
 Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
-
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
@@ -305,54 +301,35 @@ EOF
       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
-
   # Match your charts: use the -client Service for app connectivity
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_DEV}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
   DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_PROD}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
- if [[ -n "${T_CLOUDFLARE_API_TOKEN:-}" ]]; then
+  # Create cert-manager Cloudflare API token secret if token provided (optional for future DNS01)
+  if [ -n "${T_CLOUDFLARE_API_TOKEN}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
-
-    # ensure cert-manager namespace exists
-    kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f - || true
-
-    # Avoid leaking the token into the logs: disable xtrace briefly if enabled
-    XTRACE_WAS_SET=0
-    if [[ "${-}" == *x* ]]; then
-      XTRACE_WAS_SET=1
-      set +x
-    fi
-
-    # create a YAML manifest (owner-only perms), apply, then remove it
-    cat > /tmp/cloudflare-api-token-secret.yaml <<EOF
+    /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    cat << EOF > /tmp/cloudflare-api-token-secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: cloudflare-api-token
+  name: cloudflare-api-token-secret
   namespace: cert-manager
 type: Opaque
 stringData:
   api-token: "${T_CLOUDFLARE_API_TOKEN}"
 EOF
     chmod 600 /tmp/cloudflare-api-token-secret.yaml
-    kubectl apply -f /tmp/cloudflare-api-token-secret.yaml || true
-    shred -u /tmp/cloudflare-api-token-secret.yaml || rm -f /tmp/cloudflare-api-token-secret.yaml || true
-
-    # restore xtrace if it was set
-    if [ "$XTRACE_WAS_SET" -eq 1 ]; then
-      set -x
-    fi
-
-    echo "cloudflare-api-token secret created/updated in cert-manager namespace."
+    /usr/local/bin/kubectl apply -f /tmp/cloudflare-api-token-secret.yaml || true
+    rm -f /tmp/cloudflare-api-token-secret.yaml || true
+    echo "cloudflare-api-token-secret created/updated in cert-manager namespace."
   else
-    echo "T_CLOUDFLARE_API_TOKEN not set — skipping creation of cloudflare-api-token secret."
+    echo "T_CLOUDFLARE_API_TOKEN not set — skipping creation of cloudflare-api-token-secret."
   fi
 }
 
