@@ -213,7 +213,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 80
+                  number: 443
 EOF
 
   kubectl -n argocd annotate ingress argocd-server-ingress \
