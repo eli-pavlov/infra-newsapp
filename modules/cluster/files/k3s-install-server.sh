@@ -320,11 +320,11 @@ bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD with applications from manifest repo..."
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   # Apply project and stack for dev
-  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/project.yaml" || true
-  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/stack.yaml" || true
+  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/project.yaml || true
+  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/dev/apps/stack.yaml || true
   # Apply project and stack for prod
-  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/project.yaml" || true
-  /usr/local/bin/kubectl apply -f "${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/stack.yaml" || true
+  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/project.yaml || true
+  /usr/local/bin/kubectl apply -f ${T_MANIFESTS_REPO_URL%/}/raw/main/clusters/prod/apps/stack.yaml || true
   echo "Waiting for Argo CD to sync applications..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod --timeout=5m || true
