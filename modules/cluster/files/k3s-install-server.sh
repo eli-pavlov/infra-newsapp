@@ -243,7 +243,35 @@ EOF
   echo "Ingress/annotations applied and argocd-server restarted."
 }
 
-
+add_connected_repositories() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  echo "Adding connected repositories to ArgoCD..."
+  /usr/local/bin/kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: newsapp-manifests
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: ${T_MANIFESTS_REPO_URL}
+EOF
+  /usr/local/bin/kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jetstack-helm
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: jetstack
+  type: helm
+  url: https://charts.jetstack.io
+EOF
+}
 
 
 generate_secrets_and_credentials() {
