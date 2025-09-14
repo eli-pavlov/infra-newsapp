@@ -1,10 +1,4 @@
 # Define variables for Cloudflare credentials
-variable "cloudflare_api_token" {
-  description = "Cloudflare API Token for managing DNS."
-  type        = string
-  sensitive   = true
-}
-
 variable "cloudflare_zone_id" {
   description = "Cloudflare Zone ID for the domain."
   type        = string
