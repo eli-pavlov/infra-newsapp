@@ -158,7 +158,7 @@ ensure_argocd_ingress_and_server() {
   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null || true
 
   # Create TLS secret: use provided cert/key if present, otherwise generate a short-lived self-signed cert
-  if [[ -n "${CERT_FILE:-}" && -n "${KEY_FILE:-}" ]]; then
+  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
     kubectl -n argocd create secret tls argocd-tls \
       --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml | kubectl apply -f - || true
     echo "Created/updated argocd-tls from provided cert/key."
