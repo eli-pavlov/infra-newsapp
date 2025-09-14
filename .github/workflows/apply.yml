@@ -35,7 +35,7 @@ jobs:
       TF_VAR_manifests_repo_url:    ${{ secrets.MANIFESTS_REPO_URL }}
       TF_VAR_cloudflare_api_token:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_zone_id:    ${{ secrets.CLOUDFLARE_ZONE_ID }}
-      TF_VAR_tf_state_key:        ${{ secrets.TF_STATE_key }}
+      TF_VAR_TF_STATE_KEY:        ${{ secrets.TF_STATE_key }}
 
 
 
