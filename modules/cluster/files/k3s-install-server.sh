@@ -357,10 +357,10 @@ bootstrap_argocd_apps() {
   # Apply Project + stack Application CRs (dev & prod). Prefer local clone if available.
   set +e
   if [ -d "$TMP_MANIFESTS_DIR" ]; then
-    kubectl -n argocd apply -f "${TMP_MANIFESTS_DIR}/clusters/dev/apps/project.yaml"
-    kubectl -n argocd apply -f "${TMP_MANIFESTS_DIR}/clusters/dev/apps/stack.yaml"
-    kubectl -n argocd apply -f "${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml"
-    kubectl -n argocd apply -f "${TMP_MANIFESTS_DIR}/clusters/prod/apps/stack.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/project.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/stack.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/stack.yaml"
   else
     # Fallback: attempt raw.githubusercontent URLs (best-effort)
     # Try to convert possible GitHub HTTPS url to raw.githubusercontent pattern if it looks like github.com
