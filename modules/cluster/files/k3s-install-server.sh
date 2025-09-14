@@ -217,9 +217,9 @@ EOF
     }
   }' >/dev/null || true
 
-  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
+  if [[ -n "${CERT_FILE:-}" && -n "${KEY_FILE:-}" ]]; then
     /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-      --cert="$${CERT_FILE}" --key="$${KEY_FILE}" --dry-run=client -o yaml > "/tmp/argocd-tls.yaml" && \
+      --cert="${CERT_FILE}" --key="${KEY_FILE}" --dry-run=client -o yaml > "/tmp/argocd-tls.yaml" && \
     /usr/local/bin/kubectl apply -f "/tmp/argocd-tls.yaml" || true
     echo "Created/updated argocd-tls secret from provided CERT_FILE/KEY_FILE."
   else
@@ -344,19 +344,19 @@ bootstrap_argocd_apps() {
 
   # Ensure repo is cloned locally (robust against raw URL issues).
   TMP_MANIFESTS_DIR="/tmp/newsapp-manifests"
-  if [ -d "$TMP_MANIFESTS_DIR/.git" ]; then
+  if [ -d "$${TMP_MANIFESTS_DIR}/.git" ]; then
     echo "Local clone exists; attempting git -C pull..."
-    git -C "$TMP_MANIFESTS_DIR" pull --ff-only || true
+    git -C "$${TMP_MANIFESTS_DIR}" pull --ff-only || true
   else
     # clone, but do not fail cluster bootstrap if clone fails (let ArgoCD still be able to fetch via registered repo)
-    if ! git clone --depth 1 "${T_MANIFESTS_REPO_URL}" "$TMP_MANIFESTS_DIR"; then
+    if ! git clone --depth 1 "${T_MANIFESTS_REPO_URL}" "$${TMP_MANIFESTS_DIR}"; then
       echo "Warning: git clone failed for ${T_MANIFESTS_REPO_URL}; continuing and attempting to apply remote raw manifests where possible."
     fi
   fi
 
   # Apply Project + stack Application CRs (dev & prod). Prefer local clone if available.
   set +e
-  if [ -d "$TMP_MANIFESTS_DIR" ]; then
+  if [ -d "$${TMP_MANIFESTS_DIR}" ]; then
     kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/project.yaml"
     kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/stack.yaml"
     kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml"
@@ -378,8 +378,8 @@ bootstrap_argocd_apps() {
 
   # Wait for ArgoCD to reconcile new Applications (best-effort; tolerate the fact that ArgoCD may still be initializing)
   echo "Waiting up to 5m for applications to become Healthy (best-effort)..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev --timeout=5m || true
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev-stack --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod-stack --timeout=5m || true
 
   echo "Argo CD Application CRs applied (from local clone or raw URLs)."
 }
