@@ -378,8 +378,8 @@ bootstrap_argocd_apps() {
 
   # Wait for ArgoCD to reconcile new Applications (best-effort; tolerate the fact that ArgoCD may still be initializing)
   echo "Waiting up to 5m for applications to become Healthy (best-effort)..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev-stack --timeout=5m || true
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod-stack --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev-stack --timeout=6m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod-stack --timeout=6m || true
 
   echo "Argo CD Application CRs applied (from local clone or raw URLs)."
 }
