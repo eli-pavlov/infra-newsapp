@@ -206,7 +206,7 @@ ensure_argocd_ingress_and_server() {
       # Build SAN list: always DNS:argocd.weblightenment.com, optionally add the private LB IP if set.
       SAN="DNS:argocd.weblightenment.com"
       # ${T_PRIVATE_LB_IP} is a Terraform-injected variable (rendered at template time)
-      if [ -n "${T_PRIVATE_LB_IP:-}" ]; then
+      if [ -n "$${T_PRIVATE_LB_IP:-}" ]; then
         SAN="$${SAN},IP:${T_PRIVATE_LB_IP}"
       fi
 
