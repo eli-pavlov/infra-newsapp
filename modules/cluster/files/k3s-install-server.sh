@@ -243,143 +243,51 @@ install_argo_cd() {
 #   echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
 # }
 
-# generate_secrets_and_credentials() {
-#   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-#   sleep 30
-#   echo "Generating credentials and Kubernetes secrets..."
+generate_secrets_and_credentials() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  sleep 30
+  echo "Generating credentials and Kubernetes secrets..."
 
-#   DB_PASSWORD=$(python3 - <<'PY'
-# import secrets,string
-# print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
-# PY
-# )
-
-#   # Wait until ArgoCD initial admin secret is present, then extract password.
-#   local timeout=120; local start=$(date +%s)
-#   while true; do
-#     if /usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1; then
-#       break
-#     fi
-#     if [ $(( $(date +%s) - start )) -gt $timeout ]; then
-#       echo "argocd-initial-admin-secret not found after waiting; continuing anyway."
-#       break
-#     fi
-#     sleep 3
-#   done
-
-#   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "" )
-#   if [ -n "$ARGO_PASSWORD" ]; then
-#     ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
-#   else
-#     ARGO_PASSWORD="(unknown)"
-#   fi
-
-#   # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
-#   cat << EOF > /root/credentials.txt
-# # --- Argo CD Admin Credentials ---
-# Username: admin
-# Password: $${ARGO_PASSWORD}
-# # --- PostgreSQL Database Credentials ---
-# Username: ${T_DB_USER}
-# Password: $${DB_PASSWORD}
-# EOF
-#   chmod 600 /root/credentials.txt
-#   echo "Credentials saved to /root/credentials.txt"
-
-#   for ns in default development; do
-#     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-#     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-#       --from-literal=POSTGRES_USER="${T_DB_USER}" \
-#       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-#       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-#   done
-
-#   # backend DB connection secrets expected by charts
-#   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
-#   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-#     --from-literal=DB_URI="$${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
-#   DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
-#   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-#     --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
-#   if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
-#     echo "Creating cert-manager Cloudflare API token secret..."
-#     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-#     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
-#       --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-#     echo "cloudflare-api-token-secret created/updated in cert-manager."
-#   else
-#     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
-#   fi
-# }
-
-generate_app_secrets() {
-    echo "Generating application-specific secrets (DB and Cloudflare)..."
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-    # This DB_PASSWORD variable must be available from the previous function.
-    # We will ensure this by not making it a 'local' variable.
-    
-    for ns in default development; do
-        /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-        /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-            --from-literal=POSTGRES_USER="${T_DB_USER}" \
-            --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
-            --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
-    done
-
-    # Backend DB connection secrets expected by charts
-    DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
-    /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-        --from-literal=DB_URI="${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
-
-    DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
-    /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-        --from-literal=DB_URI="${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
-
-    if [ -n "${T_CLOUDFLARE_API_TOKEN}" ]; then
-        echo "Creating cert-manager Cloudflare API token secret..."
-        # Wait for the cert-manager namespace to be created by Argo CD first
-        while ! /usr/local/bin/kubectl get namespace cert-manager >/dev/null 2>&1; do
-            echo "Waiting for cert-manager namespace to be created by Argo CD..."
-            sleep 10
-        done
-        /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
-            --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
-        echo "Cloudflare secret created."
-    fi
-}
-
-
-generate_initial_credentials() {
-    echo "Generating initial passwords and credentials file..."
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-    # Generate the DB password and store it in a global script variable
-    # DO NOT use 'local' here, so it's available in the next function
-    DB_PASSWORD=$(python3 - <<'PY'
+  DB_PASSWORD=$(python3 - <<'PY'
 import secrets,string
 print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
 PY
 )
-
-    # We must wait for the argocd-server pod to be running before getting the secret
-    echo "Waiting for Argo CD server to be ready before extracting admin password..."
-    /usr/local/bin/kubectl -n argocd wait --for=condition=Available deployment/argocd-server --timeout=5m
-
-    ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-
-    cat << EOF > /root/credentials.txt
-# --- Argo CD Admin Credentials ---
-Username: admin
-Password: ${ARGO_PASSWORD}
+  # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
+  cat << EOF > /root/credentials.txt
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
-    chmod 600 /root/credentials.txt
-    echo "Credentials saved to /root/credentials.txt"
+  chmod 600 /root/credentials.txt
+  echo "Credentials saved to /root/credentials.txt"
+
+  for ns in default development; do
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER="${T_DB_USER}" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+  done
+
+  # backend DB connection secrets expected by charts
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
+  /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
+    --from-literal=DB_URI="$${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:5432/${T_DB_NAME_PROD}"
+  /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
+    --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+
+  if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
+    echo "Creating cert-manager Cloudflare API token secret..."
+    /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
+      --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    echo "cloudflare-api-token-secret created/updated in cert-manager."
+  else
+    echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
+  fi
 }
 
 
@@ -387,7 +295,6 @@ bootstrap_argocd_apps() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Bootstrapping Argo CD Applications from manifests repo: ${T_MANIFESTS_REPO_URL}"
   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
-
   # Ensure repo is cloned locally.
   TMP_MANIFESTS_DIR="/tmp/newsapp-manifests"
   if [ -d "$TMP_MANIFESTS_DIR/.git" ]; then
@@ -399,7 +306,6 @@ bootstrap_argocd_apps() {
       echo "Warning: git clone failed for ${T_MANIFESTS_REPO_URL}; continuing and attempting to apply remote raw manifests where possible."
     fi
   fi
-
   # Apply Project + stack Application CRs (dev & prod)
   set +e
   # Apply the single root application that manages everything else
@@ -410,11 +316,31 @@ bootstrap_argocd_apps() {
      exit 1
    fi
   set -e
-
   echo "Waiting up to 5m for applications to become Healthy..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=5m || true
   echo "Argo CD Application CRs applied (from local clone or raw URLs)."
 }
+
+
+save_argocd_credentials() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  sleep 30
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "" )
+  if [ -n "$ARGO_PASSWORD" ]; then
+    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
+  else
+    ARGO_PASSWORD="(unknown)"
+  fi
+  # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
+  cat << EOF >> /root/credentials.txt
+# --- Argo CD Admin Credentials ---
+Username: admin
+Password: $${ARGO_PASSWORD}
+EOF
+  chmod 600 /root/credentials.txt
+  echo "Credentials saved to /root/credentials.txt"
+}
+
 
 main() {
   install_base_tools
@@ -426,11 +352,9 @@ main() {
   install_argo_cd_crds
 ## Fallback for self issued crt/key##   
 # ensure_argocd_ingress_and_server
-#generate_secrets_and_credentials
+  generate_secrets_and_credentials
   bootstrap_argocd_apps
-  generate_initial_credentials
-  generate_app_secrets
-
+  save_argocd_credentials
 }
 
 main "$@"
