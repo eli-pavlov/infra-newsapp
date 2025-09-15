@@ -243,41 +243,6 @@ install_argo_cd() {
 #   echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
 # }
 
-add_connected_repositories() {
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  echo "Creating repository secrets in argocd namespace..."
-
-  # 1) Add your manifests repo as an argocd repository secret (public or private)
-  /usr/local/bin/kubectl -n argocd apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: newsapp-manifests
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  type: git
-  url: ${T_MANIFESTS_REPO_URL}
-EOF
-
-  # 2) Add Jetstack helm repo as a repo secret (so ArgoCD can fetch cert-manager chart)
-  /usr/local/bin/kubectl -n argocd apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: jetstack-helm
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  type: helm
-  url: https://charts.jetstack.io
-EOF
-
-  echo "Repository secrets applied."
-}
-
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   sleep 30
@@ -389,7 +354,7 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
-  install_argo_cd
+  install_argo_cd_crds
 ## Fallback for self issued crt/key##   
 # ensure_argocd_ingress_and_server
   add_connected_repositories
