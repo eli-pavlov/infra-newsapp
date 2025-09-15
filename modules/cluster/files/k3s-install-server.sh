@@ -128,12 +128,12 @@ install_bootstrap_crds() {
     echo "Installing pinned versions of CRDs needed for bootstrap..."
 
     # Apply Argo CD CRDs from a specific version tag
-    echo "Applying Argo CD CRDs version ${ARGO_CD_CRDS_VERSION}..."
-    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=${ARGO_CD_CRDS_VERSION}"
+    echo "Applying Argo CD CRDs"
+    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=v2.13.11"
     
     # Apply Cert-Manager CRDs from a specific version tag
-    echo "Applying Cert-Manager CRDs version ${CERT_MANAGER_CRDS_VERSION}..."
-    /usr/local/bin/kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_CRDS_VERSION}/cert-manager.crds.yaml"
+    echo "Applying Cert-Manager CRDs"
+    /usr/local/bin/kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml"
     
     echo "✅ All required CRDs applied."
 }
