@@ -122,12 +122,14 @@ install_helm() {
   fi
 }
 
-install_argo_cd() {
+
+install_argo_cd_crds() {
     echo "Installing Argo CD CRDs..."
     /usr/local/bin/kubectl apply -k https://github.com/argoproj/argo-cd/manifests/crds?ref=stable
     
     echo "✅ Argo CD CRDs applied. The root Argo CD application will handle the rest."
 }
+
 
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
