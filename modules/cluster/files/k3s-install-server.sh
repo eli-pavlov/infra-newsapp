@@ -129,7 +129,7 @@ install_bootstrap_crds() {
 
     # Apply Argo CD CRDs from a specific version tag
     echo "Applying Argo CD CRDs"
-    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=v8.3.7"
+    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=v2.13.11"
     
     # Apply Cert-Manager CRDs from a specific version tag
     echo "Applying Cert-Manager CRDs"
