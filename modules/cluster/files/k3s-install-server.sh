@@ -243,6 +243,7 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
+  install_bootstrap_crds
   generate_secrets_and_credentials
   bootstrap_argocd_apps
   save_argocd_credentials
