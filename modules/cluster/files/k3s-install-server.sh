@@ -135,7 +135,6 @@ install_argo_cd() {
   /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]' || true
 
   echo "Waiting for Argo CD deployments to be available..."
-  # wait loops instead of strict single command so we can tolerate transient failures
   local timeout=300; local start=$(date +%s)
   while true; do
     if /usr/local/bin/kubectl -n argocd get deploy -o name | xargs -r -n1 /usr/local/bin/kubectl -n argocd rollout status --timeout=10s; then
