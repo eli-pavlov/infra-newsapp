@@ -123,6 +123,20 @@ install_helm() {
   fi
 }
 
+install_bootstrap_crds() {
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    echo "Installing pinned versions of CRDs for bootstrap..."
+
+    # Apply Argo CD CRDs
+    echo "Applying Argo CD CRDs (ref: v2.13.11)..."
+    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=v2.13.11"
+    
+    # Apply Cert-Manager CRDs
+    echo "Applying Cert-Manager CRDs (ref: v1.18.2)..."
+    /usr/local/bin/kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.crds.yaml"
+    
+    echo "✅ All required CRDs applied."
+}
 
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
