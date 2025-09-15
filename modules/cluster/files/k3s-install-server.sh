@@ -1,7 +1,6 @@
 #!/bin/bash
 # K3s SERVER install, tooling, secret generation, ingress-nginx install,
 # and Argo CD bootstrapping.
-# Converted for Oracle Linux 9 (dnf-based) — keep minimal & robust.
 set -euo pipefail
 # Simpler robust logging (avoid SIGPIPE issues of tee|logger chain)
 exec > /var/log/cloud-init-output.log 2>&1
