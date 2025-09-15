@@ -1,4 +1,5 @@
 # .gitignore
+*.txt
 
 # Local .terraform directories
 .terraform/
@@ -9,7 +10,7 @@
 *.key
 *.pub
 *.pem
-*.txt
+
 
 # Crash log files
 crash.log
