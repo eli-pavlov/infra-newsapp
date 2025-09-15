@@ -388,16 +388,16 @@ bootstrap_argocd_apps() {
   # Apply Project + stack Application CRs (dev & prod)
   set +e
   # Apply the single root application that manages everything else
-   if [ -f "$TMP_MANIFESTS_DIR/root-app.yaml" ]; then
-    /usr/local/bin/kubectl apply -f "$TMP_MANIFESTS_DIR/root-app.yaml"  
+   if [ -f "$TMP_MANIFESTS_DIR/newsapp-master-app.yaml" ]; then
+    /usr/local/bin/kubectl apply -f "$TMP_MANIFESTS_DIR/newsapp-master-app.yaml"  
    else
-     echo "❌ root-app.yaml not found in repository. Cannot bootstrap Argo CD."
+     echo "❌ newsapp-master-app.yaml not found in repository. Cannot bootstrap Argo CD."
      exit 1
    fi
   set -e
 
   echo "Waiting up to 5m for applications to become Healthy..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/root --timeout=5m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=5m || true
   echo "Argo CD Application CRs applied (from local clone or raw URLs)."
 }
 
