@@ -123,11 +123,19 @@ install_helm() {
 }
 
 
-install_argo_cd_crds() {
-    echo "Installing Argo CD CRDs..."
-    /usr/local/bin/kubectl apply -k https://github.com/argoproj/argo-cd/manifests/crds?ref=stable
+install_bootstrap_crds() {
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    echo "Installing pinned versions of CRDs needed for bootstrap..."
+
+    # Apply Argo CD CRDs from a specific version tag
+    echo "Applying Argo CD CRDs version ${ARGO_CD_CRDS_VERSION}..."
+    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=${ARGO_CD_CRDS_VERSION}"
     
-    echo "✅ Argo CD CRDs applied. The root Argo CD application will handle the rest."
+    # Apply Cert-Manager CRDs from a specific version tag
+    echo "Applying Cert-Manager CRDs version ${CERT_MANAGER_CRDS_VERSION}..."
+    /usr/local/bin/kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_CRDS_VERSION}/cert-manager.crds.yaml"
+    
+    echo "✅ All required CRDs applied."
 }
 
 
@@ -237,7 +245,7 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
-  install_argo_cd_crds
+  install_bootstrap_crds
   generate_secrets_and_credentials
   bootstrap_argocd_apps
   save_argocd_credentials
