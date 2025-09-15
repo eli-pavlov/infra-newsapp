@@ -37,6 +37,10 @@ module "cluster" {
   public_nlb_backend_set_http_name  = module.network.public_nlb_backend_set_http_name
   public_nlb_backend_set_https_name = module.network.public_nlb_backend_set_https_name
   private_lb_backendset_name        = module.network.private_lb_backendset_name
+  
+  depends_on = [
+  module.network
+  ]
 }
 
 # Optional: write a tiny JSON with a couple of useful outputs into your bucket
