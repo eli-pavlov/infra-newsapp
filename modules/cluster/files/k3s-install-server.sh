@@ -387,37 +387,17 @@ bootstrap_argocd_apps() {
 
   # Apply Project + stack Application CRs (dev & prod)
   set +e
-  if [ -d "$TMP_MANIFESTS_DIR" ]; then
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/addons/ingress-nginx-app.yaml"
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/addons/cert-manager-helm-app.yaml"
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/addons/cert-manager-local-app.yaml"
-    sleep 30
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/project.yaml"
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/stack.yaml"
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml"
-    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/stack.yaml"
-  else
-    # Fallback: attempt raw.githubusercontent URLs
-    if echo "${T_MANIFESTS_REPO_URL}" | grep -q 'github.com'; then
-      base=$(echo "${T_MANIFESTS_REPO_URL}" | sed -E 's#https://github.com/([^/]+/[^/]+)(.git)?#\1#')
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/addons/ingress-nginx-app.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/addons/cert-manager-helm-app.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/addons/cert-manager-local-app.yaml" || true
-      sleep 30
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/dev/apps/project.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/dev/apps/stack.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/project.yaml" || true
-      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/stack.yaml" || true
-    else
-      echo "No local clone and not a GitHub URL; skipping direct apply of remote files."
-    fi
-  fi
+  # Apply the single root application that manages everything else
+   if [ -f "$TMP_MANIFESTS_DIR/root-app.yaml" ]; then
+    /usr/local/bin/kubectl apply -f "$TMP_MANIFESTS_DIR/root-app.yaml"  
+   else
+     echo "❌ root-app.yaml not found in repository. Cannot bootstrap Argo CD."
+     exit 1
+   fi
   set -e
 
   echo "Waiting up to 5m for applications to become Healthy..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev-stack --timeout=5m || true
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod-stack --timeout=5m || true
-
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/root --timeout=5m || true
   echo "Argo CD Application CRs applied (from local clone or raw URLs)."
 }
 
