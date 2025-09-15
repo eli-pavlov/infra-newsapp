@@ -155,11 +155,10 @@ ensure_argocd_ingress_and_server() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
   # Create argocd namespace if missing (safe no-op)
-  /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - >/dev/null || true
+  kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null || true
 
   # Helper: cleanup tmpdir on exit
   TMPDIR="$(mktemp -d)"
-  # trap must contain the runtime variable; escape for Terraform templatefile (template uses $${...})
   trap 'rm -rf "$${TMPDIR}"' EXIT
 
   # If user provided CERT_FILE/KEY_FILE env vars at runtime, prefer those.
@@ -195,20 +194,20 @@ ensure_argocd_ingress_and_server() {
     fi
 
     # Apply into cluster (create or update)
-    /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-      --cert="$${CERT_PATH}" --key="$${KEY_PATH}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    kubectl -n argocd create secret tls argocd-tls \
+      --cert="$${CERT_PATH}" --key="$${KEY_PATH}" --dry-run=client -o yaml | kubectl apply -f - || true
 
     echo "Created/updated argocd-tls from provided cert/key."
   else
     # No user-supplied cert/key: create a short-lived self-signed cert only if secret missing.
-    if ! /usr/local/bin/kubectl -n argocd get secret argocd-tls >/dev/null 2>&1; then
+    if ! kubectl -n argocd get secret argocd-tls >/dev/null 2>&1; then
       echo "No CERT_FILE/KEY_FILE provided and argocd-tls secret missing — creating self-signed cert."
 
       # Build SAN list: always DNS:argocd.weblightenment.com, optionally add the private LB IP if set.
       SAN="DNS:argocd.weblightenment.com"
-      # Use escaped parameter expansion so Terraform won't attempt to parse it (we want the literal ${T_PRIVATE_LB_IP:-} preserved for the final script)
-      if [ -n "$${T_PRIVATE_LB_IP:-}" ]; then
-        SAN="$${SAN},IP:$${T_PRIVATE_LB_IP}"
+      # ${T_PRIVATE_LB_IP} is a Terraform-injected variable (rendered at template time)
+      if [ -n "${T_PRIVATE_LB_IP:-}" ]; then
+        SAN="$${SAN},IP:${T_PRIVATE_LB_IP}"
       fi
 
       # Preferred: use -addext if openssl supports it, otherwise write a small config file.
@@ -245,8 +244,8 @@ EOF
 
       chmod 600 "$${TMPDIR}/tls.key" "$${TMPDIR}/tls.crt"
 
-      /usr/local/bin/kubectl -n argocd create secret tls argocd-tls \
-        --cert="$${TMPDIR}/tls.crt" --key="$${TMPDIR}/tls.key" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+      kubectl -n argocd create secret tls argocd-tls \
+        --cert="$${TMPDIR}/tls.crt" --key="$${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f - || true
 
       echo "Self-signed argocd-tls secret created (CN=argocd.weblightenment.com, SAN=$${SAN})."
     else
@@ -255,10 +254,10 @@ EOF
   fi
 
   # Patch argocd-cm url so UI links are correct (best-effort)
-  /usr/local/bin/kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
 
   # Restart argocd-server to pick up any secret/config changes
-  /usr/local/bin/kubectl -n argocd rollout restart deployment argocd-server || true
+  kubectl -n argocd rollout restart deployment argocd-server || true
 
   echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
 }
@@ -358,7 +357,7 @@ EOF
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
-  if [ -n "${T_CLOUDFLARE_API_TOKEN:-}" ]; then
+  if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
@@ -374,33 +373,33 @@ bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD Applications from manifests repo: ${T_MANIFESTS_REPO_URL}"
 
   # Ensure repo is cloned locally (robust against raw URL issues).
-  TMP_MANIFESTS_DIR="$${TMP_MANIFESTS_DIR:-/tmp/newsapp-manifests}"
-  if [ -d "$${TMP_MANIFESTS_DIR}/.git" ]; then
+  TMP_MANIFESTS_DIR="/tmp/newsapp-manifests"
+  if [ -d "$TMP_MANIFESTS_DIR/.git" ]; then
     echo "Local clone exists; attempting git -C pull..."
-    git -C "$${TMP_MANIFESTS_DIR}" pull --ff-only || true
+    git -C "$TMP_MANIFESTS_DIR" pull --ff-only || true
   else
     # clone, but do not fail cluster bootstrap if clone fails (let ArgoCD still be able to fetch via registered repo)
-    if ! git clone --depth 1 "${T_MANIFESTS_REPO_URL}" "$${TMP_MANIFESTS_DIR}"; then
+    if ! git clone --depth 1 "${T_MANIFESTS_REPO_URL}" "$TMP_MANIFESTS_DIR"; then
       echo "Warning: git clone failed for ${T_MANIFESTS_REPO_URL}; continuing and attempting to apply remote raw manifests where possible."
     fi
   fi
 
   # Apply Project + stack Application CRs (dev & prod). Prefer local clone if available.
   set +e
-  if [ -d "$${TMP_MANIFESTS_DIR}" ]; then
-    /usr/local/bin/kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/project.yaml" || true
-    /usr/local/bin/kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/stack.yaml" || true
-    /usr/local/bin/kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml" || true
-    /usr/local/bin/kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/stack.yaml" || true
+  if [ -d "$TMP_MANIFESTS_DIR" ]; then
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/project.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/dev/apps/stack.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml"
+    kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/stack.yaml"
   else
     # Fallback: attempt raw.githubusercontent URLs (best-effort)
     # Try to convert possible GitHub HTTPS url to raw.githubusercontent pattern if it looks like github.com
     if echo "${T_MANIFESTS_REPO_URL}" | grep -q 'github.com'; then
       base=$(echo "${T_MANIFESTS_REPO_URL}" | sed -E 's#https://github.com/([^/]+/[^/]+)(.git)?#\1#')
-      /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/dev/apps/project.yaml" || true
-      /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/dev/apps/stack.yaml" || true
-      /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/prod/apps/project.yaml" || true
-      /usr/local/bin/kubectl -n argocd apply -f "https://raw.githubusercontent.com/${base}/main/clusters/prod/apps/stack.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/dev/apps/project.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/dev/apps/stack.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/project.yaml" || true
+      kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/stack.yaml" || true
     else
       echo "No local clone and not a GitHub URL; skipping direct apply of remote files (ArgoCD should be able to fetch manifests using the registered repository secret)."
     fi
