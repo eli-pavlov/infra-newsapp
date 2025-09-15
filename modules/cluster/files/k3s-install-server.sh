@@ -150,117 +150,119 @@ install_argo_cd() {
   done
 }
 
-ensure_argocd_ingress_and_server() {
-  set -euo pipefail
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+# Fallback for self issued crt/key if user doesn't provide their own.
+# This function is retained for reference but commented out to avoid conflicts
+# ensure_argocd_ingress_and_server() {
+#   set -euo pipefail
+#   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
-  # Create argocd namespace if missing (safe no-op)
-  kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null || true
+#   # Create argocd namespace if missing (safe no-op)
+#   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null || true
 
-  # Helper: cleanup tmpdir on exit
-  TMPDIR="$(mktemp -d)"
-  trap 'rm -rf "$${TMPDIR}"' EXIT
+#   # Helper: cleanup tmpdir on exit
+#   TMPDIR="$(mktemp -d)"
+#   trap 'rm -rf "$${TMPDIR}"' EXIT
 
-  # If user provided CERT_FILE/KEY_FILE env vars at runtime, prefer those.
-  # NOTE: in template files we escape runtime-only vars as $${VAR} so Terraform won't replace them.
-  if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
-    echo "Using provided CERT_FILE / KEY_FILE to create/update argocd-tls secret."
+#   # If user provided CERT_FILE/KEY_FILE env vars at runtime, prefer those.
+#   # NOTE: in template files we escape runtime-only vars as $${VAR} so Terraform won't replace them.
+#   if [[ -n "$${CERT_FILE:-}" && -n "$${KEY_FILE:-}" ]]; then
+#     echo "Using provided CERT_FILE / KEY_FILE to create/update argocd-tls secret."
 
-    # Support two modes:
-    # 1) CERT_FILE/KEY_FILE are paths to files (common)
-    # 2) CERT_FILE/KEY_FILE contain raw PEM content (we'll write them to temp files)
-    CERT_PATH=""
-    KEY_PATH=""
+#     # Support two modes:
+#     # 1) CERT_FILE/KEY_FILE are paths to files (common)
+#     # 2) CERT_FILE/KEY_FILE contain raw PEM content (we'll write them to temp files)
+#     CERT_PATH=""
+#     KEY_PATH=""
 
-    # If CERT_FILE looks like a PEM block, write it to temporary files
-    if echo "$${CERT_FILE}" | grep -q "-----BEGIN"; then
-      printf '%s\n' "$${CERT_FILE}" > "$${TMPDIR}/argocd-tls.crt"
-      printf '%s\n' "$${KEY_FILE}"  > "$${TMPDIR}/argocd-tls.key"
-      CERT_PATH="$${TMPDIR}/argocd-tls.crt"
-      KEY_PATH="$${TMPDIR}/argocd-tls.key"
-      chmod 600 "$${CERT_PATH}" "$${KEY_PATH}"
-    else
-      # Treat as file paths; ensure readable
-      if [ ! -f "$${CERT_FILE}" ] || [ ! -r "$${CERT_FILE}" ]; then
-        echo "Provided CERT_FILE path '$${CERT_FILE}' is not readable or doesn't exist."
-        exit 1
-      fi
-      if [ ! -f "$${KEY_FILE}" ] || [ ! -r "$${KEY_FILE}" ]; then
-        echo "Provided KEY_FILE path '$${KEY_FILE}' is not readable or doesn't exist."
-        exit 1
-      fi
-      CERT_PATH="$${CERT_FILE}"
-      KEY_PATH="$${KEY_FILE}"
-    fi
+#     # If CERT_FILE looks like a PEM block, write it to temporary files
+#     if echo "$${CERT_FILE}" | grep -q "-----BEGIN"; then
+#       printf '%s\n' "$${CERT_FILE}" > "$${TMPDIR}/argocd-tls.crt"
+#       printf '%s\n' "$${KEY_FILE}"  > "$${TMPDIR}/argocd-tls.key"
+#       CERT_PATH="$${TMPDIR}/argocd-tls.crt"
+#       KEY_PATH="$${TMPDIR}/argocd-tls.key"
+#       chmod 600 "$${CERT_PATH}" "$${KEY_PATH}"
+#     else
+#       # Treat as file paths; ensure readable
+#       if [ ! -f "$${CERT_FILE}" ] || [ ! -r "$${CERT_FILE}" ]; then
+#         echo "Provided CERT_FILE path '$${CERT_FILE}' is not readable or doesn't exist."
+#         exit 1
+#       fi
+#       if [ ! -f "$${KEY_FILE}" ] || [ ! -r "$${KEY_FILE}" ]; then
+#         echo "Provided KEY_FILE path '$${KEY_FILE}' is not readable or doesn't exist."
+#         exit 1
+#       fi
+#       CERT_PATH="$${CERT_FILE}"
+#       KEY_PATH="$${KEY_FILE}"
+#     fi
 
-    # Apply into cluster (create or update)
-    kubectl -n argocd create secret tls argocd-tls \
-      --cert="$${CERT_PATH}" --key="$${KEY_PATH}" --dry-run=client -o yaml | kubectl apply -f - || true
+#     # Apply into cluster (create or update)
+#     kubectl -n argocd create secret tls argocd-tls \
+#       --cert="$${CERT_PATH}" --key="$${KEY_PATH}" --dry-run=client -o yaml | kubectl apply -f - || true
 
-    echo "Created/updated argocd-tls from provided cert/key."
-  else
-    # No user-supplied cert/key: create a short-lived self-signed cert only if secret missing.
-    if ! kubectl -n argocd get secret argocd-tls >/dev/null 2>&1; then
-      echo "No CERT_FILE/KEY_FILE provided and argocd-tls secret missing — creating self-signed cert."
+#     echo "Created/updated argocd-tls from provided cert/key."
+#   else
+#     # No user-supplied cert/key: create a short-lived self-signed cert only if secret missing.
+#     if ! kubectl -n argocd get secret argocd-tls >/dev/null 2>&1; then
+#       echo "No CERT_FILE/KEY_FILE provided and argocd-tls secret missing — creating self-signed cert."
 
-      # Build SAN list: always DNS:argocd.weblightenment.com, optionally add the private LB IP if set.
-      SAN="DNS:argocd.weblightenment.com"
-      # ${T_PRIVATE_LB_IP} is a Terraform-injected variable (rendered at template time)
-      if [ -n "$${T_PRIVATE_LB_IP:-}" ]; then
-        SAN="$${SAN},IP:${T_PRIVATE_LB_IP}"
-      fi
+#       # Build SAN list: always DNS:argocd.weblightenment.com, optionally add the private LB IP if set.
+#       SAN="DNS:argocd.weblightenment.com"
+#       # ${T_PRIVATE_LB_IP} is a Terraform-injected variable (rendered at template time)
+#       if [ -n "$${T_PRIVATE_LB_IP:-}" ]; then
+#         SAN="$${SAN},IP:${T_PRIVATE_LB_IP}"
+#       fi
 
-      # Preferred: use -addext if openssl supports it, otherwise write a small config file.
-      OPENSSL_HAS_ADDEXT=false
-      if openssl req -help 2>&1 | grep -q addext; then
-        OPENSSL_HAS_ADDEXT=true
-      fi
+#       # Preferred: use -addext if openssl supports it, otherwise write a small config file.
+#       OPENSSL_HAS_ADDEXT=false
+#       if openssl req -help 2>&1 | grep -q addext; then
+#         OPENSSL_HAS_ADDEXT=true
+#       fi
 
-      if $OPENSSL_HAS_ADDEXT; then
-        openssl req -x509 -nodes -days 365 \
-          -subj "/CN=argocd.weblightenment.com" \
-          -newkey rsa:2048 \
-          -addext "subjectAltName=$${SAN}" \
-          -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt"
-      else
-        # fallback: create minimal openssl config with SAN
-        cat > "$${TMPDIR}/openssl.cnf" <<EOF
-[ req ]
-distinguished_name = req_distinguished_name
-x509_extensions = v3_req
-prompt = no
+#       if $OPENSSL_HAS_ADDEXT; then
+#         openssl req -x509 -nodes -days 365 \
+#           -subj "/CN=argocd.weblightenment.com" \
+#           -newkey rsa:2048 \
+#           -addext "subjectAltName=$${SAN}" \
+#           -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt"
+#       else
+#         # fallback: create minimal openssl config with SAN
+#         cat > "$${TMPDIR}/openssl.cnf" <<EOF
+# [ req ]
+# distinguished_name = req_distinguished_name
+# x509_extensions = v3_req
+# prompt = no
 
-[ req_distinguished_name ]
-CN = argocd.weblightenment.com
+# [ req_distinguished_name ]
+# CN = argocd.weblightenment.com
 
-[ v3_req ]
-subjectAltName = $${SAN}
-EOF
-        openssl req -x509 -nodes -days 365 \
-          -newkey rsa:2048 \
-          -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt" \
-          -config "$${TMPDIR}/openssl.cnf" -extensions v3_req
-      fi
+# [ v3_req ]
+# subjectAltName = $${SAN}
+# EOF
+#         openssl req -x509 -nodes -days 365 \
+#           -newkey rsa:2048 \
+#           -keyout "$${TMPDIR}/tls.key" -out "$${TMPDIR}/tls.crt" \
+#           -config "$${TMPDIR}/openssl.cnf" -extensions v3_req
+#       fi
 
-      chmod 600 "$${TMPDIR}/tls.key" "$${TMPDIR}/tls.crt"
+#       chmod 600 "$${TMPDIR}/tls.key" "$${TMPDIR}/tls.crt"
 
-      kubectl -n argocd create secret tls argocd-tls \
-        --cert="$${TMPDIR}/tls.crt" --key="$${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f - || true
+#       kubectl -n argocd create secret tls argocd-tls \
+#         --cert="$${TMPDIR}/tls.crt" --key="$${TMPDIR}/tls.key" --dry-run=client -o yaml | kubectl apply -f - || true
 
-      echo "Self-signed argocd-tls secret created (CN=argocd.weblightenment.com, SAN=$${SAN})."
-    else
-      echo "argocd-tls already exists; not overwriting."
-    fi
-  fi
+#       echo "Self-signed argocd-tls secret created (CN=argocd.weblightenment.com, SAN=$${SAN})."
+#     else
+#       echo "argocd-tls already exists; not overwriting."
+#     fi
+#   fi
 
-  # Patch argocd-cm url so UI links are correct (best-effort)
-  kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
+#   # Patch argocd-cm url so UI links are correc
+#   kubectl -n argocd patch configmap argocd-cm --type=merge -p '{"data":{"url":"https://argocd.weblightenment.com"}}' || true
 
-  # Restart argocd-server to pick up any secret/config changes
-  kubectl -n argocd rollout restart deployment argocd-server || true
+#   # Restart argocd-server to pick up any secret/config changes
+#   kubectl -n argocd rollout restart deployment argocd-server || true
 
-  echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
-}
+#   echo "argocd TLS ensured, url patched, and server restarted. Ingress should be managed in manifests (ArgoCD)."
+# }
 
 add_connected_repositories() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -373,7 +375,7 @@ bootstrap_argocd_apps() {
   echo "Bootstrapping Argo CD Applications from manifests repo: ${T_MANIFESTS_REPO_URL}"
   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
 
-  # Ensure repo is cloned locally (robust against raw URL issues).
+  # Ensure repo is cloned locally.
   TMP_MANIFESTS_DIR="/tmp/newsapp-manifests"
   if [ -d "$TMP_MANIFESTS_DIR/.git" ]; then
     echo "Local clone exists; attempting git -C pull..."
@@ -385,7 +387,7 @@ bootstrap_argocd_apps() {
     fi
   fi
 
-  # Apply Project + stack Application CRs (dev & prod). Prefer local clone if available.
+  # Apply Project + stack Application CRs (dev & prod)
   set +e
   if [ -d "$TMP_MANIFESTS_DIR" ]; then
     kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/addons/ingress-nginx-app.yaml"
@@ -397,8 +399,7 @@ bootstrap_argocd_apps() {
     kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/project.yaml"
     kubectl -n argocd apply -f "$${TMP_MANIFESTS_DIR}/clusters/prod/apps/stack.yaml"
   else
-    # Fallback: attempt raw.githubusercontent URLs (best-effort)
-    # Try to convert possible GitHub HTTPS url to raw.githubusercontent pattern if it looks like github.com
+    # Fallback: attempt raw.githubusercontent URLs
     if echo "${T_MANIFESTS_REPO_URL}" | grep -q 'github.com'; then
       base=$(echo "${T_MANIFESTS_REPO_URL}" | sed -E 's#https://github.com/([^/]+/[^/]+)(.git)?#\1#')
       kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/addons/ingress-nginx-app.yaml" || true
@@ -410,13 +411,12 @@ bootstrap_argocd_apps() {
       kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/project.yaml" || true
       kubectl -n argocd apply -f "https://raw.githubusercontent.com/$${base}/main/clusters/prod/apps/stack.yaml" || true
     else
-      echo "No local clone and not a GitHub URL; skipping direct apply of remote files (ArgoCD should be able to fetch manifests using the registered repository secret)."
+      echo "No local clone and not a GitHub URL; skipping direct apply of remote files."
     fi
   fi
   set -e
 
-  # Wait for ArgoCD to reconcile new Applications (best-effort; tolerate the fact that ArgoCD may still be initializing)
-  echo "Waiting up to 5m for applications to become Healthy (best-effort)..."
+  echo "Waiting up to 5m for applications to become Healthy..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-dev-stack --timeout=5m || true
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-prod-stack --timeout=5m || true
 
