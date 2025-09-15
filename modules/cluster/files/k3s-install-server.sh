@@ -113,6 +113,7 @@ wait_for_all_nodes() {
 
 install_helm() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  export PATH=$PATH:/usr/local/bin
   if ! command -v helm &> /dev/null; then
     echo "Installing Helm..."
     curl -fsSL -o /tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
