@@ -357,7 +357,6 @@ main() {
   install_argo_cd_crds
 ## Fallback for self issued crt/key##   
 # ensure_argocd_ingress_and_server
-  add_connected_repositories
   generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
