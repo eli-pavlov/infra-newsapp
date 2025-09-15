@@ -91,7 +91,7 @@ jobs:
 
 
       - name: Terraform unlock state
-        run: terraform force-unlock c25a59b6-92c8-9fa5-f6c4-52e6973e19d3
+        run: terraform force-unlock -force c25a59b6-92c8-9fa5-f6c4-52e6973e19d3
 
       - name: Terraform Destroy
         run: terraform destroy -auto-approve -input=false -lock-timeout=15m -parallelism=10
