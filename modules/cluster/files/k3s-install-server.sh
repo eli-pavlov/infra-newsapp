@@ -123,29 +123,10 @@ install_helm() {
 }
 
 install_argo_cd() {
-    echo "Installing Argo CD..."
-    # Create the Argo CD namespace if it doesn't exist
-    /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
-
-    # Apply the base Argo CD installation manifest
-    /usr/local/bin/kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-    echo "Patching Argo CD components to run on the control-plane node..."
-    # This loop adds the necessary toleration to each Argo CD deployment
-    for component in argocd-server argocd-repo-server argocd-dex-server argocd-redis argocd-notifications-controller argocd-applicationset-controller; do
-        /usr/local/bin/kubectl -n argocd patch deployment "$component" --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]'
-    done
-
-    # Patch the statefulset separately
-    /usr/local/bin/kubectl -n argocd patch statefulset argocd-application-controller --type='json' -p='[{"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}]'
-
-    echo "Waiting for Argo CD services to be ready..."
-    # Replace the complex while loop with direct rollout status checks.
-    # These commands wait for the most critical components to be fully available.
-    /usr/local/bin/kubectl -n argocd rollout status deployment/argocd-server --timeout=5m
-    /usr/local/bin/kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=5m
-
-    echo "✅ Argo CD installation complete."
+    echo "Installing Argo CD CRDs..."
+    /usr/local/bin/kubectl apply -k https://github.com/argoproj/argo-cd/manifests/crds?ref=stable
+    
+    echo "✅ Argo CD CRDs applied. The root Argo CD application will handle the rest."
 }
 
 # Fallback for self issued crt/key if user doesn't provide their own.
