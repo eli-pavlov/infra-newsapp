@@ -429,7 +429,8 @@ main() {
   wait_for_all_nodes
   install_helm
   install_argo_cd
-  ensure_argocd_ingress_and_server
+## Fallback for self issued crt/key##   
+# ensure_argocd_ingress_and_server
   add_connected_repositories
   generate_secrets_and_credentials
   bootstrap_argocd_apps
