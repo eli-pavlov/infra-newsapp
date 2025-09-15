@@ -371,6 +371,7 @@ EOF
 bootstrap_argocd_apps() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   echo "Bootstrapping Argo CD Applications from manifests repo: ${T_MANIFESTS_REPO_URL}"
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
 
   # Ensure repo is cloned locally (robust against raw URL issues).
   TMP_MANIFESTS_DIR="/tmp/newsapp-manifests"
