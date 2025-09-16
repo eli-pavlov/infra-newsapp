@@ -135,7 +135,7 @@ bootstrap_argo_cd_instance() {
     /usr/local/bin/helm repo add argo https://argoproj.github.io/argo-helm
     /usr/local/bin/helm repo update
 
-    # 3. Install Argo CD using Helm with the COMPLETE and CORRECT overrides
+    # 3. Install Argo CD using Helm with overrides
     /usr/local/bin/helm install argocd argo/argo-cd \
         --version 8.3.7 \
         --namespace argocd \
