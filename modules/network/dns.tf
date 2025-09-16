@@ -1,10 +1,3 @@
-# Define variables for Cloudflare credentials
-variable "cloudflare_zone_id" {
-  description = "Cloudflare Zone ID for the domain."
-  type        = string
-  sensitive   = true
-}
-
 # Create A record for argocd.weblightenment.com
 resource "cloudflare_dns_record" "argocd" {
   zone_id = var.cloudflare_zone_id
