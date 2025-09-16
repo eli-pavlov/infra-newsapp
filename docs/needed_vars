@@ -1,3 +1,7 @@
+# --- App Source Repos ---
+https://github.com/ghGill/newsAppFront
+https://github.com/ghGill/newsAppbackend
+
 VITE_SERVER_URL= {{VITE_SERVER_URL}}
 VITE_NEWS_INTERVAL_IN_MIN= {{VITE_NEWS_INTERVAL_IN_MIN}}
 # MONGO | MONGOOSE | POSTGRES | MYSQL
