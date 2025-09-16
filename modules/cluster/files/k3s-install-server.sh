@@ -126,8 +126,6 @@ install_helm() {
 install_bootstrap_crds() {
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     echo "Installing pinned versions of CRDs for bootstrap..."
-    kubectl create namespace argocd
-    kubectl create namespace ingress-nginx
 
     # Apply Argo CD CRDs
     echo "Applying Argo CD CRDs (ref: v3.1.5)..."
@@ -140,11 +138,66 @@ install_bootstrap_crds() {
     echo "✅ All required CRDs applied."
 }
 
+bootstrap_argo_cd_instance() {
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    echo "Bootstrapping Argo CD instance directly via Helm..."
+
+    # 1. Create the Argo CD namespace
+    /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+
+    # 2. Add the argo-helm repository
+    /usr/local/bin/helm repo add argo https://argoproj.github.io/argo-helm
+    /usr/local/bin/helm repo update
+
+    # 3. Install Argo CD using Helm with the COMPLETE and CORRECT overrides
+    /usr/local/bin/helm install argocd argo/argo-cd \
+        --version 8.3.7 \
+        --namespace argocd \
+        \
+        `# Ingress Configuration` \
+        --set server.ingress.enabled=true \
+        --set server.ingress.ingressClassName=nginx \
+        --set server.ingress.hostname="argocd.weblightenment.com" \
+        --set server.ingress.annotations."nginx\.ingress\.kubernetes\.io/backend-protocol"=HTTP \
+        --set server.ingress.annotations."nginx\.ingress\.kubernetes\.io/force-ssl-redirect"=true \
+        --set server.ingress.tls[0].secretName=argocd-tls \
+        --set server.ingress.tls[0].hosts[0]="argocd.weblightenment.com" \
+        \
+        `# Server Configuration for TLS Termination` \
+        --set server.extraArgs='{--insecure}' \
+        \
+        `# Tolerations for all necessary components` \
+        --set server.tolerations[0].key="node-role.kubernetes.io/control-plane" \
+        --set server.tolerations[0].operator="Exists" \
+        --set server.tolerations[0].effect="NoSchedule" \
+        --set controller.tolerations[0].key="node-role.kubernetes.io/control-plane" \
+        --set controller.tolerations[0].operator="Exists" \
+        --set controller.tolerations[0].effect="NoSchedule" \
+        --set repoServer.tolerations[0].key="node-role.kubernetes.io/control-plane" \
+        --set repoServer.tolerations[0].operator="Exists" \
+        --set repoServer.tolerations[0].effect="NoSchedule" \
+        --set dex.tolerations[0].key="node-role.kubernetes.io/control-plane" \
+        --set dex.tolerations[0].operator="Exists" \
+        --set dex.tolerations[0].effect="NoSchedule" \
+        --set redis.tolerations[0].key="node-role.kubernetes.io/control-plane" \
+        --set redis.tolerations[0].operator="Exists" \
+        --set redis.tolerations[0].effect="NoSchedule"
+
+    # 4. Wait for Argo CD to be ready
+    echo "Waiting for Argo CD to become available..."
+    /usr/local/bin/kubectl wait --for=condition=Available -n argocd deployment/argocd-server --timeout=5m
+}
+
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
-
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "" )
+  if [ -n "$ARGO_PASSWORD" ]; then
+    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
+  else
+    ARGO_PASSWORD="(unknown)"
+  fi
   DB_PASSWORD=$(python3 - <<'PY'
 import secrets,string
 print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
@@ -152,6 +205,9 @@ PY
 )
   # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
   cat << EOF > /root/credentials.txt
+  # --- Argo CD Admin Credentials ---
+Username: admin
+Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
 Password: $${DB_PASSWORD}
@@ -218,26 +274,6 @@ bootstrap_argocd_apps() {
 }
 
 
-save_argocd_credentials() {
-  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-  sleep 30
-  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "" )
-  if [ -n "$ARGO_PASSWORD" ]; then
-    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
-  else
-    ARGO_PASSWORD="(unknown)"
-  fi
-  # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
-  cat << EOF >> /root/credentials.txt
-# --- Argo CD Admin Credentials ---
-Username: admin
-Password: $${ARGO_PASSWORD}
-EOF
-  chmod 600 /root/credentials.txt
-  echo "Credentials saved to /root/credentials.txt"
-}
-
-
 main() {
   install_base_tools
   get_private_ip
@@ -247,8 +283,8 @@ main() {
   install_helm
   install_bootstrap_crds
   generate_secrets_and_credentials
+  bootstrap_argo_cd_instance
   bootstrap_argocd_apps
-  save_argocd_credentials
 }
 
 main "$@"
