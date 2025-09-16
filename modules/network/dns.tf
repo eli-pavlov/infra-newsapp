@@ -1,3 +1,12 @@
+locals {
+  # join admin CIDRs into a Cloudflare set literal: "1.2.3.4/32 5.6.0.0/24"
+  admin_cidrs_set = join(" ", var.admin_cidrs)
+
+  # Cloudflare expression: match requests to the host and not from any admin CIDR
+  argocd_expr = format("(http.host == \"%s\" and not ip.src in {%s})", var.argocd_host, local.admin_cidrs_set)
+}
+
+
 # Create A record for argocd.weblightenment.com
 resource "cloudflare_dns_record" "argocd" {
   zone_id = var.cloudflare_zone_id
@@ -6,19 +15,6 @@ resource "cloudflare_dns_record" "argocd" {
   type    = "A"
   ttl     = 1 # Automatic
   proxied = true
-}
-variable "cloudflare_argocd_ruleset_action" {
-  description = "Cloudflare ruleset action for requests to argocd_host not from admin CIDRs"
-  type        = string
-  default     = "block"
-}
-
-locals {
-  # join admin CIDRs into a Cloudflare set literal: "1.2.3.4/32 5.6.0.0/24"
-  admin_cidrs_set = join(" ", var.admin_cidrs)
-
-  # Cloudflare expression: match requests to the host and not from any admin CIDR
-  argocd_expr = format("(http.host == \"%s\" and not ip.src in {%s})", var.argocd_host, local.admin_cidrs_set)
 }
 
 resource "cloudflare_ruleset" "argocd_admin_only" {
@@ -48,6 +44,7 @@ resource "cloudflare_dns_record" "newsapp_dev" {
   ttl     = 1 # Automatic
   proxied = true
 }
+
 
 # Create A record for newsapp.weblightenment.com
 resource "cloudflare_dns_record" "newsapp_prod" {

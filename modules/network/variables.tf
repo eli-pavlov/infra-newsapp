@@ -36,3 +36,9 @@ variable "argocd_host" {
   description = "Hostname for Argo CD (Cloudflare firewall target)."
   type        = string
 }
+
+variable "cloudflare_argocd_ruleset_action" {
+  description = "Cloudflare ruleset action for requests to argocd_host not from admin CIDRs"
+  type        = string
+  default     = "block"
+}
