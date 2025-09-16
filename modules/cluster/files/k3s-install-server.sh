@@ -127,6 +127,7 @@ install_bootstrap_crds() {
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
     echo "Installing pinned versions of CRDs for bootstrap..."
     kubectl create namespace argocd
+    kubectl create namespace ingress-nginx
 
     # Apply Argo CD CRDs
     echo "Applying Argo CD CRDs (ref: v3.1.5)..."
