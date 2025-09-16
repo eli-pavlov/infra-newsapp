@@ -130,6 +130,7 @@ bootstrap_argo_cd_instance() {
 
     # 1. Create the Argo CD namespace
     /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    /usr/local/bin/kubectl create namespace default --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
     # 2. Add the argo-helm repository
     /usr/local/bin/helm repo add argo https://argoproj.github.io/argo-helm
@@ -267,8 +268,8 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
-  generate_secrets_and_credentials
   bootstrap_argo_cd_instance
+  generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
 
