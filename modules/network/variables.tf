@@ -25,3 +25,14 @@ variable "cloudflare_cidrs" {
   type        = list(string)
   description = "Cloudflare IP ranges allowed to reach 80/443 on the public NLB."
 }
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare Zone ID for the domain."
+  type        = string
+  sensitive   = true
+}
+
+variable "argocd_host" {
+  description = "Hostname for Argo CD (Cloudflare firewall target)."
+  type        = string
+}
