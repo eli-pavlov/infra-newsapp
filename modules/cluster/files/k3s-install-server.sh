@@ -204,7 +204,7 @@ PY
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
 Password: ${DB_PASSWORD}
