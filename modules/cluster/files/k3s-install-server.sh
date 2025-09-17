@@ -203,10 +203,10 @@ PY
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: $${ARGO_PASSWORD}
+Password: ${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
-Username: $${T_DB_USER}
-Password: $${DB_PASSWORD}
+Username: ${T_DB_USER}
+Password: ${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
@@ -227,12 +227,12 @@ EOF
   # Provide DB_URI (required by the app) + individual keys (safer for templates/initContainers)
   #
 
-  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:$${DB_PORT}/${T_DB_NAME_DEV}"
-  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:$${DB_PORT}/${T_DB_NAME_PROD}"
+  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:${DB_PORT}/${T_DB_NAME_DEV}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:${DB_PORT}/${T_DB_NAME_PROD}"
 
   # Dev secret (development namespace)
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_DEV}" \
+    --from-literal=DB_URI="${DB_URI_DEV}" \
     --from-literal=DB_USER="${T_DB_USER}" \
     --from-literal=DB_NAME="${T_DB_NAME_DEV}" \
     --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
@@ -253,7 +253,7 @@ EOF
   #
   # cert-manager cloudflare token (optional)
   #
-  if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
+  if [ -n "${T_CLOUDFLARE_API_TOKEN:-}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
@@ -263,6 +263,7 @@ EOF
     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
   fi
 }
+
 
 
 
