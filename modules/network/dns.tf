@@ -65,7 +65,7 @@ resource "cloudflare_dns_record" "newsapp_db_dev" {
   content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
   type    = "A"
   ttl     = 1 # Automatic
-  proxied = true
+  proxied = false
 }
 
 resource "cloudflare_dns_record" "newsapp_db_prod" {
@@ -74,5 +74,5 @@ resource "cloudflare_dns_record" "newsapp_db_prod" {
   content   = module.network.public_nlb_ip_address
   type    = "A"
   ttl     = 1 # Automatic
-  proxied = true
+  proxied = false
 }
