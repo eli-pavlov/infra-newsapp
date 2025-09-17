@@ -181,6 +181,7 @@ bootstrap_argo_cd_instance() {
 
 
 generate_secrets_and_credentials() {
+  set -euo pipefail
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
