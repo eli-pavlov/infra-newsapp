@@ -210,9 +210,6 @@ EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
 
-  # Default DB port
-  DB_PORT="5432"
-
   #
   # Create postgres-credentials (used by the postgres chart)
   #
