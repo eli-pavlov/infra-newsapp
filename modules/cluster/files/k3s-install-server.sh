@@ -199,8 +199,8 @@ Password: $${ARGO_PASSWORD}
 Username: ${T_DB_USER}
 Password: $${DB_PASSWORD}
 EOF
-  chmod 600 /root/credentials.txt
-  echo "Credentials saved to /root/credentials.txt"
+  chmod 600 /home/opc/credentials.txt
+  echo "Credentials saved to /home/opc/credentials.txt"
 
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
