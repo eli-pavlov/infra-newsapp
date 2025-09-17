@@ -10,6 +10,7 @@ locals {
 }
 
 
+
 # Create A record for argocd.weblightenment.com
 resource "cloudflare_dns_record" "argocd" {
   zone_id = var.cloudflare_zone_id
