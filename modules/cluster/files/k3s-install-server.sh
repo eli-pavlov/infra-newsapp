@@ -245,7 +245,7 @@ EOF
     --from-literal=DB_URI="$${DB_URI_PROD}" \
     --from-literal=DB_USER="${T_DB_USER}" \
     --from-literal=DB_NAME="${T_DB_NAME_PROD}" \
-    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+    --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
     --from-literal=DB_HOST="${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local" \
     --from-literal=DB_PORT="$${DB_PORT}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
