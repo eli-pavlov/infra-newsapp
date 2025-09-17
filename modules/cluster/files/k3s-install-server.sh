@@ -20,6 +20,10 @@ T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 T_CLOUDFLARE_API_TOKEN="${T_CLOUDFLARE_API_TOKEN}"
 
+DB_PORT="5432"
+DB_HOST_DEV="${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local"
+DB_HOST_PROD="${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local"
+
 set -x
 
 install_base_tools() {
