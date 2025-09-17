@@ -1,14 +1,13 @@
 locals {
-  # join admin CIDRs into a Cloudflare set literal: "1.2.3.4/32 5.6.0.0/24"
-  admin_cidrs_set = join(" ", var.admin_cidrs)
+  # join admin CIDRs into a Cloudflare set literal: "1.2.3.4/32, 5.6.0.0/24"
+  admin_cidrs_set = join(", ", var.admin_cidrs)
 
-  # protected hosts: use a var list so you can add more hosts later
+  # protected hosts: quoted and comma-separated
   protected_hosts_quoted = join(", ", [for h in var.protected_hosts : format("\"%s\"", h)])
 
   # Cloudflare expression: match requests to any protected host and not from any admin CIDR
   argocd_expr = format("(http.host in {%s} and not ip.src in {%s})", local.protected_hosts_quoted, local.admin_cidrs_set)
 }
-
 
 
 # Create A record for argocd.weblightenment.com
