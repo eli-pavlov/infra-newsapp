@@ -123,20 +123,6 @@ install_helm() {
   fi
 }
 
-install_bootstrap_crds() {
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    echo "Installing pinned versions of CRDs for bootstrap..."
-
-    # Apply Argo CD CRDs
-    echo "Applying Argo CD CRDs (ref: v3.1.5)..."
-    /usr/local/bin/kubectl apply -k "https://github.com/argoproj/argo-cd/manifests/crds?ref=v3.1.5"
-    
-    # Apply Cert-Manager CRDs
-    echo "Applying Cert-Manager CRDs (ref: v1.18.2)..."
-    /usr/local/bin/kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.crds.yaml"
-    
-    echo "✅ All required CRDs applied."
-}
 
 bootstrap_argo_cd_instance() {
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -144,12 +130,13 @@ bootstrap_argo_cd_instance() {
 
     # 1. Create the Argo CD namespace
     /usr/local/bin/kubectl create namespace argocd --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+    /usr/local/bin/kubectl create namespace development --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
     # 2. Add the argo-helm repository
     /usr/local/bin/helm repo add argo https://argoproj.github.io/argo-helm
     /usr/local/bin/helm repo update
 
-    # 3. Install Argo CD using Helm with the COMPLETE and CORRECT overrides
+    # 3. Install Argo CD using Helm with overrides
     /usr/local/bin/helm install argocd argo/argo-cd \
         --version 8.3.7 \
         --namespace argocd \
@@ -204,7 +191,7 @@ print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(
 PY
 )
   # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
-  cat << EOF > /root/credentials.txt
+  cat << EOF > /home/opc/credentials.txt
   # --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
@@ -212,8 +199,8 @@ Password: $${ARGO_PASSWORD}
 Username: ${T_DB_USER}
 Password: $${DB_PASSWORD}
 EOF
-  chmod 600 /root/credentials.txt
-  echo "Credentials saved to /root/credentials.txt"
+  chmod 600 /home/opc/credentials.txt
+  echo "Credentials saved to /home/opc/credentials.txt"
 
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
@@ -281,9 +268,8 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
-  install_bootstrap_crds
-  generate_secrets_and_credentials
   bootstrap_argo_cd_instance
+  generate_secrets_and_credentials
   bootstrap_argocd_apps
 }
 

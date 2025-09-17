@@ -9,6 +9,8 @@ module "network" {
   region           = var.region
   admin_cidrs      = var.admin_cidrs
   cloudflare_cidrs = var.cloudflare_cidrs
+  cloudflare_zone_id = var.cloudflare_zone_id
+  argocd_host        = var.argocd_host
   
 }
 

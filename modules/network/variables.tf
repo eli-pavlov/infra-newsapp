@@ -25,3 +25,20 @@ variable "cloudflare_cidrs" {
   type        = list(string)
   description = "Cloudflare IP ranges allowed to reach 80/443 on the public NLB."
 }
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare Zone ID for the domain."
+  type        = string
+  sensitive   = true
+}
+
+variable "argocd_host" {
+  description = "Hostname for Argo CD (Cloudflare firewall target)."
+  type        = string
+}
+
+variable "cloudflare_argocd_ruleset_action" {
+  description = "Cloudflare ruleset action for requests to argocd_host not from admin CIDRs"
+  type        = string
+  default     = "block"
+}
