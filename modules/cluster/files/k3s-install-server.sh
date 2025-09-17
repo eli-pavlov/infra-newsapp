@@ -179,6 +179,7 @@ bootstrap_argo_cd_instance() {
     /usr/local/bin/kubectl wait --for=condition=Available -n argocd deployment/argocd-server --timeout=5m
 }
 
+
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   sleep 30
@@ -202,10 +203,10 @@ PY
   cat << EOF > /root/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: $${ARGO_PASSWORD}
+Password: ${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: $${DB_PASSWORD}
+Password: ${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
