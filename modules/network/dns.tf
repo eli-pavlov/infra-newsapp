@@ -2,8 +2,11 @@ locals {
   # join admin CIDRs into a Cloudflare set literal: "1.2.3.4/32 5.6.0.0/24"
   admin_cidrs_set = join(" ", var.admin_cidrs)
 
-  # Cloudflare expression: match requests to the host and not from any admin CIDR
-  argocd_expr = format("(http.host == \"%s\" and not ip.src in {%s})", var.argocd_host, local.admin_cidrs_set)
+  # protected hosts: use a var list so you can add more hosts later
+  protected_hosts_quoted = join(", ", [for h in var.protected_hosts : format("\"%s\"", h)])
+
+  # Cloudflare expression: match requests to any protected host and not from any admin CIDR
+  argocd_expr = format("(http.host in {%s} and not ip.src in {%s})", local.protected_hosts_quoted, local.admin_cidrs_set)
 }
 
 

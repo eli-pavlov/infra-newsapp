@@ -42,3 +42,8 @@ variable "cloudflare_argocd_ruleset_action" {
   type        = string
   default     = "block"
 }
+
+variable "protected_hosts" {
+  type    = list(string)
+  default = ["argocd.weblightenment.com", "dbdev.weblightenment.com", "dbprod.weblightenment.com"]
+}
