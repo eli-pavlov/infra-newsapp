@@ -228,8 +228,8 @@ EOF
   # Provide DB_URI (required by the app) + individual keys (safer for templates/initContainers)
   #
 
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:${DB_PORT}/${T_DB_NAME_DEV}"
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:${DB_PORT}/${T_DB_NAME_PROD}"
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:${DB_PORT}/${T_DB_NAME_DEV}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:${DB_PORT}/${T_DB_NAME_PROD}"
 
   # Dev secret (development namespace)
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
