@@ -142,3 +142,15 @@ variable "cloudflare_api_token" {
   sensitive   = true
   default     = ""
 }
+
+variable "public_nlb_postgres_backend_set_name" {
+  description = "Name of the public NLB backend set for prod Postgres"
+  type        = string
+  default     = "k8s_postgres_backend_set" # optional default
+}
+
+variable "public_nlb_postgres_dev_backend_set_name" {
+  description = "Name of the public NLB backend set for dev Postgres"
+  type        = string
+  default     = "k8s_postgres_dev_backend_set"
+}

@@ -39,3 +39,28 @@ resource "oci_network_load_balancer_backend" "https" {
   is_backup                = false
   is_offline               = false
 }
+
+# modules/cluster/lb-backends.tf (add)
+resource "oci_network_load_balancer_backend" "postgres" {
+  for_each                 = local.app_worker_ips
+  network_load_balancer_id = var.public_nlb_id
+  backend_set_name         = var.public_nlb_postgres_backend_set_name
+  name                     = "app-${each.key}-postgres"
+  ip_address               = each.value
+  port                     = 5432
+  weight                   = 1
+  is_backup                = false
+  is_offline               = false
+}
+
+resource "oci_network_load_balancer_backend" "postgres_dev" {
+  for_each                 = local.app_worker_ips
+  network_load_balancer_id = var.public_nlb_id
+  backend_set_name         = var.public_nlb_postgres_dev_backend_set_name
+  name                     = "app-${each.key}-postgres-dev"
+  ip_address               = each.value
+  port                     = 5433
+  weight                   = 1
+  is_backup                = false
+  is_offline               = false
+}
