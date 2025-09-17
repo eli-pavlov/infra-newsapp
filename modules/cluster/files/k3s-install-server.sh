@@ -207,7 +207,7 @@ Username: admin
 Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
 Username: ${T_DB_USER}
-Password: ${DB_PASSWORD}
+Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
