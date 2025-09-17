@@ -71,7 +71,7 @@ resource "cloudflare_dns_record" "newsapp_db_dev" {
 resource "cloudflare_dns_record" "newsapp_db_prod" {
   zone_id = var.cloudflare_zone_id
   name    = "dbprod"
-  content   = module.network.public_nlb_ip_address
+  content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
   type    = "A"
   ttl     = 1 # Automatic
   proxied = false
