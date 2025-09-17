@@ -185,17 +185,14 @@ generate_secrets_and_credentials() {
   else
     ARGO_PASSWORD="(unknown)"
   fi
-
-  # Strong random DB password
   DB_PASSWORD=$(python3 - <<'PY'
 import secrets,string
 print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
 PY
 )
-
   # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
   cat << EOF > /root/credentials.txt
-# --- Argo CD Admin Credentials ---
+  # --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
@@ -207,37 +204,21 @@ EOF
 
   for ns in default development; do
     /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
-    # postgres-credentials (used by the postgres chart and fallback in backend)
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
-  # Create backend-db-connection in development and default with explicit keys backend may read.
-  DB_HOST_DEV="${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local"
-  DB_HOST_PROD="${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local"
-
-  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${DB_HOST_DEV}:5432/${T_DB_NAME_DEV}"
+  # backend DB connection secrets expected by charts
+  # Note: we use T_DB_SERVICE_NAME_* to build the hostnames (no new terraform vars needed)
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:${DB_PORT}/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_DEV}" \
-    --from-literal=DB_HOST="$${DB_HOST_DEV}" \
-    --from-literal=DB_PORT="5432" \
-    --from-literal=DB_NAME="${T_DB_NAME_DEV}" \
-    --from-literal=DB_USER="${T_DB_USER}" \
-    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="$${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
-  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${DB_HOST_PROD}:5432/${T_DB_NAME_PROD}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:${DB_PORT}/${T_DB_NAME_PROD}"
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="$${DB_URI_PROD}" \
-    --from-literal=DB_HOST="$${DB_HOST_PROD}" \
-    --from-literal=DB_PORT="5432" \
-    --from-literal=DB_NAME="${T_DB_NAME_PROD}" \
-    --from-literal=DB_USER="${T_DB_USER}" \
-    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+    --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
   if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
