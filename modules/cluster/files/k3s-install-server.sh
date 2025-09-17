@@ -251,7 +251,7 @@ EOF
   #
   # cert-manager cloudflare token (optional)
   #
-  if [ -n "${T_CLOUDFLARE_API_TOKEN:-}" ]; then
+  if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
