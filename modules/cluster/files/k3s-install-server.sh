@@ -235,9 +235,9 @@ EOF
     --from-literal=DB_URI="$${DB_URI_DEV}" \
     --from-literal=DB_USER="${T_DB_USER}" \
     --from-literal=DB_NAME="${T_DB_NAME_DEV}" \
-    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+    --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
     --from-literal=DB_HOST="${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local" \
-    --from-literal=DB_PORT="$${DB_PORT}" \
+    --from-literal=DB_PORT="${DB_PORT}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
   # Prod secret (default namespace)
