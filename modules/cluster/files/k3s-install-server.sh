@@ -183,9 +183,10 @@ generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
+
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "" )
   if [ -n "$ARGO_PASSWORD" ]; then
-    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
+    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 --decode)
   else
     ARGO_PASSWORD="(unknown)"
   fi
@@ -197,9 +198,9 @@ print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(
 PY
 )
 
-  # Write credentials file for operator convenience
+  # Write credentials file for operator convenience (no leading indentation)
   cat << EOF > /root/credentials.txt
-  # --- Argo CD Admin Credentials ---
+# --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
@@ -208,6 +209,9 @@ Password: $${DB_PASSWORD}
 EOF
   chmod 600 /root/credentials.txt
   echo "Credentials saved to /root/credentials.txt"
+
+  # Default DB port
+  DB_PORT="5432"
 
   #
   # Create postgres-credentials (used by the postgres chart)
@@ -224,28 +228,28 @@ EOF
   # Create backend-db-connection secret for backend Pods
   # Provide DB_URI (required by the app) + individual keys (safer for templates/initContainers)
   #
-  # Build URIs (dev and prod)
-  DB_URI_DEV="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:${DB_PORT}/${T_DB_NAME_DEV}"
-  DB_URI_PROD="postgresql://${T_DB_USER}:${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:${DB_PORT}/${T_DB_NAME_PROD}"
+
+  DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:$${DB_PORT}/${T_DB_NAME_DEV}"
+  DB_URI_PROD="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local:$${DB_PORT}/${T_DB_NAME_PROD}"
 
   # Dev secret (development namespace)
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_DEV}" \
+    --from-literal=DB_URI="$${DB_URI_DEV}" \
     --from-literal=DB_USER="${T_DB_USER}" \
     --from-literal=DB_NAME="${T_DB_NAME_DEV}" \
-    --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
     --from-literal=DB_HOST="${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local" \
-    --from-literal=DB_PORT="${DB_PORT}" \
+    --from-literal=DB_PORT="$${DB_PORT}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
   # Prod secret (default namespace)
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
-    --from-literal=DB_URI="${DB_URI_PROD}" \
+    --from-literal=DB_URI="$${DB_URI_PROD}" \
     --from-literal=DB_USER="${T_DB_USER}" \
     --from-literal=DB_NAME="${T_DB_NAME_PROD}" \
-    --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD}" \
+    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
     --from-literal=DB_HOST="${T_DB_SERVICE_NAME_PROD}-client.default.svc.cluster.local" \
-    --from-literal=DB_PORT="${DB_PORT}" \
+    --from-literal=DB_PORT="$${DB_PORT}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
   #
@@ -261,6 +265,7 @@ EOF
     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
   fi
 }
+
 
 
 bootstrap_argocd_apps() {
