@@ -191,7 +191,7 @@ print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(
 PY
 )
   # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
-  cat << EOF > /root/credentials.txt
+  cat << EOF > /home/opc/credentials.txt
   # --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
