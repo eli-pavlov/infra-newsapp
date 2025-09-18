@@ -23,6 +23,11 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_EXPECTED_NODE_COUNT  = local.expected_total_node_count,
       T_PRIVATE_LB_IP        = var.private_lb_ip_address,
       T_CLOUDFLARE_API_TOKEN = var.cloudflare_api_token
+      T_AWS_ACCESS_KEY_ID     = var.aws_access_key_id,
+      T_AWS_SECRET_ACCESS_KEY = var.aws_secret_access_key,
+      T_AWS_REGION            = var.aws_region,
+      T_AWS_BUCKET            = var.aws_bucket,
+      T_STORAGE_TYPE          = var.storage_type
     })
   }
 }

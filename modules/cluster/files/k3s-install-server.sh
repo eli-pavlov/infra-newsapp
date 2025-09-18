@@ -19,6 +19,11 @@ T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 T_CLOUDFLARE_API_TOKEN="${T_CLOUDFLARE_API_TOKEN}"
+T_AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}"
+T_AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}"
+T_AWS_REGION="${T_AWS_REGION}"
+T_AWS_BUCKET="${T_AWS_BUCKET}"
+T_STORAGE_TYPE="${T_STORAGE_TYPE}"
 
 set -x
 
@@ -207,6 +212,11 @@ EOF
     /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+      --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
+      --from-literal=AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}" \
+      --from-literal=AWS_REGION="$T_AWS_REGION}" \
+      --from-literal=AWS_BUCKET="${T_AWS_BUCKET}" \
+      --from-literal=STORAGE_TYPE="${T_STORAGE_TYPE}" \
       --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
