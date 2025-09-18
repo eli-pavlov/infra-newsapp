@@ -412,3 +412,35 @@ resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_fro
     }
   }
 }
+
+# Allow Public NLB -> DB worker: TCP 5432-5433 (egress from public_lb NSG)
+resource "oci_core_network_security_group_security_rule" "public_lb_to_workers_postgres_egress" {
+  network_security_group_id = oci_core_network_security_group.public_lb.id
+  direction                 = "EGRESS"
+  protocol                  = "6"   # TCP
+  destination_type          = "NETWORK_SECURITY_GROUP"
+  destination               = oci_core_network_security_group.workers.id
+
+  tcp_options {
+    destination_port_range {
+      min = 5432
+      max = 5433
+    }
+  }
+}
+
+# Allow Public NLB -> DB worker: TCP 5432-5433 (ingress on workers NSG)
+resource "oci_core_network_security_group_security_rule" "workers_postgres_in_from_public_lb" {
+  network_security_group_id = oci_core_network_security_group.workers.id
+  direction                 = "INGRESS"
+  protocol                  = "6"  # TCP
+  source_type               = "NETWORK_SECURITY_GROUP"
+  source                    = oci_core_network_security_group.public_lb.id
+
+  tcp_options {
+    destination_port_range {
+      min = 5432
+      max = 5433
+    }
+  }
+}
