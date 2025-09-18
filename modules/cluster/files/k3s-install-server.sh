@@ -207,18 +207,37 @@ EOF
   chmod 600 /home/opc/credentials.txt
   echo "Credentials saved to /home/opc/credentials.txt"
 
-  for ns in default development; do
-    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-      --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-      --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
-      --from-literal=AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}" \
-      --from-literal=AWS_REGION="$T_AWS_REGION}" \
-      --from-literal=AWS_BUCKET="${T_AWS_BUCKET}" \
-      --from-literal=STORAGE_TYPE="${T_STORAGE_TYPE}" \
-      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-  done
+for ns in default development; do
+  # create namespace if missing (idempotent)
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - || true
+
+  # 1) postgres credentials (username + runtime-generated password)
+  kubectl -n "$ns" create secret generic postgres-credentials \
+    --from-literal=POSTGRES_USER="${T_DB_USER}" \
+    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+    --dry-run=client -o yaml | kubectl apply -f - || true
+
+  # 2) aws credentials)
+  kubectl -n "$ns" create secret generic aws-access-key-id \
+    --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
+    --dry-run=client -o yaml | kubectl apply -f - || true
+
+  kubectl -n "$ns" create secret generic aws-secret-access-key \
+    --from-literal=AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}" \
+    --dry-run=client -o yaml | kubectl apply -f - || true  
+  
+  kubectl -n "$ns" create secret generic aws-region \
+    --from-literal=AWS_REGION="${T_AWS_REGION}" \
+    --dry-run=client -o yaml | kubectl apply -f - || true
+  
+  kubectl -n "$ns" create secret generic aws-bucket \
+    --from-literal=AWS_BUCKET="${T_AWS_BUCKET}" \
+    --dry-run=client -o yaml | kubectl apply -f - || true
+
+  kubectl -n "$ns" create secret generic storage-type \
+    --from-literal=STORAGE_TYPE="${T_STORAGE_TYPE}" \
+    --dry-run=client -o yaml | kubectl apply -f - || true
+done
 
   # backend DB connection secrets expected by charts
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
