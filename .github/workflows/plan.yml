@@ -35,7 +35,11 @@ jobs:
       TF_VAR_manifests_repo_url:  ${{ secrets.MANIFESTS_REPO_URL }}
       TF_VAR_cloudflare_api_token:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_zone_id:    ${{ secrets.CLOUDFLARE_ZONE_ID }}
-
+      TF_VAR_AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      TF_VAR_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_AWS_REGION:            ${{ secrets.AWS_REGION }}
+      TF_VAR_AWS_BUCKET:            ${{ secrets.AWS_BUCKET_NAME }} 
+      TF_VAR_STORAGE_TYPE:          ${{ secrets.STORAGE_TYPE }}
 
     steps:
       - name: Guard required secrets (including TF_STATE_KEY)

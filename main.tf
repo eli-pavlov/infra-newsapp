@@ -26,6 +26,9 @@ module "cluster" {
   manifests_repo_url    = var.manifests_repo_url
   cloudflare_api_token = var.cloudflare_api_token
 
+  # AWS Bucket credentials
+  
+
   # network wiring
   public_subnet_id      = module.network.public_subnet_id
   private_subnet_id     = module.network.private_subnet_id
