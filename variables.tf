@@ -99,3 +99,33 @@ variable "cloudflare_zone_id" {
   type        = string
   sensitive   = true
 }
+
+# AWS S3 Bucket credentials for external storage of app data (e.g. Minio)
+variable "aws_access_key_id" {
+  description = "AWS Access Key ID for the S3 bucket."
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "AWS Secret Access Key for the S3 bucket."
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_region" {
+  description = "AWS Region for the S3 bucket."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "aws_bucket" {
+  description = "Name of the S3 bucket for external storage."
+  type        = string
+}
+
+variable "storage_type" {
+  description = "Type of storage to use (e.g., 's3' for AWS S3)."
+  type        = string
+  default     = "s3"
+}

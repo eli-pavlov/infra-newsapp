@@ -27,7 +27,11 @@ module "cluster" {
   cloudflare_api_token = var.cloudflare_api_token
 
   # AWS Bucket credentials
-  
+  aws_access_key_id     = var.aws_access_key_id
+  aws_secret_access_key = var.aws_secret_access_key
+  aws_region            = var.aws_region
+  aws_bucket            = var.aws_bucket
+  storage_type          = var.storage_type  
 
   # network wiring
   public_subnet_id      = module.network.public_subnet_id
