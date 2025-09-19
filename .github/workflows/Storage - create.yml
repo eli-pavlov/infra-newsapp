@@ -129,11 +129,11 @@ jobs:
 
             # capture list of tracked resources (if any)
             state_list=$(terraform state list 2>/dev/null || true)
-            if echo "$state_list" | grep -q -E '^oci_core_volume\.db_volume$'; then
+          if echo "$state_list" | grep -q -E '^module\.storage\.oci_core_volume\.db_volume$'; then
               echo "Resource oci_core_volume.db_volume already present in state — skipping import."
             else
               echo "Importing volume into state..."
-              terraform import -lock=false oci_core_volume.db_volume "$IMPORT_OCID" || {
+              terraform import -lock=false module.storage.oci_core_volume.db_volume "$IMPORT_OCID" || {
                 echo "::warning::Import failed or resource may already exist in state; continuing"
               }
             fi

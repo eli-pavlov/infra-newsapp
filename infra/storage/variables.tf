@@ -53,15 +53,15 @@ variable "tf_state_bucket" {
 }
 
 variable "tf_state_key" {
-  description = "Path/key (inside the bucket) for the root Terraform state file (e.g. states/root.state)."
+  description = "Path/key (inside the bucket) for the root Terraform state file (e.g. newsapp.tfstate)."
   type        = string
   sensitive   = false
 }
 
 variable "storage_state_key" {
-  description = "Path/key (inside the bucket) for the storage Terraform state file (e.g. states/storage.state)."
+  description = "Path/key (inside the bucket) for the storage Terraform state file (e.g. storage.tfstate)."
   type        = string
-  default     = "states/storage.state"
+  default     = "storage.state"
   sensitive   = false
 }
 
