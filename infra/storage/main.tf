@@ -16,5 +16,4 @@ module "storage" {
   oci_tenancy_ocid = var.oci_tenancy_ocid
   oci_fingerprint = var.oci_fingerprint
   oci_user_ocid = var.oci_user_ocid
-  
 }

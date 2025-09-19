@@ -7,15 +7,13 @@ terraform {
   }
 }
 
-
-provider "oci" {}
-
-resource "oci_core_volume" "shared_db_volume" {
+resource "oci_core_volume" "db_volume" {
   availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid
-  display_name        = "${var.cluster_name}-db-shared-volume"
+  display_name        = var.storage_display_name
   size_in_gbs         = var.volume_size_gb
 }
+# Also, remove the misplaced `variable "cluster_name"` from this file.
 
 variable "cluster_name" {
   description = "The name for the K3s cluster."
