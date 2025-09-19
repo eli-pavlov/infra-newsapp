@@ -165,75 +165,75 @@ jobs:
             --file "diagnostics-output.json"
           echo "✅ Diagnostic file successfully uploaded to OCI."
       
-      - name: 4.1 Decode & upload Sealed-Secrets PEMs to OCI (verification)
-        shell: bash
-        env:
-          TF_STATE_BUCKET: ${{ env.TF_STATE_BUCKET }}
-          OS_NAMESPACE: ${{ env.OS_NAMESPACE }}
-          T_SEALED_SECRETS_CERT: ${{ env.T_SEALED_SECRETS_CERT }}
-          T_SEALED_SECRETS_KEY:  ${{ env.T_SEALED_SECRETS_KEY }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          echo "### Decoding sealed-secrets PEMs into secure temp files (no printing). ###"
+      # - name: 4.1 Decode & upload Sealed-Secrets PEMs to OCI (verification)
+      #   shell: bash
+      #   env:
+      #     TF_STATE_BUCKET: ${{ env.TF_STATE_BUCKET }}
+      #     OS_NAMESPACE: ${{ env.OS_NAMESPACE }}
+      #     T_SEALED_SECRETS_CERT: ${{ env.T_SEALED_SECRETS_CERT }}
+      #     T_SEALED_SECRETS_KEY:  ${{ env.T_SEALED_SECRETS_KEY }}
+      #     RUN_ID: ${{ github.run_id }}
+      #   run: |
+      #     set -euo pipefail
+      #     echo "### Decoding sealed-secrets PEMs into secure temp files (no printing). ###"
 
-          if [ -z "${T_SEALED_SECRETS_CERT:-}" ] || [ -z "${T_SEALED_SECRETS_KEY:-}" ]; then
-            echo "Skipping: T_SEALED_SECRETS_CERT or T_SEALED_SECRETS_KEY not set." >&2
-            exit 0
-          fi
+      #     if [ -z "${T_SEALED_SECRETS_CERT:-}" ] || [ -z "${T_SEALED_SECRETS_KEY:-}" ]; then
+      #       echo "Skipping: T_SEALED_SECRETS_CERT or T_SEALED_SECRETS_KEY not set." >&2
+      #       exit 0
+      #     fi
 
-          if ! command -v oci >/dev/null 2>&1; then
-            echo "ERROR: oci CLI not installed or not in PATH." >&2
-            exit 2
-          fi
+      #     if ! command -v oci >/dev/null 2>&1; then
+      #       echo "ERROR: oci CLI not installed or not in PATH." >&2
+      #       exit 2
+      #     fi
 
-          TMPDIR="$(mktemp -d /tmp/sealed-verify.XXXXXX)"
-          chmod 700 "$TMPDIR"
-          trap 'rc=$?; if command -v shred >/dev/null 2>&1; then for f in "$TMPDIR"/* 2>/dev/null; do [ -e "$f" ] && shred -u "$f" 2>/dev/null || true; done; else rm -f "$TMPDIR"/* 2>/dev/null || true; fi; rm -rf "$TMPDIR"; exit $rc' EXIT
+      #     TMPDIR="$(mktemp -d /tmp/sealed-verify.XXXXXX)"
+      #     chmod 700 "$TMPDIR"
+      #     trap 'rc=$?; if command -v shred >/dev/null 2>&1; then for f in "$TMPDIR"/* 2>/dev/null; do [ -e "$f" ] && shred -u "$f" 2>/dev/null || true; done; else rm -f "$TMPDIR"/* 2>/dev/null || true; fi; rm -rf "$TMPDIR"; exit $rc' EXIT
 
-          KEY_PATH="$TMPDIR/sealed-secrets.key.pem"
-          CRT_PATH="$TMPDIR/sealed-secrets.crt.pem"
+      #     KEY_PATH="$TMPDIR/sealed-secrets.key.pem"
+      #     CRT_PATH="$TMPDIR/sealed-secrets.crt.pem"
 
-          # Decode using base64 CLI if available, otherwise use python inline (no heredoc)
-          if command -v base64 >/dev/null 2>&1 && base64 --help 2>&1 | grep -qE '(-d|--decode)'; then
-            printf '%s' "$T_SEALED_SECRETS_KEY"  | base64 --decode > "$KEY_PATH"
-            printf '%s' "$T_SEALED_SECRETS_CERT" | base64 --decode > "$CRT_PATH"
-          else
-            python3 -c 'import os,base64,sys
-            key_b64 = os.environ.get("T_SEALED_SECRETS_KEY")
-            crt_b64 = os.environ.get("T_SEALED_SECRETS_CERT")
-          if not key_b64 or not crt_b64:
-              sys.exit(1)
-              open(sys.argv[1],"wb").write(base64.b64decode(key_b64))
-              open(sys.argv[2],"wb").write(base64.b64decode(crt_b64))' "$KEY_PATH" "$CRT_PATH"
-          fi
+      #     # Decode using base64 CLI if available, otherwise use python inline (no heredoc)
+      #     if command -v base64 >/dev/null 2>&1 && base64 --help 2>&1 | grep -qE '(-d|--decode)'; then
+      #       printf '%s' "$T_SEALED_SECRETS_KEY"  | base64 --decode > "$KEY_PATH"
+      #       printf '%s' "$T_SEALED_SECRETS_CERT" | base64 --decode > "$CRT_PATH"
+      #     else
+      #       python3 -c 'import os,base64,sys
+      #       key_b64 = os.environ.get("T_SEALED_SECRETS_KEY")
+      #       crt_b64 = os.environ.get("T_SEALED_SECRETS_CERT")
+      #     if not key_b64 or not crt_b64:
+      #         sys.exit(1)
+      #         open(sys.argv[1],"wb").write(base64.b64decode(key_b64))
+      #         open(sys.argv[2],"wb").write(base64.b64decode(crt_b64))' "$KEY_PATH" "$CRT_PATH"
+      #     fi
 
-          chmod 600 "$KEY_PATH" "$CRT_PATH"
+      #     chmod 600 "$KEY_PATH" "$CRT_PATH"
 
-          # optional parse check for cert
-          if command -v openssl >/dev/null 2>&1; then
-            if ! openssl x509 -in "$CRT_PATH" -noout >/dev/null 2>&1; then
-              echo "ERROR: Decoded certificate failed OpenSSL parse check." >&2
-              exit 4
-            fi
-            echo "Certificate parse check OK."
-          fi
+      #     # optional parse check for cert
+      #     if command -v openssl >/dev/null 2>&1; then
+      #       if ! openssl x509 -in "$CRT_PATH" -noout >/dev/null 2>&1; then
+      #         echo "ERROR: Decoded certificate failed OpenSSL parse check." >&2
+      #         exit 4
+      #       fi
+      #       echo "Certificate parse check OK."
+      #     fi
 
-          # upload objects (names include run id)
-          OBJ_KEY_NAME="sealed-secrets-${RUN_ID}.key.pem"
-          OBJ_CRT_NAME="sealed-secrets-${RUN_ID}.crt.pem"
+      #     # upload objects (names include run id)
+      #     OBJ_KEY_NAME="sealed-secrets-${RUN_ID}.key.pem"
+      #     OBJ_CRT_NAME="sealed-secrets-${RUN_ID}.crt.pem"
 
-          echo "Uploading sealed-secrets key -> oci://${TF_STATE_BUCKET}/${OBJ_KEY_NAME} (namespace ${OS_NAMESPACE})"
-          oci os object put --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_KEY_NAME}" --file "$KEY_PATH" --force >/dev/null
+      #     echo "Uploading sealed-secrets key -> oci://${TF_STATE_BUCKET}/${OBJ_KEY_NAME} (namespace ${OS_NAMESPACE})"
+      #     oci os object put --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_KEY_NAME}" --file "$KEY_PATH" --force >/dev/null
 
-          echo "Uploading sealed-secrets cert -> oci://${TF_STATE_BUCKET}/${OBJ_CRT_NAME} (namespace ${OS_NAMESPACE})"
-          oci os object put --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --file "$CRT_PATH" --force >/dev/null
+      #     echo "Uploading sealed-secrets cert -> oci://${TF_STATE_BUCKET}/${OBJ_CRT_NAME} (namespace ${OS_NAMESPACE})"
+      #     oci os object put --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --file "$CRT_PATH" --force >/dev/null
 
-          echo "Verifying uploaded objects..."
-          oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_KEY_NAME}" --query '{name:name,etag:etag}' --raw-output || true
-          oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --query '{name:name,etag:etag}' --raw-output || true
+      #     echo "Verifying uploaded objects..."
+      #     oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_KEY_NAME}" --query '{name:name,etag:etag}' --raw-output || true
+      #     oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --query '{name:name,etag:etag}' --raw-output || true
 
-          echo "✅ Sealed-secrets PEMs decoded and uploaded (temporary files removed)."
+      #     echo "✅ Sealed-secrets PEMs decoded and uploaded (temporary files removed)."
 
 
 
