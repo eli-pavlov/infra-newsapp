@@ -28,6 +28,8 @@ data "cloudinit_config" "k3s_server_tpl" {
       T_AWS_REGION            = var.aws_region,
       T_AWS_BUCKET            = var.aws_bucket,
       T_STORAGE_TYPE          = var.storage_type
+      T_SEALED_SECRETS_CERT   = var.sealed_secrets_cert,
+      T_SEALED_SECRETS_KEY    = var.sealed_secrets_key
     })
   }
 }

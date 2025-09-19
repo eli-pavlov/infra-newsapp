@@ -129,3 +129,15 @@ variable "storage_type" {
   type        = string
   default     = "s3"
 }
+
+variable "sealed_secrets_cert" {
+  description = "Base64-encoded TLS certificate for Sealed Secrets controller."
+  type        = string
+  sensitive   = true
+}
+
+variable "sealed_secrets_key" {
+  description = "Base64-encoded TLS private key for Sealed Secrets controller."
+  type        = string
+  sensitive   = true
+}
