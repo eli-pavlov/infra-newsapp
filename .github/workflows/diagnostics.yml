@@ -200,12 +200,12 @@ jobs:
             printf '%s' "$T_SEALED_SECRETS_CERT" | base64 --decode > "$CRT_PATH"
           else
             python3 -c 'import os,base64,sys
-key_b64 = os.environ.get("T_SEALED_SECRETS_KEY")
-crt_b64 = os.environ.get("T_SEALED_SECRETS_CERT")
-if not key_b64 or not crt_b64:
-    sys.exit(1)
-open(sys.argv[1],"wb").write(base64.b64decode(key_b64))
-open(sys.argv[2],"wb").write(base64.b64decode(crt_b64))' "$KEY_PATH" "$CRT_PATH"
+            key_b64 = os.environ.get("T_SEALED_SECRETS_KEY")
+            crt_b64 = os.environ.get("T_SEALED_SECRETS_CERT")
+          if not key_b64 or not crt_b64:
+              sys.exit(1)
+              open(sys.argv[1],"wb").write(base64.b64decode(key_b64))
+              open(sys.argv[2],"wb").write(base64.b64decode(crt_b64))' "$KEY_PATH" "$CRT_PATH"
           fi
 
           chmod 600 "$KEY_PATH" "$CRT_PATH"
