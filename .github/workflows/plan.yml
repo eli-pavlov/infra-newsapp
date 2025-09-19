@@ -40,6 +40,8 @@ jobs:
       TF_VAR_aws_region:            ${{ secrets.AWS_REGION }}
       TF_VAR_aws_bucket:            ${{ secrets.AWS_BUCKET }} 
       TF_VAR_storage_type:          ${{ secrets.STORAGE_TYPE }}
+      TF_VAR_sealed_secrets_cert:   ${{ secrets.SEALED_SECRETS_CERT }}
+      TF_VAR_sealed_secrets_key:    ${{ secrets.SEALED_SECRETS_KEY }}
 
     steps:
       - name: Guard required secrets (including TF_STATE_KEY)
@@ -58,6 +60,8 @@ jobs:
              [ -z "${{ secrets.AWS_REGION }}" ] || \
              [ -z "${{ secrets.AWS_BUCKET }}" ] || \
              [ -z "${{ secrets.STORAGE_TYPE }}" ] || \
+             [ -z "${{ secrets.SEALED_SECRETS_CERT }}" ] || \             
+             [ -z "${{ secrets.SEALED_SECRETS_KEY }}" ] || \
              [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
             echo "::error::One or more required secrets (incl. TF_STATE_KEY) are missing."
             exit 1

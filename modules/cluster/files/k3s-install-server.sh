@@ -24,6 +24,8 @@ T_AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}"
 T_AWS_REGION="${T_AWS_REGION}"
 T_AWS_BUCKET="${T_AWS_BUCKET}"
 T_STORAGE_TYPE="${T_STORAGE_TYPE}"
+T_SEALED_SECRETS_CERT="${T_SEALED_SECRETS_CERT}"
+T_SEALED_SECRETS_KEY="${T_SEALED_SECRETS_KEY}"
 
 set -x
 
@@ -242,7 +244,7 @@ done
 
 # Create/update sealed-secrets keypair secret in kube-system
 # Quick checks
-if [ -z "${SEALED_SECRETS_CERT:-}" ] || [ -z "${SEALED_SECRETS_KEY:-}" ]; then
+if [ -z "${T_SEALED_SECRETS_CERT:-}" ] || [ -z "${T_SEALED_SECRETS_KEY:-}" ]; then
   echo "ERROR: SEALED_SECRETS_CERT and SEALED_SECRETS_KEY environment variables must be set." >&2
   exit 2
 fi
@@ -264,8 +266,8 @@ KEY_PATH="${TMPDIR}/sealed-secrets.key"
 # Decode the base64 env vars into files using Python for portability
 python - <<'PY' > /dev/null
 import os, base64, sys
-crt_b64 = os.environ.get('SEALED_SECRETS_CERT')
-key_b64 = os.environ.get('SEALED_SECRETS_KEY')
+crt_b64 = os.environ.get('T_SEALED_SECRETS_CERT')
+key_b64 = os.environ.get('T_SEALED_SECRETS_KEY')
 if not crt_b64 or not key_b64:
     sys.exit(1)
 open(sys.argv[1],'wb').write(base64.b64decode(crt_b64))
