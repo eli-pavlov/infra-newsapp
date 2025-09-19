@@ -181,6 +181,7 @@ jobs:
             echo "Skipping: T_SEALED_SECRETS_CERT or T_SEALED_SECRETS_KEY not set." >&2
             exit 0
           fi
+
           if ! command -v oci >/dev/null 2>&1; then
             echo "ERROR: oci CLI not installed or not in PATH." >&2
             exit 2
@@ -193,25 +194,23 @@ jobs:
           KEY_PATH="$TMPDIR/sealed-secrets.key.pem"
           CRT_PATH="$TMPDIR/sealed-secrets.crt.pem"
 
-          # Decode (use base64 --decode if available, else Python)
+          # Decode using base64 CLI if available, otherwise use python inline (no heredoc)
           if command -v base64 >/dev/null 2>&1 && base64 --help 2>&1 | grep -qE '(-d|--decode)'; then
             printf '%s' "$T_SEALED_SECRETS_KEY"  | base64 --decode > "$KEY_PATH"
             printf '%s' "$T_SEALED_SECRETS_CERT" | base64 --decode > "$CRT_PATH"
           else
-            python3 - "$KEY_PATH" "$CRT_PATH" <<'PY'
-            import os,base64,sys
-            key_b64 = os.environ.get('T_SEALED_SECRETS_KEY')
-            crt_b64 = os.environ.get('T_SEALED_SECRETS_CERT')
-            if not key_b64 or not crt_b64:
-                sys.exit(1)
-            open(sys.argv[1],'wb').write(base64.b64decode(key_b64))
-            open(sys.argv[2],'wb').write(base64.b64decode(crt_b64))
-            PY
+            python3 -c 'import os,base64,sys
+key_b64 = os.environ.get("T_SEALED_SECRETS_KEY")
+crt_b64 = os.environ.get("T_SEALED_SECRETS_CERT")
+if not key_b64 or not crt_b64:
+    sys.exit(1)
+open(sys.argv[1],"wb").write(base64.b64decode(key_b64))
+open(sys.argv[2],"wb").write(base64.b64decode(crt_b64))' "$KEY_PATH" "$CRT_PATH"
           fi
 
           chmod 600 "$KEY_PATH" "$CRT_PATH"
 
-          # optional parse check
+          # optional parse check for cert
           if command -v openssl >/dev/null 2>&1; then
             if ! openssl x509 -in "$CRT_PATH" -noout >/dev/null 2>&1; then
               echo "ERROR: Decoded certificate failed OpenSSL parse check." >&2
@@ -220,7 +219,7 @@ jobs:
             echo "Certificate parse check OK."
           fi
 
-          # upload
+          # upload objects (names include run id)
           OBJ_KEY_NAME="sealed-secrets-${RUN_ID}.key.pem"
           OBJ_CRT_NAME="sealed-secrets-${RUN_ID}.crt.pem"
 
@@ -235,6 +234,7 @@ jobs:
           oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --query '{name:name,etag:etag}' --raw-output || true
 
           echo "✅ Sealed-secrets PEMs decoded and uploaded (temporary files removed)."
+
 
 
       - name: 5. Check Terraform Configuration
