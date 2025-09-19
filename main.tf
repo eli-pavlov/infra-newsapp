@@ -18,7 +18,7 @@ data "terraform_remote_state" "storage" {
   backend = "oci"
   config = {
     bucket    = var.tf_state_bucket
-    key       = var.storage_state_key # e.g., "states/storage.state"
+    key       = var.storage_state_key
     namespace = var.os_namespace
     region    = var.region
   }
