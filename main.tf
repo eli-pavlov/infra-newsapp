@@ -3,13 +3,13 @@
 data "oci_objectstorage_object" "storage_state" {
   namespace = var.os_namespace
   bucket    = var.tf_state_bucket
-  name      = var.storage_state_key
+  object      = var.storage_state_key 
 }
 
 
 # Query the existing volume in OCI by OCID retrieved above
 data "oci_core_volume" "db_volume" {
-  id = local.db_storage_ocid
+  volume_id = local.db_storage_ocid
 }
 
 
