@@ -293,8 +293,10 @@ chmod 600 "$CRT_PATH" "$KEY_PATH"
 # Create/update k8s TLS secret using dry-run -> apply (idempotent and quiet)
 kubectl -n kube-system create secret tls sealed-secrets-key \
   --cert="$CRT_PATH" --key="$KEY_PATH" \
-  --label=sealedsecrets.bitnami.com/sealed-secrets-key=active \
-  --dry-run=client -o yaml | kubectl apply -f -
+  --dry-run=client -o yaml | kubectl apply -f 
+
+kubectl -n kube-system label secret sealed-secrets-key \
+  sealedsecrets.bitnami.com/sealed-secrets-key=active --overwrite
 
 echo "Secret 'sealed-secrets-key' applied to namespace 'kube-system'."
 
