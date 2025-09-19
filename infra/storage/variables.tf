@@ -61,7 +61,7 @@ variable "tf_state_key" {
 variable "storage_state_key" {
   description = "Path/key (inside the bucket) for the storage Terraform state file (e.g. storage.tfstate)."
   type        = string
-  default     = "storage.state"
+  default     = "storage.tfstate"
   sensitive   = false
 }
 
