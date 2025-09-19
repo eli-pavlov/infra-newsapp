@@ -1,4 +1,4 @@
-name: 'MIGRATE - Move Block Volume to Separate State'
+name: 'STORAGE - Migrate Block Volume to Separate State'
 
 on:
   workflow_dispatch:
