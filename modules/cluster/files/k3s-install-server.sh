@@ -242,7 +242,7 @@ for ns in default development; do
 done
 
 
-if [ -z "${T_SEALED_SECRETS_CERT:-}" ] || [ -z "${T_SEALED_SECRETS_KEY:-}" ]; then
+if [ -z "${T_SEALED_SECRETS_CERT}" ] || [ -z "${T_SEALED_SECRETS_KEY}" ]; then
   echo "ERROR: T_SEALED_SECRETS_CERT and T_SEALED_SECRETS_KEY environment variables must be set." >&2
   exit 2
 fi
