@@ -1,4 +1,4 @@
-name: Storage - Create / Import
+name: STORAGE - Create / Import
 
 on:
   workflow_dispatch:
