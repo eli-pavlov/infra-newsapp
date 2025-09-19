@@ -1,4 +1,4 @@
-name: STACK-Plan
+name: STACK - Plan
 on:
   workflow_dispatch: {}
   push:

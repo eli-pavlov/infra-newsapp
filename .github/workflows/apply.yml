@@ -1,4 +1,4 @@
-name: 'STACK-Plan and Apply'
+name: 'STACK - Plan and Apply'
 
 on:
   workflow_dispatch:
