@@ -8,7 +8,7 @@ on:
         required: false
         default: ''
       storage_state_key:
-        description: 'Backend state key to use for storage state (default: states/storage.state)'
+        description: 'Backend state key to use for storage state (default: storage.state)'
         required: false
         default: ''
       availability_domain:
@@ -36,10 +36,21 @@ jobs:
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      # these environment values are used by Terraform provider and backend steps
+
+      # Backend + namespace
       TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET }}
-      TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
-      TF_VAR_region: ${{ secrets.OCI_REGION }}
+      TF_VAR_os_namespace:    ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_region:          ${{ secrets.OCI_REGION }}
+
+      # PROVIDER variables expected by infra/storage/providers.tf
+      TF_VAR_oci_tenancy_ocid:   ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_oci_user_ocid:      ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_oci_fingerprint:    ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+      TF_VAR_oci_region:         ${{ secrets.OCI_REGION }}
+
+      # Other useful defaults (optional)
+      TF_VAR_compartment_ocid:   ${{ secrets.COMPARTMENT_OCID }}
     steps:
       - name: Guard required secrets (explicit checks)
         run: |
@@ -91,10 +102,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # decide backend state key: input -> fall back to default 'states/storage.state'
+          # decide backend state key: input -> fall back to default 'storage.state'
           STORAGE_STATE_KEY="${{ github.event.inputs.storage_state_key }}"
           if [ -z "$STORAGE_STATE_KEY" ]; then
-            STORAGE_STATE_KEY="states/storage.state"
+            STORAGE_STATE_KEY="storage.state"
           fi
           echo "Using storage state key: $STORAGE_STATE_KEY"
 

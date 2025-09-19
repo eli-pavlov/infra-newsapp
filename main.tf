@@ -1,3 +1,18 @@
+locals {
+  db_storage_ocid = coalesce(
+    try(data.terraform_remote_state.storage.outputs.db_storage_ocid, null),
+    var.db_storage_ocid
+  )
+}
+
+resource "null_resource" "validate_db_storage_ocid" {
+  count = local.db_storage_ocid == null || local.db_storage_ocid == "" ? 1 : 0
+  provisioner "local-exec" {
+    command = "echo 'ERROR: db_storage_ocid is empty. Ensure storage workspace created the volume and the remote state key is correct.' && exit 1"
+  }
+}
+
+
 # Read the storage state file using the dedicated data source
 data "terraform_remote_state" "storage" {
   backend = "oci"
@@ -8,15 +23,6 @@ data "terraform_remote_state" "storage" {
     region    = var.region
   }
 }
-
-# Use the output directly. The fallback to the variable is still a good pattern.
-locals {
-  db_storage_ocid = coalesce(
-    try(data.terraform_remote_state.storage.outputs.db_storage_ocid, null),
-    var.db_storage_ocid
-  )
-}
-
 # Query the existing volume in OCI by OCID retrieved above
 data "oci_core_volume" "db_volume" {
   volume_id = local.db_storage_ocid
