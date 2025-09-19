@@ -37,7 +37,7 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.1 # Using a modern version for state commands
+          terraform_version: 1.13.1 # Using a modern version for state commands
 
       # --- Part 1: Remove the volume from the MAIN state file ---
       - name: Init Terraform for MAIN stack
