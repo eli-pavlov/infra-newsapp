@@ -75,7 +75,7 @@ jobs:
           # default storage key (same folder as other states)
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=storage.state" \
+            -backend-config="key=storage.tfstate" \
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}" \
             -reconfigure

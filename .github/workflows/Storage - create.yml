@@ -102,10 +102,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # decide backend state key: input -> fall back to default 'storage.state'
+          # decide backend state key: input -> fall back to default 'storage.tfstate'
           STORAGE_STATE_KEY="${{ github.event.inputs.storage_state_key }}"
           if [ -z "$STORAGE_STATE_KEY" ]; then
-            STORAGE_STATE_KEY="storage.state"
+            STORAGE_STATE_KEY="storage.tfstate"
           fi
           echo "Using storage state key: $STORAGE_STATE_KEY"
 
