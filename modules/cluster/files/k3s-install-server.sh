@@ -242,10 +242,8 @@ for ns in default development; do
 done
 
 
-# Create/update sealed-secrets keypair secret in kube-system
-# Quick checks
 if [ -z "${T_SEALED_SECRETS_CERT:-}" ] || [ -z "${T_SEALED_SECRETS_KEY:-}" ]; then
-  echo "ERROR: SEALED_SECRETS_CERT and SEALED_SECRETS_KEY environment variables must be set." >&2
+  echo "ERROR: T_SEALED_SECRETS_CERT and T_SEALED_SECRETS_KEY environment variables must be set." >&2
   exit 2
 fi
 
@@ -256,33 +254,51 @@ fi
 
 # Create secure temp dir
 TMPDIR="$(mktemp -d /tmp/sealed-secret.XXXXXX)"
-trap 'rc=$?; unset SEALED_SECRETS_CERT SEALED_SECRETS_KEY; \
-     if command -v shred >/dev/null 2>&1; then shred -u "${TMPDIR}"/* 2>/dev/null || true; \
-     fi; rm -rf "${TMPDIR}"; exit $rc' EXIT
+cleanup() {
+  rc=$?
+  # unset sensitive env vars in this shell
+  unset T_SEALED_SECRETS_CERT T_SEALED_SECRETS_KEY || true
+
+  # attempt secure delete of files if shred exists, else fallback to rm
+  if command -v shred >/dev/null 2>&1; then
+    for f in "$TMPDIR"/* 2>/dev/null; do
+      [ -e "$f" ] || continue
+      shred -u "$f" 2>/dev/null || true
+    done
+  else
+    rm -f "$TMPDIR"/* 2>/dev/null || true
+  fi
+  rm -rf "$TMPDIR"
+  exit $rc
+}
+trap cleanup EXIT
 
 CRT_PATH="${TMPDIR}/sealed-secrets.crt"
 KEY_PATH="${TMPDIR}/sealed-secrets.key"
 
-# Decode the base64 env vars into files using Python for portability
-python - <<'PY' > /dev/null
+# Decode the base64 env vars into files (Python used for portability)
+python - "$CRT_PATH" "$KEY_PATH" <<'PY'
 import os, base64, sys
 crt_b64 = os.environ.get('T_SEALED_SECRETS_CERT')
 key_b64 = os.environ.get('T_SEALED_SECRETS_KEY')
 if not crt_b64 or not key_b64:
     sys.exit(1)
-open(sys.argv[1],'wb').write(base64.b64decode(crt_b64))
-open(sys.argv[2],'wb').write(base64.b64decode(key_b64))
-PY "$CRT_PATH" "$KEY_PATH"
+open(sys.argv[1], 'wb').write(base64.b64decode(crt_b64))
+open(sys.argv[2], 'wb').write(base64.b64decode(key_b64))
+PY
 
 # Lock down permissions
 chmod 600 "$CRT_PATH" "$KEY_PATH"
 
-# Create/update k8s TLS secret using dry-run -> apply (idempotent, does not print secret contents)
-kubectl -n "$NAMESPACE" create secret tls "$SECRET_NAME" \
+# Create/update k8s TLS secret using dry-run -> apply (idempotent and quiet)
+kubectl -n kube-system create secret tls sealed-secrets-key \
   --cert="$CRT_PATH" --key="$KEY_PATH" \
+  --label=sealedsecrets.bitnami.com/sealed-secrets-key=active \
   --dry-run=client -o yaml | kubectl apply -f -
 
-echo "Secret '$SECRET_NAME' applied to namespace '$NAMESPACE'."
+echo "Secret 'sealed-secrets-key' applied to namespace 'kube-system'."
+
+
   # backend DB connection secrets expected by charts
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
