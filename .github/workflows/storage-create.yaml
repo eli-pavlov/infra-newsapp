@@ -12,7 +12,7 @@ on:
         required: false
         default: 'states/storage.state'
       availability_domain:
-        description: 'Availability Domain (optional — can be provided as secret TF_VAR_availability_domain)'
+        description: 'Availability Domain (optional — can be provided as secret AVAILABILITY_DOMAIN)'
         required: false
         default: ''
       compartment_ocid:
@@ -39,28 +39,18 @@ jobs:
       TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
       TF_VAR_region: ${{ secrets.OCI_REGION }}
-      # OCI creds delivered to ~/.oci (below)
     steps:
-      - name: Guard required secrets
+      - name: Guard required secrets (explicit checks)
         run: |
           set -euo pipefail
-          missing=0
-          check() {
-            if [ -z "${{ secrets.$1 }}" ]; then
-              echo "::error::Missing required secret: $1"
-              missing=$((missing+1))
-            fi
-          }
-          # minimum required for backend & provider
-          check OCI_TENANCY_OCID
-          check OCI_USER_OCID
-          check OCI_FINGERPRINT
-          check OCI_PRIVATE_KEY_PEM
-          check OCI_REGION
-          check TF_STATE_BUCKET
-          check OS_NAMESPACE
-          if [ "$missing" -gt 0 ]; then
-            echo "Aborting due to missing secrets."
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ] || \
+             [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
+            echo "::error::One or more required secrets are missing (OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_PRIVATE_KEY_PEM, OCI_REGION, TF_STATE_BUCKET, OS_NAMESPACE)."
             exit 1
           fi
 
@@ -96,7 +86,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ inputs.storage_state_key }}" \
+            -backend-config="key=${{ github.event.inputs.storage_state_key }}" \
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}" \
             -reconfigure
@@ -105,12 +95,11 @@ jobs:
         working-directory: infra/storage
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.import_ocid }}" ]; then
-            echo "Importing existing volume OCID: ${{ inputs.import_ocid }}"
-            # If the resource is already tracked by the state this will fail; ignore failures and continue
-            terraform import -lock=false oci_core_volume.db_volume "${{ inputs.import_ocid }}" || true
+          if [ -n "${{ github.event.inputs.import_ocid }}" ]; then
+            echo "Importing existing volume OCID: ${{ github.event.inputs.import_ocid }}"
+            terraform import -lock=false oci_core_volume.db_volume "${{ github.event.inputs.import_ocid }}" || true
           else
-            echo "No import_ocid provided → plan will create the resource if defined in code."
+            echo "No import_ocid provided → plan may create the resource if defined in code."
           fi
 
       - name: Terraform Validate
@@ -120,9 +109,9 @@ jobs:
       - name: Terraform Plan (storage)
         working-directory: infra/storage
         env:
-          TF_VAR_availability_domain: ${{ inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
-          TF_VAR_compartment_id: ${{ inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
-          TF_VAR_volume_size_gb: ${{ inputs.volume_size_gb }}
+          TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
+          TF_VAR_compartment_id: ${{ github.event.inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
+          TF_VAR_volume_size_gb: ${{ github.event.inputs.volume_size_gb }}
         run: |
           terraform plan -out=tfplan -input=false
 
@@ -137,11 +126,10 @@ jobs:
       - name: Terraform Apply (storage)
         working-directory: infra/storage
         env:
-          TF_VAR_availability_domain: ${{ inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
-          TF_VAR_compartment_id: ${{ inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
-          TF_VAR_volume_size_gb: ${{ inputs.volume_size_gb }}
+          TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
+          TF_VAR_compartment_id: ${{ github.event.inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
+          TF_VAR_volume_size_gb: ${{ github.event.inputs.volume_size_gb }}
         run: |
-          # apply from plan if present, otherwise apply directly
           if [ -f tfplan ]; then
             terraform apply -auto-approve tfplan
           else
@@ -152,7 +140,6 @@ jobs:
         working-directory: infra/storage
         run: |
           set -euo pipefail
-          echo "db_storage_ocid=$(terraform output -raw db_storage_ocid 2>/dev/null || echo '')"
           terraform output -raw db_storage_ocid || true
 
       - name: Reminder to update repository secret

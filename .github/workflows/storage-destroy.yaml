@@ -19,18 +19,17 @@ jobs:
       TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
       TF_VAR_region: ${{ secrets.OCI_REGION }}
     steps:
-      - name: Guard required secrets
+      - name: Guard required secrets (explicit checks)
         run: |
           set -euo pipefail
-          missing=0
-          for s in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_PRIVATE_KEY_PEM OCI_REGION TF_STATE_BUCKET OS_NAMESPACE; do
-            if [ -z "${{ secrets[$s] }}" ]; then
-              echo "::error::Missing secret: $s"
-              missing=$((missing+1))
-            fi
-          done
-          if [ "$missing" -gt 0 ]; then
-            echo "Aborting."
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
+             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
+             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
+             [ -z "${{ secrets.OCI_REGION }}" ] || \
+             [ -z "${{ secrets.TF_STATE_BUCKET }}" ] || \
+             [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
+            echo "::error::One or more required secrets are missing (OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_PRIVATE_KEY_PEM, OCI_REGION, TF_STATE_BUCKET, OS_NAMESPACE)."
             exit 1
           fi
 
