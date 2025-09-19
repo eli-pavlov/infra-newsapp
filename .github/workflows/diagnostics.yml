@@ -26,8 +26,8 @@ jobs:
       TF_STATE_BUCKET:            ${{ secrets.TF_STATE_BUCKET }}
       TF_STATE_KEY:               ${{ secrets.TF_STATE_KEY }}
       OS_NAMESPACE:               ${{ secrets.OS_NAMESPACE }}
-      T_SEALED_SECRETS_CERT:      ${{ secrets.T_SEALED_SECRETS_CERT }}
-      T_SEALED_SECRETS_KEY:       ${{ secrets.T_SEALED_SECRETS_KEY }}
+      TF_VAR_SEALED_SECRETS_CERT:      ${{ secrets.SEALED_SECRETS_CERT }}
+      TF_VAR_SEALED_SECRETS_KEY:       ${{ secrets.SEALED_SECRETS_KEY }}
 
     steps:
       - name: Checkout code
