@@ -1,3 +1,3 @@
 output "db_storage_ocid" {
-  value = oci_core_volume.storage.id
+  value = oci_core_volume.shared_db_volume.id
 }
