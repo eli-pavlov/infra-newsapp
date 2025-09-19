@@ -257,7 +257,7 @@ TMPDIR="$(mktemp -d /tmp/sealed-secret.XXXXXX)"
 cleanup() {
   rc=$?
   # unset sensitive env vars in this shell
-  unset T_SEALED_SECRETS_CERT T_SEALED_SECRETS_KEY || true
+  unset $T_SEALED_SECRETS_CERT $T_SEALED_SECRETS_KEY || true
 
   # attempt secure delete of files if shred exists, else fallback to rm
   if command -v shred >/dev/null 2>&1; then
