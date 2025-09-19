@@ -41,6 +41,11 @@ jobs:
       TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
       TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_db_storage_ocid:     ${{ secrets.DB_STORAGE_OCID }}
+        # IMPORTANT: set tf_state_key (storage workspace expects this variable)
+      TF_VAR_tf_state_key:        ${{ github.event.inputs.storage_state_key }}
+      # storage module expects db_instance_ocid variable; set it from a secret if you have one
+      # if you don't have a secret, leaving it empty still counts as "set" for Terraform
+      TF_VAR_db_instance_ocid:    ${{ secrets.DB_INSTANCE_OCID }}
 
     steps:
       - name: Checkout code
