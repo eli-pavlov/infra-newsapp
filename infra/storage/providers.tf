@@ -8,11 +8,11 @@ terraform {
 }
 
 provider "oci" {
-  tenancy_ocid = var.tenancy_ocid
-  user_ocid    = var.user_ocid
-  fingerprint  = var.fingerprint
-  region       = var.region
-  private_key  = var.private_key_pem
+  tenancy_ocid     = var.oci_tenancy_ocid
+  user_ocid        = var.oci_user_ocid
+  fingerprint      = var.oci_fingerprint
+  private_key_pem  = var.oci_private_key_pem
+  region           = var.oci_region
 }
 
 provider "cloudflare" {
