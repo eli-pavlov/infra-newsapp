@@ -21,12 +21,26 @@ jobs:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
 
-      # Set provider credentials for Terraform to authenticate
+      # existing TF_VARs you already have (keep them)
       TF_VAR_tenancy_ocid:       ${{ secrets.OCI_TENANCY_OCID }}
       TF_VAR_user_ocid:          ${{ secrets.OCI_USER_OCID }}
       TF_VAR_fingerprint:        ${{ secrets.OCI_FINGERPRINT }}
       TF_VAR_region:             ${{ secrets.OCI_REGION }}
       TF_VAR_private_key_pem:    ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+
+      # ---- Add these so infra/storage sees variables named with the oci_ prefix ----
+      TF_VAR_oci_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_oci_user_ocid:       ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_oci_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_oci_region:          ${{ secrets.OCI_REGION }}
+      TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+
+      # other storage/root vars required by infra/storage
+      TF_VAR_compartment_ocid:    ${{ secrets.COMPARTMENT_OCID }}
+      TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
+      TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
+      TF_VAR_db_storage_ocid:     ${{ secrets.DB_STORAGE_OCID }}
 
     steps:
       - name: Checkout code
@@ -93,18 +107,6 @@ jobs:
       # --- Part 2: Import the volume into the NEW STORAGE state file ---
       - name: Init Terraform for STORAGE stack
         working-directory: infra/storage
-        env:
-          TF_VAR_oci_tenancy_ocid:   ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_oci_user_ocid:      ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_oci_fingerprint:    ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-          TF_VAR_oci_region:         ${{ secrets.OCI_REGION }}
-          TF_VAR_compartment_ocid:   ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_os_namespace:       ${{ secrets.OS_NAMESPACE }}
-          TF_VAR_tf_state_bucket:    ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_tf_state_key:       ${{ github.event.inputs.storage_state_key }}
-          TF_VAR_db_storage_ocid:    ${{ secrets.DB_STORAGE_OCID }}
         run: |
           terraform init -reconfigure \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
@@ -114,20 +116,6 @@ jobs:
 
       - name: Import Volume into NEW Storage State
         working-directory: infra/storage
-        env:
-          # The OCID of the existing volume to import
-          DB_VOLUME_OCID: ${{ secrets.DB_STORAGE_OCID }}
-          TF_VAR_oci_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_oci_user_ocid:       ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_oci_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-          TF_VAR_oci_region:          ${{ secrets.OCI_REGION }}
-          TF_VAR_compartment_ocid:    ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_availability_domain: ${{ secrets.AVAILABILITY_DOMAIN }}
-          TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
-          TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_tf_state_key:        ${{ github.event.inputs.storage_state_key }}
-          TF_VAR_db_storage_ocid:     ${{ secrets.DB_STORAGE_OCID }}
         run: |
           echo "Importing volume OCID ${{ env.DB_VOLUME_OCID }} into ${{ github.event.inputs.storage_state_key }}..."
           # The resource address here MUST match your storage module's code
@@ -136,18 +124,6 @@ jobs:
 
       - name: Verify Storage State
         working-directory: infra/storage
-        env:
-          TF_VAR_oci_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
-          TF_VAR_oci_user_ocid:       ${{ secrets.OCI_USER_OCID }}
-          TF_VAR_oci_fingerprint:     ${{ secrets.OCI_FINGERPRINT }}
-          TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
-          TF_VAR_oci_region:          ${{ secrets.OCI_REGION }}
-          TF_VAR_compartment_ocid:    ${{ secrets.COMPARTMENT_OCID }}
-          TF_VAR_os_namespace:        ${{ secrets.OS_NAMESPACE }}
-          TF_VAR_tf_state_bucket:     ${{ secrets.TF_STATE_BUCKET }}
-          TF_VAR_tf_state_key:        ${{ github.event.inputs.storage_state_key }
-
-  
         run: |
           echo "Verifying the new storage state..."
           terraform state list
