@@ -13,9 +13,3 @@ resource "oci_core_volume" "db_volume" {
   display_name        = var.storage_display_name
   size_in_gbs         = var.volume_size_gb
 }
-# Also, remove the misplaced `variable "cluster_name"` from this file.
-
-variable "cluster_name" {
-  description = "The name for the K3s cluster."
-  type        = string
-}
