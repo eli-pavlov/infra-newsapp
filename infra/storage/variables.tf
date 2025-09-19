@@ -84,9 +84,3 @@ variable "storage_display_name" {
   default     = "newsapp-db-volume"
   sensitive   = false
 }
-
-variable "db_instance_ocid" {
-  description = "OCID of the compute instance that the database will run on (used for volume attachment)."
-  type        = string
-  sensitive   = false
-}
