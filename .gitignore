@@ -1,5 +1,6 @@
 # .gitignore
 *.txt
+*.pem
 
 # Local .terraform directories
 .terraform/
