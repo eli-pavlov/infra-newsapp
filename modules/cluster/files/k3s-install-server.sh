@@ -273,8 +273,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-CRT_PATH="${TMPDIR}/sealed-secrets.crt"
-KEY_PATH="${TMPDIR}/sealed-secrets.key"
+CRT_PATH="$${TMPDIR}/sealed-secrets.crt"
+KEY_PATH="$${TMPDIR}/sealed-secrets.key"
 
 # Decode the base64 env vars into files (Python used for portability)
 python - "$CRT_PATH" "$KEY_PATH" <<'PY'
