@@ -1,4 +1,4 @@
-name: Validate CIDR Secrets
+name: STACK-Validate CIDR Secrets
 
 on:
   workflow_dispatch: {}

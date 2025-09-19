@@ -1,5 +1,5 @@
 # .github/workflows/diagnostics.yml
-name: OCI & Terraform Diagnostics
+name: STACK-OCI & Terraform Diagnostics
 
 on:
   workflow_dispatch: {} # Allows manual triggering

@@ -1,4 +1,4 @@
-name: Test Remote State Creation (with Diagnostics)
+name: STACK-Test Remote State Creation
 
 on:
   workflow_dispatch: {} # Allows manual triggering
