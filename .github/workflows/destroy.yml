@@ -1,4 +1,4 @@
-name: destroy
+name: STACK-Destroy
 
 on:
   workflow_dispatch: {}
