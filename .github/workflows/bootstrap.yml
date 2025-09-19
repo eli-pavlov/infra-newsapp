@@ -1,4 +1,4 @@
-name: BUCKET - bootstrap
+name: BUCKET - Bootstrap
 on:
   workflow_dispatch: {}
 
