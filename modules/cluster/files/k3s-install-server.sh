@@ -219,7 +219,7 @@ for ns in default development; do
     --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
     --dry-run=client -o yaml | kubectl apply -f - || true
 
-  # 2) aws credentials)
+  # 2) aws credentials for S3 storage access
   kubectl -n "$ns" create secret generic aws-access-key-id \
     --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
     --dry-run=client -o yaml | kubectl apply -f - || true
