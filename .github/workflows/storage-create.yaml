@@ -1,0 +1,160 @@
+name: Storage - Create / Import
+
+on:
+  workflow_dispatch:
+    inputs:
+      import_ocid:
+        description: 'If provided, terraform will import this existing volume OCID instead of creating a new one'
+        required: false
+        default: ''
+      storage_state_key:
+        description: 'Backend state key to use for storage state (default: states/storage.state)'
+        required: false
+        default: 'states/storage.state'
+      availability_domain:
+        description: 'Availability Domain (optional — can be provided as secret TF_VAR_availability_domain)'
+        required: false
+        default: ''
+      compartment_ocid:
+        description: 'Compartment OCID (optional — can be provided as secret COMPARTMENT_OCID)'
+        required: false
+        default: ''
+      volume_size_gb:
+        description: 'Size in GB for new volume (used when creating)'
+        required: false
+        default: '20'
+
+permissions:
+  contents: read
+
+jobs:
+  storage_apply:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET }}
+      TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_region: ${{ secrets.OCI_REGION }}
+      # OCI creds delivered to ~/.oci (below)
+    steps:
+      - name: Guard required secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          check() {
+            if [ -z "${{ secrets.$1 }}" ]; then
+              echo "::error::Missing required secret: $1"
+              missing=$((missing+1))
+            fi
+          }
+          # minimum required for backend & provider
+          check OCI_TENANCY_OCID
+          check OCI_USER_OCID
+          check OCI_FINGERPRINT
+          check OCI_PRIVATE_KEY_PEM
+          check OCI_REGION
+          check TF_STATE_BUCKET
+          check OS_NAMESPACE
+          if [ "$missing" -gt 0 ]; then
+            echo "Aborting due to missing secrets."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure jq is available
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.1
+          terraform_wrapper: false
+
+      - name: Configure OCI Credentials
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.oci"
+          umask 077
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          CFG
+
+      - name: Terraform Init (storage backend)
+        working-directory: infra/storage
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ inputs.storage_state_key }}" \
+            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
+            -backend-config="region=${{ secrets.OCI_REGION }}" \
+            -reconfigure
+
+      - name: Optional Import (if import_ocid provided)
+        working-directory: infra/storage
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.import_ocid }}" ]; then
+            echo "Importing existing volume OCID: ${{ inputs.import_ocid }}"
+            # If the resource is already tracked by the state this will fail; ignore failures and continue
+            terraform import -lock=false oci_core_volume.db_volume "${{ inputs.import_ocid }}" || true
+          else
+            echo "No import_ocid provided → plan will create the resource if defined in code."
+          fi
+
+      - name: Terraform Validate
+        working-directory: infra/storage
+        run: terraform validate
+
+      - name: Terraform Plan (storage)
+        working-directory: infra/storage
+        env:
+          TF_VAR_availability_domain: ${{ inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
+          TF_VAR_compartment_id: ${{ inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
+          TF_VAR_volume_size_gb: ${{ inputs.volume_size_gb }}
+        run: |
+          terraform plan -out=tfplan -input=false
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-tfplan
+          path: |
+            infra/storage/tfplan
+          if-no-files-found: ignore
+
+      - name: Terraform Apply (storage)
+        working-directory: infra/storage
+        env:
+          TF_VAR_availability_domain: ${{ inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
+          TF_VAR_compartment_id: ${{ inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
+          TF_VAR_volume_size_gb: ${{ inputs.volume_size_gb }}
+        run: |
+          # apply from plan if present, otherwise apply directly
+          if [ -f tfplan ]; then
+            terraform apply -auto-approve tfplan
+          else
+            terraform apply -auto-approve
+          fi
+
+      - name: Show resulting DB volume OCID
+        working-directory: infra/storage
+        run: |
+          set -euo pipefail
+          echo "db_storage_ocid=$(terraform output -raw db_storage_ocid 2>/dev/null || echo '')"
+          terraform output -raw db_storage_ocid || true
+
+      - name: Reminder to update repository secret
+        run: |
+          echo "If this run created a new volume, copy the 'db_storage_ocid' output above and set it as repository secret DB_STORAGE_OCID."

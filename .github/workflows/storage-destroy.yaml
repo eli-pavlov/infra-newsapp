@@ -1,0 +1,76 @@
+name: Storage - Destroy
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  storage_destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET }}
+      TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
+      TF_VAR_region: ${{ secrets.OCI_REGION }}
+    steps:
+      - name: Guard required secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          for s in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_PRIVATE_KEY_PEM OCI_REGION TF_STATE_BUCKET OS_NAMESPACE; do
+            if [ -z "${{ secrets[$s] }}" ]; then
+              echo "::error::Missing secret: $s"
+              missing=$((missing+1))
+            fi
+          done
+          if [ "$missing" -gt 0 ]; then
+            echo "Aborting."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.1
+          terraform_wrapper: false
+
+      - name: Configure OCI Credentials
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.oci"
+          umask 077
+          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          CFG
+
+      - name: Terraform Init (storage backend)
+        working-directory: infra/storage
+        run: |
+          # default storage key (same folder as other states)
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=states/storage.state" \
+            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
+            -backend-config="region=${{ secrets.OCI_REGION }}" \
+            -reconfigure
+
+      - name: Terraform Destroy (storage)
+        working-directory: infra/storage
+        run: |
+          echo "Running terraform destroy for storage workspace. This will delete the actual block volume in OCI!"
+          terraform destroy -auto-approve
