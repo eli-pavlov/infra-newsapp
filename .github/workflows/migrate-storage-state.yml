@@ -1,0 +1,102 @@
+# In: .github/workflows/migrate-storage-state.yml
+
+name: 'MIGRATE - Move Block Volume to Separate State'
+
+on:
+  workflow_dispatch:
+    inputs:
+      main_state_key:
+        description: 'The key for the main stack state file (e.g., prod.tfstate)'
+        required: true
+        default: 'prod.tfstate'
+      storage_state_key:
+        description: 'The key for the NEW storage state file (e.g., storage.state)'
+        required: true
+        default: 'storage.state'
+
+jobs:
+  migrate-state:
+    name: 'Terraform State Migration'
+    runs-on: ubuntu-latest
+    
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      
+      # Set provider credentials for Terraform to authenticate
+      TF_VAR_tenancy_ocid:       ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid:          ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint:        ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_region:             ${{ secrets.OCI_REGION }}
+      TF_VAR_private_key_pem:    ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.1 # Using a modern version for state commands
+
+      # --- Part 1: Remove the volume from the MAIN state file ---
+      - name: Init Terraform for MAIN stack
+        working-directory: ./  # Assuming main.tf is in the root
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ github.event.inputs.main_state_key }}" \
+            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
+            -backend-config="region=${{ secrets.OCI_REGION }}"
+
+      - name: Find Volume Resource Address in Main State
+        id: find_address
+        working-directory: ./
+        run: |
+          # This finds the exact address of your volume, e.g., 'module.cluster.oci_core_volume.db_volume'
+          ADDRESS=$(terraform state list | grep 'oci_core_volume' | head -n 1)
+          if [ -z "$ADDRESS" ]; then
+            echo "::warning::Could not find an oci_core_volume resource in the main state file. It might have been removed already."
+            echo "ADDRESS_FOUND=false" >> $GITHUB_ENV
+          else
+            echo "Found volume at address: $ADDRESS"
+            echo "RESOURCE_ADDRESS=$ADDRESS" >> $GITHUB_ENV
+            echo "ADDRESS_FOUND=true" >> $GITHUB_ENV
+          fi
+
+      - name: Remove Volume from MAIN State
+        if: env.ADDRESS_FOUND == 'true'
+        working-directory: ./
+        run: |
+          echo "Removing ${{ env.RESOURCE_ADDRESS }} from ${{ github.event.inputs.main_state_key }}..."
+          terraform state rm "${{ env.RESOURCE_ADDRESS }}"
+          echo "✅ Removal complete."
+
+      # --- Part 2: Import the volume into the NEW STORAGE state file ---
+      - name: Init Terraform for STORAGE stack
+        working-directory: infra/storage
+        run: |
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ github.event.inputs.storage_state_key }}" \
+            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
+            -backend-config="region=${{ secrets.OCI_REGION }}"
+
+      - name: Import Volume into NEW Storage State
+        working-directory: infra/storage
+        env:
+          # The OCID of the existing volume to import
+          DB_VOLUME_OCID: ${{ secrets.DB_STORAGE_OCID }}
+        run: |
+          echo "Importing volume OCID ${{ env.DB_VOLUME_OCID }} into ${{ github.event.inputs.storage_state_key }}..."
+          # The resource address here MUST match your storage module's code
+          terraform import 'module.storage.oci_core_volume.db_volume' "${{ env.DB_VOLUME_OCID }}"
+          echo "✅ Import complete."
+
+      - name: Verify Storage State
+        working-directory: infra/storage
+        run: |
+          echo "Verifying the new storage state..."
+          terraform state list
+          terraform plan
+          echo "✅ Verification successful. The plan should show no changes."
