@@ -4,25 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       import_ocid:
-        description: 'If provided, terraform will import this existing volume OCID instead of creating a new one'
+        description: 'If provided, import this existing volume OCID instead of creating a new one'
         required: false
         default: ''
       storage_state_key:
         description: 'Backend state key to use for storage state (default: states/storage.state)'
         required: false
-        default: 'states/storage.state'
+        default: ''
       availability_domain:
-        description: 'Availability Domain (optional — can be provided as secret AVAILABILITY_DOMAIN)'
+        description: 'Availability Domain (optional — falls back to secret AVAILABILITY_DOMAIN)'
         required: false
         default: ''
       compartment_ocid:
-        description: 'Compartment OCID (optional — can be provided as secret COMPARTMENT_OCID)'
+        description: 'Compartment OCID (optional — falls back to secret COMPARTMENT_OCID)'
         required: false
         default: ''
       volume_size_gb:
         description: 'Size in GB for new volume (used when creating)'
         required: false
-        default: '20'
+        default: '30'
 
 permissions:
   contents: read
@@ -36,6 +36,7 @@ jobs:
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
+      # these environment values are used by Terraform provider and backend steps
       TF_VAR_tf_state_bucket: ${{ secrets.TF_STATE_BUCKET }}
       TF_VAR_os_namespace: ${{ secrets.OS_NAMESPACE }}
       TF_VAR_region: ${{ secrets.OCI_REGION }}
@@ -43,14 +44,18 @@ jobs:
       - name: Guard required secrets (explicit checks)
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ] || \
-             [ -z "${{ secrets.OCI_USER_OCID }}" ] || \
-             [ -z "${{ secrets.OCI_FINGERPRINT }}" ] || \
-             [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ] || \
-             [ -z "${{ secrets.OCI_REGION }}" ] || \
-             [ -z "${{ secrets.TF_STATE_BUCKET }}" ] || \
-             [ -z "${{ secrets.OS_NAMESPACE }}" ]; then
-            echo "::error::One or more required secrets are missing (OCI_TENANCY_OCID, OCI_USER_OCID, OCI_FINGERPRINT, OCI_PRIVATE_KEY_PEM, OCI_REGION, TF_STATE_BUCKET, OS_NAMESPACE)."
+          missing=0
+          # essential secrets required for provider + backend
+          if [ -z "${{ secrets.OCI_TENANCY_OCID }}" ]; then echo "::error::Missing secret OCI_TENANCY_OCID"; missing=$((missing+1)); fi
+          if [ -z "${{ secrets.OCI_USER_OCID }}" ];        then echo "::error::Missing secret OCI_USER_OCID"; missing=$((missing+1)); fi
+          if [ -z "${{ secrets.OCI_FINGERPRINT }}" ];      then echo "::error::Missing secret OCI_FINGERPRINT"; missing=$((missing+1)); fi
+          if [ -z "${{ secrets.OCI_PRIVATE_KEY_PEM }}" ];  then echo "::error::Missing secret OCI_PRIVATE_KEY_PEM"; missing=$((missing+1)); fi
+          if [ -z "${{ secrets.OCI_REGION }}" ];           then echo "::error::Missing secret OCI_REGION"; missing=$((missing+1)); fi
+          if [ -z "${{ secrets.TF_STATE_BUCKET }}" ];      then echo "::error::Missing secret TF_STATE_BUCKET"; missing=$((missing+1)); fi
+          if [ -z "${{ secrets.OS_NAMESPACE }}" ];         then echo "::error::Missing secret OS_NAMESPACE"; missing=$((missing+1)); fi
+
+          if [ "$missing" -gt 0 ]; then
+            echo "One or more required secrets are missing. Aborting."
             exit 1
           fi
 
@@ -81,25 +86,48 @@ jobs:
           key_file=$HOME/.oci/oci_api_key.pem
           CFG
 
-      - name: Terraform Init (storage backend)
+      - name: Determine backend key and import OCID (if present)
         working-directory: infra/storage
         run: |
+          set -euo pipefail
+
+          # decide backend state key: input -> fall back to default 'states/storage.state'
+          STORAGE_STATE_KEY="${{ github.event.inputs.storage_state_key }}"
+          if [ -z "$STORAGE_STATE_KEY" ]; then
+            STORAGE_STATE_KEY="states/storage.state"
+          fi
+          echo "Using storage state key: $STORAGE_STATE_KEY"
+
+          # decide which OCID to import: prefer explicit input, else repository secret DB_STORAGE_OCID (may be empty)
+          IMPORT_OCID="${{ github.event.inputs.import_ocid }}"
+          if [ -z "$IMPORT_OCID" ]; then
+            IMPORT_OCID="${{ secrets.DB_STORAGE_OCID }}" || true
+          fi
+
+          # Initialize the backend
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ github.event.inputs.storage_state_key }}" \
+            -backend-config="key=${STORAGE_STATE_KEY}" \
             -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
             -backend-config="region=${{ secrets.OCI_REGION }}" \
             -reconfigure
 
-      - name: Optional Import (if import_ocid provided)
-        working-directory: infra/storage
-        run: |
-          set -euo pipefail
-          if [ -n "${{ github.event.inputs.import_ocid }}" ]; then
-            echo "Importing existing volume OCID: ${{ github.event.inputs.import_ocid }}"
-            terraform import -lock=false oci_core_volume.db_volume "${{ github.event.inputs.import_ocid }}" || true
+          # If an OCID is available, try to import it into state unless it's already present
+          if [ -n "${IMPORT_OCID:-}" ]; then
+            echo "Found OCID to import: $IMPORT_OCID"
+
+            # capture list of tracked resources (if any)
+            state_list=$(terraform state list 2>/dev/null || true)
+            if echo "$state_list" | grep -q -E '^oci_core_volume\.db_volume$'; then
+              echo "Resource oci_core_volume.db_volume already present in state — skipping import."
+            else
+              echo "Importing volume into state..."
+              terraform import -lock=false oci_core_volume.db_volume "$IMPORT_OCID" || {
+                echo "::warning::Import failed or resource may already exist in state; continuing"
+              }
+            fi
           else
-            echo "No import_ocid provided → plan may create the resource if defined in code."
+            echo "No OCID provided (input or DB_STORAGE_OCID secret). Plan will create resource if code requests it."
           fi
 
       - name: Terraform Validate
@@ -109,18 +137,17 @@ jobs:
       - name: Terraform Plan (storage)
         working-directory: infra/storage
         env:
+          # per-invocation vars: fall back to repo secrets if inputs empty
           TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
           TF_VAR_compartment_id: ${{ github.event.inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
           TF_VAR_volume_size_gb: ${{ github.event.inputs.volume_size_gb }}
-        run: |
-          terraform plan -out=tfplan -input=false
+        run: terraform plan -out=tfplan -input=false
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: storage-tfplan
-          path: |
-            infra/storage/tfplan
+          path: infra/storage/tfplan
           if-no-files-found: ignore
 
       - name: Terraform Apply (storage)
@@ -130,6 +157,7 @@ jobs:
           TF_VAR_compartment_id: ${{ github.event.inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
           TF_VAR_volume_size_gb: ${{ github.event.inputs.volume_size_gb }}
         run: |
+          set -euo pipefail
           if [ -f tfplan ]; then
             terraform apply -auto-approve tfplan
           else
@@ -140,7 +168,8 @@ jobs:
         working-directory: infra/storage
         run: |
           set -euo pipefail
-          terraform output -raw db_storage_ocid || true
+          # print output if available
+          terraform output -raw db_storage_ocid || echo "db_storage_ocid not set in outputs"
 
       - name: Reminder to update repository secret
         run: |
