@@ -8,7 +8,7 @@ data "oci_objectstorage_object" "storage_state" {
 
 
 # Query the existing volume in OCI by OCID retrieved above
-data "oci_core_volume" "db_volume" {
+data "oci_core_volume" "db_volume" {    
   volume_id = local.db_storage_ocid
 }
 
