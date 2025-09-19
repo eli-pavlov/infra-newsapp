@@ -8,11 +8,11 @@ on:
       main_state_key:
         description: 'The key for the main stack state file (e.g., prod.tfstate)'
         required: true
-        default: 'prod.tfstate'
+        default: 'newsapp.tfstate'
       storage_state_key:
         description: 'The key for the NEW storage state file (e.g., storage.state)'
         required: true
-        default: 'storage.state'
+        default: 'storage.tfstate'
 
 jobs:
   migrate-state:
