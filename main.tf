@@ -56,6 +56,7 @@ module "cluster" {
   bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
   cloudflare_api_token = var.cloudflare_api_token
+  db_storage_ocid = local.db_storage_ocid 
   # AWS S3 for object storage
   aws_access_key_id     = var.aws_access_key_id
   aws_secret_access_key = var.aws_secret_access_key

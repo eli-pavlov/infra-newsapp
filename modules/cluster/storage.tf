@@ -7,6 +7,6 @@
 resource "oci_core_volume_attachment" "db_volume_attachment" {
   attachment_type = "paravirtualized"
   instance_id     = oci_core_instance.db_worker.id
-  volume_id   = data.oci_core_volume.db_volume.id
+  volume_id       = var.db_storage_ocid 
   display_name    = "${var.cluster_name}-db-attachment"
 }

@@ -196,3 +196,10 @@ variable "sealed_secrets_key" {
   type        = string
   sensitive   = true
 }
+
+variable "db_storage_ocid" {
+  description = "OCID of the DB block storage volume (provided by root via remote state or secret fallback)."
+  type        = string
+  sensitive   = false
+  default     = ""
+}
