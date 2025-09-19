@@ -39,6 +39,31 @@ jobs:
         with:
           terraform_version: 1.13.1 # Using a modern version for state commands
 
+      - name: Configure OCI Credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.oci"
+          umask 077
+
+          # Write private key; strip any CRLFs that may be present from Windows-style newlines
+          printf '%s\n' "${{ secrets.OCI_PRIVATE_KEY_PEM }}" | sed 's/\r$//' > "$HOME/.oci/oci_api_key.pem"
+          chmod 600 "$HOME/.oci/oci_api_key.pem"
+
+          # Write OCI config file that points at the key file
+          cat > "$HOME/.oci/config" <<CFG
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=$HOME/.oci/oci_api_key.pem
+          CFG
+
+                    echo "✅ OCI config and key written to $HOME/.oci (permissions 600)."
+
+
+
       # --- Part 1: Remove the volume from the MAIN state file ---
       - name: Init Terraform for MAIN stack
         working-directory: ./  # Assuming main.tf is in the root
