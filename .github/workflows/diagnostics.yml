@@ -28,7 +28,7 @@ jobs:
       OS_NAMESPACE:               ${{ secrets.OS_NAMESPACE }}
       T_SEALED_SECRETS_CERT:      ${{ secrets.SEALED_SECRETS_CERT }}
       T_SEALED_SECRETS_KEY:       ${{ secrets.SEALED_SECRETS_KEY }}
-      
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -170,14 +170,13 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ env.TF_STATE_BUCKET }}
           OS_NAMESPACE: ${{ env.OS_NAMESPACE }}
-          # keep secrets from environment - they are already declared at job level
           T_SEALED_SECRETS_CERT: ${{ env.T_SEALED_SECRETS_CERT }}
           T_SEALED_SECRETS_KEY:  ${{ env.T_SEALED_SECRETS_KEY }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           echo "### Decoding sealed-secrets PEMs into secure temp files (no printing). ###"
 
-          # Basic checks
           if [ -z "${T_SEALED_SECRETS_CERT:-}" ] || [ -z "${T_SEALED_SECRETS_KEY:-}" ]; then
             echo "Skipping: T_SEALED_SECRETS_CERT or T_SEALED_SECRETS_KEY not set." >&2
             exit 0
@@ -210,10 +209,9 @@ jobs:
             PY
           fi
 
-          # Restrict permissions
           chmod 600 "$KEY_PATH" "$CRT_PATH"
 
-          # (Optional) quick validation: ensure cert is parseable
+          # optional parse check
           if command -v openssl >/dev/null 2>&1; then
             if ! openssl x509 -in "$CRT_PATH" -noout >/dev/null 2>&1; then
               echo "ERROR: Decoded certificate failed OpenSSL parse check." >&2
@@ -222,8 +220,7 @@ jobs:
             echo "Certificate parse check OK."
           fi
 
-          # Upload both objects to the OCI bucket (names include run id for traceability)
-          RUN_ID="${{ github.run_id }}"
+          # upload
           OBJ_KEY_NAME="sealed-secrets-${RUN_ID}.key.pem"
           OBJ_CRT_NAME="sealed-secrets-${RUN_ID}.crt.pem"
 
@@ -233,12 +230,12 @@ jobs:
           echo "Uploading sealed-secrets cert -> oci://${TF_STATE_BUCKET}/${OBJ_CRT_NAME} (namespace ${OS_NAMESPACE})"
           oci os object put --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --file "$CRT_PATH" --force >/dev/null
 
-          # verify objects exist (show object names and etags only)
           echo "Verifying uploaded objects..."
           oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_KEY_NAME}" --query '{name:name,etag:etag}' --raw-output || true
           oci os object get --bucket-name "${TF_STATE_BUCKET}" --namespace "${OS_NAMESPACE}" --name "${OBJ_CRT_NAME}" --query '{name:name,etag:etag}' --raw-output || true
 
           echo "✅ Sealed-secrets PEMs decoded and uploaded (temporary files removed)."
+
 
       - name: 5. Check Terraform Configuration
         uses: hashicorp/setup-terraform@v3
