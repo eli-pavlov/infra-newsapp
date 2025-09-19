@@ -45,6 +45,7 @@ jobs:
       TF_VAR_storage_type:          ${{ secrets.STORAGE_TYPE }}
       TF_VAR_sealed_secrets_cert:   ${{ secrets.SEALED_SECRETS_CERT }}
       TF_VAR_sealed_secrets_key:    ${{ secrets.SEALED_SECRETS_KEY }}
+      TF_VAR_db_storage_ocid:     ${{ secrets.DB_STORAGE_OCID }}   
 
     steps:
       - name: Guard required secrets (including TF_STATE_KEY)

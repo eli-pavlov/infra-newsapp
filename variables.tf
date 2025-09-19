@@ -141,3 +141,16 @@ variable "sealed_secrets_key" {
   type        = string
   sensitive   = true
 }
+
+variable "storage_state_key" {
+  description = "Path/key (inside the bucket) for the storage Terraform state file (e.g. states/storage.state)."
+  type        = string
+  default     = "storage.state"
+  sensitive   = false
+}
+
+variable "db_storage_ocid" {
+  description = "OCID of the DB block storage (optional fallback). Prefer reading from storage.state outputs."
+  type        = string
+  sensitive   = false
+}

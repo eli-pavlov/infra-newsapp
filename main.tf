@@ -1,3 +1,31 @@
+
+# Read storage.state (the dedicated storage state file) from OCI Object Storage
+data "oci_objectstorage_object" "storage_state" {
+  namespace = var.os_namespace
+  bucket    = var.tf_state_bucket
+  name      = var.storage_state_key
+}
+
+
+# Query the existing volume in OCI by OCID retrieved above
+data "oci_core_volume" "db_volume" {
+  id = local.db_storage_ocid
+}
+
+
+locals {
+  # State file is JSON; decode it. Use trimspace to be robust.
+  storage_state_json = try(jsondecode(trimspace(data.oci_objectstorage_object.storage_state.content)), {})
+
+  # Extract db_storage_ocid from outputs if present. This matches typical terraform state structure:
+  # { "outputs": { "db_storage_ocid": { "value": "ocid1.volume..." } } }
+  db_storage_ocid_from_state = try(local.storage_state_json.outputs.db_storage_ocid.value, "")
+
+  # Final OCID used by the stack: prefer remote-state output, else fall back to explicit var/db secret
+  db_storage_ocid = length(local.db_storage_ocid_from_state) > 0 ? local.db_storage_ocid_from_state : var.db_storage_ocid
+}
+
+
 data "oci_objectstorage_object" "ssh_public_key" {
   namespace = var.os_namespace
   bucket    = var.tf_state_bucket
