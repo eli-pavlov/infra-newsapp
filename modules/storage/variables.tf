@@ -90,3 +90,8 @@ variable "db_instance_ocid" {
   type        = string
   sensitive   = false
 }
+
+variable "compartment_ocid" {
+  description = "The OCID of the compartment to deploy resources into."
+  type        = string
+}
