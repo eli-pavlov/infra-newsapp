@@ -177,9 +177,23 @@ bootstrap_argo_cd_instance() {
     /usr/local/bin/kubectl wait --for=condition=Available -n argocd deployment/argocd-server --timeout=5m
 }
 
-
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  # 1) Add the sealed-secrets chart repo and fetch the chart
+  helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+  helm repo update
+
+  # 2) Pull the exact chart version used by your Argo app and untar locally
+  helm pull sealed-secrets/sealed-secrets --version 2.17.6 --untar --untardir /tmp
+
+  # 3) Apply only the CRDs (this is safe to do before the controller/helm release)
+  kubectl apply -f /tmp/sealed-secrets/crds
+
+  # verify CRD presence
+  kubectl get crd | grep -i sealed
+  # eg: sealedsecrets.bitnami.com  <something>
+
+  
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
 
