@@ -182,24 +182,28 @@ bootstrap_argo_cd_instance() {
     /usr/local/bin/kubectl wait --for=condition=Available -n argocd deployment/argocd-server --timeout=5m
 }
 
+
 generate_secrets_and_credentials() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
-  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "" )
+
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "")
   if [ -n "$ARGO_PASSWORD" ]; then
     ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
   else
     ARGO_PASSWORD="(unknown)"
   fi
+
   DB_PASSWORD=$(python3 - <<'PY'
 import secrets,string
 print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
 PY
 )
+
   # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
   cat << EOF > /home/opc/credentials.txt
-  # --- Argo CD Admin Credentials ---
+# --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
 # --- PostgreSQL Database Credentials ---
@@ -209,81 +213,75 @@ EOF
   chmod 600 /home/opc/credentials.txt
   echo "Credentials saved to /home/opc/credentials.txt"
 
-for ns in default development; do
-  # create namespace if missing (idempotent)
-  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - || true
+  for ns in default development; do
+    # create namespace if missing (idempotent)
+    kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - || true
 
-  # 1) postgres credentials (username + runtime-generated password)
-  kubectl -n "$ns" create secret generic postgres-credentials \
-    --from-literal=POSTGRES_USER="${T_DB_USER}" \
-    --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-    --dry-run=client -o yaml | kubectl apply -f - || true
+    # 1) postgres credentials (username + runtime-generated password)
+    kubectl -n "$ns" create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER="${T_DB_USER}" \
+      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+      --dry-run=client -o yaml | kubectl apply -f - || true
 
-  # 2) aws credentials for S3 storage access
-  kubectl -n "$ns" create secret generic aws-access-key-id \
-    --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
-    --dry-run=client -o yaml | kubectl apply -f - || true
+    # 2) aws credentials for S3 storage access
+    kubectl -n "$ns" create secret generic aws-access-key-id \
+      --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
+      --dry-run=client -o yaml | kubectl apply -f - || true
 
-  kubectl -n "$ns" create secret generic aws-secret-access-key \
-    --from-literal=AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}" \
-    --dry-run=client -o yaml | kubectl apply -f - || true  
-  
-  kubectl -n "$ns" create secret generic aws-region \
-    --from-literal=AWS_REGION="${T_AWS_REGION}" \
-    --dry-run=client -o yaml | kubectl apply -f - || true
-  
-  kubectl -n "$ns" create secret generic aws-bucket \
-    --from-literal=AWS_BUCKET="${T_AWS_BUCKET}" \
-    --dry-run=client -o yaml | kubectl apply -f - || true
+    kubectl -n "$ns" create secret generic aws-secret-access-key \
+      --from-literal=AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}" \
+      --dry-run=client -o yaml | kubectl apply -f - || true
 
-  kubectl -n "$ns" create secret generic storage-type \
-    --from-literal=STORAGE_TYPE="${T_STORAGE_TYPE}" \
-    --dry-run=client -o yaml | kubectl apply -f - || true
-done
+    kubectl -n "$ns" create secret generic aws-region \
+      --from-literal=AWS_REGION="${T_AWS_REGION}" \
+      --dry-run=client -o yaml | kubectl apply -f - || true
 
-# Create/update sealed-secrets TLS secret in kube-system
-if [ -z "${T_SEALED_SECRETS_CERT}" ] || [ -z "${T_SEALED_SECRETS_KEY}" ]; then
-  echo "ERROR: T_SEALED_SECRETS_CERT and T_SEALED_SECRETS_KEY must be set." >&2
-  exit 2
-fi
+    kubectl -n "$ns" create secret generic aws-bucket \
+      --from-literal=AWS_BUCKET="${T_AWS_BUCKET}" \
+      --dry-run=client -o yaml | kubectl apply -f - || true
 
-TMPDIR=$(mktemp -d /tmp/sealed-secret.XXXXXX) || {
-  echo "ERROR: failed to create temp dir" >&2
-  exit 4
-}
-CRT_PATH="$TMPDIR/sealed-secrets.crt"
-KEY_PATH="$TMPDIR/sealed-secrets.key"
+    kubectl -n "$ns" create secret generic storage-type \
+      --from-literal=STORAGE_TYPE="${T_STORAGE_TYPE}" \
+      --dry-run=client -o yaml | kubectl apply -f - || true
+  done
 
-# decode cert/key (prefer base64 -d, fallback to python)
-if command -v base64 >/dev/null 2>&1 && base64 --help 2>&1 | grep -q -E '(-d|--decode)'; then
-  printf '%s' "${T_SEALED_SECRETS_CERT}" | base64 --decode > "$CRT_PATH" || { echo "ERROR: decode cert failed" >&2; rm -rf "$TMPDIR"; exit 5; }
-  printf '%s' "${T_SEALED_SECRETS_KEY}"  | base64 --decode > "$KEY_PATH" || { echo "ERROR: decode key failed" >&2; rm -rf "$TMPDIR"; exit 6; }
-else
-  # python fallback (reads the base64 text as a literal argument substituted by templatefile)
-  python3 - <<PY > /dev/null
-import sys, base64
-crt = base64.b64decode(sys.argv[1].encode())
-key = base64.b64decode(sys.argv[2].encode())
-open(sys.argv[3],'wb').write(crt)
-open(sys.argv[4],'wb').write(key)
-PY "${T_SEALED_SECRETS_CERT}" "${T_SEALED_SECRETS_KEY}" "$CRT_PATH" "$KEY_PATH" || { echo "ERROR: python decode failed" >&2; rm -rf "$TMPDIR"; exit 7; }
-fi
+  # Create/update sealed-secrets TLS secret in kube-system
+  if [ -z "${T_SEALED_SECRETS_CERT}" ] || [ -z "${T_SEALED_SECRETS_KEY}" ]; then
+    echo "ERROR: T_SEALED_SECRETS_CERT and T_SEALED_SECRETS_KEY must be set." >&2
+    exit 2
+  fi
 
-chmod 600 "$CRT_PATH" "$KEY_PATH" || true
+  TMPDIR=$(mktemp -d /tmp/sealed-secret.XXXXXX) || {
+    echo "ERROR: failed to create temp dir" >&2
+    exit 4
+  }
+  CRT_PATH="$TMPDIR/sealed-secrets.crt"
+  KEY_PATH="$TMPDIR/sealed-secrets.key"
 
-# Apply the TLS secret (dry-run -> apply) and mark the key active
-kubectl -n kube-system create secret tls sealed-secrets-key \
-  --cert="$CRT_PATH" --key="$KEY_PATH" \
-  --dry-run=client -o yaml | kubectl apply -f - || { echo "ERROR: kubectl apply failed" >&2; rm -rf "$TMPDIR"; exit 8; }
+  # decode cert/key (prefer base64 --decode, fallback to python -c)
+  if command -v base64 >/dev/null 2>&1 && base64 --help 2>&1 | grep -q -E '(-d|--decode)'; then
+    printf '%s' "${T_SEALED_SECRETS_CERT}" | base64 --decode > "$CRT_PATH" || { echo "ERROR: decode cert failed" >&2; rm -rf "$TMPDIR"; exit 5; }
+    printf '%s' "${T_SEALED_SECRETS_KEY}"  | base64 --decode > "$KEY_PATH" || { echo "ERROR: decode key failed" >&2; rm -rf "$TMPDIR"; exit 6; }
+  else
+    python3 -c 'import sys,base64; open(sys.argv[1],"wb").write(base64.b64decode(sys.argv[2].encode())); open(sys.argv[3],"wb").write(base64.b64decode(sys.argv[4].encode()))' \
+      "$CRT_PATH" "${T_SEALED_SECRETS_CERT}" "$KEY_PATH" "${T_SEALED_SECRETS_KEY}" \
+      || { echo "ERROR: python decode failed" >&2; rm -rf "$TMPDIR"; exit 7; }
+  fi
 
-kubectl -n kube-system label secret sealed-secrets-key \
-  sealedsecrets.bitnami.com/sealed-secrets-key=active --overwrite || true
+  chmod 600 "$CRT_PATH" "$KEY_PATH" || true
 
-echo "Applied sealed-secrets key in kube-system."
+  # Apply the TLS secret (dry-run -> apply) and mark the key active
+  kubectl -n kube-system create secret tls sealed-secrets-key \
+    --cert="$CRT_PATH" --key="$KEY_PATH" \
+    --dry-run=client -o yaml | kubectl apply -f - || { echo "ERROR: kubectl apply failed" >&2; rm -rf "$TMPDIR"; exit 8; }
 
-# simple cleanup
-rm -rf "$TMPDIR" || true
+  kubectl -n kube-system label secret sealed-secrets-key \
+    sealedsecrets.bitnami.com/sealed-secrets-key=active --overwrite || true
 
+  echo "Applied sealed-secrets key in kube-system."
+
+  # simple cleanup
+  rm -rf "$TMPDIR" || true
 
   # backend DB connection secrets expected by charts
   DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
@@ -304,6 +302,7 @@ rm -rf "$TMPDIR" || true
     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
   fi
 }
+
 
 
 bootstrap_argocd_apps() {
