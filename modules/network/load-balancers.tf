@@ -82,14 +82,6 @@ resource "oci_network_load_balancer_backend_set" "public_nlb_backends_postgres" 
   }
 }
 
-resource "oci_network_load_balancer_listener" "public_nlb_listener_postgres" {
-  name                     = "k8s_postgres_listener"
-  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.public_nlb.id
-  default_backend_set_name = oci_network_load_balancer_backend_set.public_nlb_backends_postgres.name
-  port                     = 5432
-  protocol                 = "TCP"
-}
-
 resource "oci_network_load_balancer_backend_set" "public_nlb_backends_postgres" {
   name                       = "k8s_postgres_backend_set" # Generic name
   network_load_balancer_id = oci_network_load_balancer_network_load_balancer.public_nlb.id
