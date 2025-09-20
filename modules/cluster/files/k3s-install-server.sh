@@ -241,9 +241,9 @@ for ns in default development; do
     --dry-run=client -o yaml | kubectl apply -f - || true
 done
 
-
+# Create/update sealed-secrets TLS secret in kube-system
 if [ -z "${T_SEALED_SECRETS_CERT}" ] || [ -z "${T_SEALED_SECRETS_KEY}" ]; then
-  echo "ERROR: T_SEALED_SECRETS_CERT and T_SEALED_SECRETS_KEY environment variables must be set." >&2
+  echo "ERROR: T_SEALED_SECRETS_CERT and T_SEALED_SECRETS_KEY must be set." >&2
   exit 2
 fi
 
@@ -252,74 +252,42 @@ if ! command -v kubectl >/dev/null 2>&1; then
   exit 3
 fi
 
-# Create secure temp dir
-TMPDIR="$(mktemp -d /tmp/sealed-secret.XXXXXX)"
-cleanup() {
-  rc=$?
-
-  # Unset sensitive envs (best-effort)
-  unset T_SEALED_SECRETS_CERT T_SEALED_SECRETS_KEY || true
-
-  # Only attempt cleanup if TMPDIR exists and is a directory
-  if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then
-    # Use nullglob to avoid literal '*' when dir is empty
-    if shopt -s nullglob 2>/dev/null; then
-      nullglob_supported=1
-    else
-      nullglob_supported=0
-    fi
-
-    if command -v shred >/dev/null 2>&1; then
-      # iterate files including dotfiles (.[!.]* and ..?* avoid . and ..)
-      for f in "$TMPDIR"/* "$TMPDIR"/.[!.]* "$TMPDIR"/..?*; do
-        [ -e "$f" ] || continue
-        shred -u "$f" 2>/dev/null || rm -f "$f" 2>/dev/null || true
-      done
-    else
-      # fallback: try removal, ignore errors
-      rm -f "$TMPDIR"/* "$TMPDIR"/.[!.]* "$TMPDIR"/..?* 2>/dev/null || true
-    fi
-
-    # restore shell option if we changed it (no-op if unsupported)
-    if [ "${nullglob_supported:-0}" -eq 1 ]; then
-      shopt -u nullglob 2>/dev/null || true
-    fi
-
-    # finally remove tempdir (ignore errors)
-    rm -rf "$TMPDIR" 2>/dev/null || true
-  fi
-
-  # Preserve the original exit code (or force 0 if you prefer success)
-  exit $rc
+TMPDIR=$(mktemp -d /tmp/sealed-secret.XXXXXX) || {
+  echo "ERROR: failed to create temp dir" >&2
+  exit 4
 }
-trap cleanup EXIT
+CRT_PATH="$TMPDIR/sealed-secrets.crt"
+KEY_PATH="$TMPDIR/sealed-secrets.key"
 
-CRT_PATH="$${TMPDIR}/sealed-secrets.crt"
-KEY_PATH="$${TMPDIR}/sealed-secrets.key"
+# decode cert/key (prefer base64 -d, fallback to python)
+if command -v base64 >/dev/null 2>&1 && base64 --help 2>&1 | grep -q -E '(-d|--decode)'; then
+  printf '%s' "${T_SEALED_SECRETS_CERT}" | base64 --decode > "$CRT_PATH" || { echo "ERROR: decode cert failed" >&2; rm -rf "$TMPDIR"; exit 5; }
+  printf '%s' "${T_SEALED_SECRETS_KEY}"  | base64 --decode > "$KEY_PATH" || { echo "ERROR: decode key failed" >&2; rm -rf "$TMPDIR"; exit 6; }
+else
+  # python fallback (reads the base64 text as a literal argument substituted by templatefile)
+  python3 - <<PY > /dev/null
+import sys, base64
+crt = base64.b64decode(sys.argv[1].encode())
+key = base64.b64decode(sys.argv[2].encode())
+open(sys.argv[3],'wb').write(crt)
+open(sys.argv[4],'wb').write(key)
+PY "${T_SEALED_SECRETS_CERT}" "${T_SEALED_SECRETS_KEY}" "$CRT_PATH" "$KEY_PATH" || { echo "ERROR: python decode failed" >&2; rm -rf "$TMPDIR"; exit 7; }
+fi
 
-# Decode the base64 env vars into files (Python used for portability)
-python - "$CRT_PATH" "$KEY_PATH" <<'PY'
-import os, base64, sys
-crt_b64 = os.environ.get('T_SEALED_SECRETS_CERT')
-key_b64 = os.environ.get('T_SEALED_SECRETS_KEY')
-if not crt_b64 or not key_b64:
-    sys.exit(1)
-open(sys.argv[1], 'wb').write(base64.b64decode(crt_b64))
-open(sys.argv[2], 'wb').write(base64.b64decode(key_b64))
-PY
+chmod 600 "$CRT_PATH" "$KEY_PATH" || true
 
-# Lock down permissions
-chmod 600 "$CRT_PATH" "$KEY_PATH"
-
-# Create/update k8s TLS secret using dry-run -> apply (idempotent and quiet)
+# Apply the TLS secret (dry-run -> apply) and mark the key active
 kubectl -n kube-system create secret tls sealed-secrets-key \
   --cert="$CRT_PATH" --key="$KEY_PATH" \
-  --dry-run=client -o yaml | kubectl apply -f 
+  --dry-run=client -o yaml | kubectl apply -f - || { echo "ERROR: kubectl apply failed" >&2; rm -rf "$TMPDIR"; exit 8; }
 
 kubectl -n kube-system label secret sealed-secrets-key \
-  sealedsecrets.bitnami.com/sealed-secrets-key=active --overwrite
+  sealedsecrets.bitnami.com/sealed-secrets-key=active --overwrite || true
 
-echo "Secret 'sealed-secrets-key' applied to namespace 'kube-system'."
+echo "Applied sealed-secrets key in kube-system."
+
+# simple cleanup
+rm -rf "$TMPDIR" || true
 
 
   # backend DB connection secrets expected by charts
