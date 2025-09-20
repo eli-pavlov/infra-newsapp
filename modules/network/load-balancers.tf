@@ -72,17 +72,6 @@ resource "oci_load_balancer_listener" "private_lb_listener" {
 }
 
 resource "oci_network_load_balancer_backend_set" "public_nlb_backends_postgres" {
-  name                     = "k8s_postgres_backend_set"
-  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.public_nlb.id
-  policy                   = "FIVE_TUPLE"
-  is_preserve_source       = true
-  health_checker {
-    protocol = "TCP"
-    port     = 5432
-  }
-}
-
-resource "oci_network_load_balancer_backend_set" "public_nlb_backends_postgres" {
   name                       = "k8s_postgres_backend_set" # Generic name
   network_load_balancer_id = oci_network_load_balancer_network_load_balancer.public_nlb.id
   policy                     = "FIVE_TUPLE"
