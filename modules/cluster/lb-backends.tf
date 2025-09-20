@@ -40,24 +40,15 @@ resource "oci_network_load_balancer_backend" "https" {
   is_offline               = false
 }
 
-resource "oci_network_load_balancer_backend" "postgres_prod" {
+# This targets the NGINX Ingress NodePort on the application worker nodes.
+resource "oci_network_load_balancer_backend" "postgres_app_workers" {
+  for_each                   = local.app_worker_ips
   network_load_balancer_id = var.public_nlb_id
-  backend_set_name         = var.public_nlb_postgres_backend_set_name
-  name                     = "db-postgres-prod"
-  ip_address               = data.oci_core_vnic.db.private_ip_address
-  port                     = 5432
-  weight                   = 1
-  is_backup                = false
-  is_offline               = false
-}
-
-resource "oci_network_load_balancer_backend" "postgres_dev" {
-  network_load_balancer_id = var.public_nlb_id
-  backend_set_name         = var.public_nlb_postgres_dev_backend_set_name
-  name                     = "db-postgres-dev"
-  ip_address               = data.oci_core_vnic.db.private_ip_address
-  port                     = 5433
-  weight                   = 1
-  is_backup                = false
-  is_offline               = false
+  backend_set_name           = var.public_nlb_postgres_backend_set_name
+  name                       = "app-${each.key}-postgres"
+  ip_address                 = each.value
+  port                       = 30432 # CHANGED: Target the single, consistent NGINX NodePort
+  weight                     = 1
+  is_backup                  = false
+  is_offline                 = false
 }
