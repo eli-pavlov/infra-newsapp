@@ -259,15 +259,19 @@ cleanup() {
   # unset sensitive env vars in this shell
   unset T_SEALED_SECRETS_CERT T_SEALED_SECRETS_KEY || true
 
-  # attempt secure delete of files if shred exists, else fallback to rm
+  # If shred is available, securely shred files; otherwise rm -f
   if command -v shred >/dev/null 2>&1; then
-    for f in "$TMPDIR"/* 2>/dev/null; do
+    for f in "$TMPDIR"/*; do
       [ -e "$f" ] || continue
       shred -u "$f" 2>/dev/null || true
     done
   else
-    rm -f "$TMPDIR"/* 2>/dev/null || true
+    for f in "$TMPDIR"/*; do
+      [ -e "$f" ] || continue
+      rm -f "$f" 2>/dev/null || true
+    done
   fi
+
   rm -rf "$TMPDIR"
   exit $rc
 }
