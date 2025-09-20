@@ -19,11 +19,6 @@ T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
 T_CLOUDFLARE_API_TOKEN="${T_CLOUDFLARE_API_TOKEN}"
-T_AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}"
-T_AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}"
-T_AWS_REGION="${T_AWS_REGION}"
-T_AWS_BUCKET="${T_AWS_BUCKET}"
-T_STORAGE_TYPE="${T_STORAGE_TYPE}"
 T_SEALED_SECRETS_CERT="${T_SEALED_SECRETS_CERT}"
 T_SEALED_SECRETS_KEY="${T_SEALED_SECRETS_KEY}"
 
@@ -201,7 +196,7 @@ print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(
 PY
 )
 
-  # Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
+# Use runtime-expanded variables inside the credentials file (escaped for Terraform templatefile)
   cat << EOF > /home/opc/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
@@ -215,34 +210,13 @@ EOF
 
   for ns in default development; do
     # create namespace if missing (idempotent)
-    kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - || true
+    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
     # 1) postgres credentials (username + runtime-generated password)
-    kubectl -n "$ns" create secret generic postgres-credentials \
+    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
       --from-literal=POSTGRES_USER="${T_DB_USER}" \
       --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-      --dry-run=client -o yaml | kubectl apply -f - || true
-
-    # 2) aws credentials for S3 storage access
-    kubectl -n "$ns" create secret generic aws-access-key-id \
-      --from-literal=AWS_ACCESS_KEY_ID="${T_AWS_ACCESS_KEY_ID}" \
-      --dry-run=client -o yaml | kubectl apply -f - || true
-
-    kubectl -n "$ns" create secret generic aws-secret-access-key \
-      --from-literal=AWS_SECRET_ACCESS_KEY="${T_AWS_SECRET_ACCESS_KEY}" \
-      --dry-run=client -o yaml | kubectl apply -f - || true
-
-    kubectl -n "$ns" create secret generic aws-region \
-      --from-literal=AWS_REGION="${T_AWS_REGION}" \
-      --dry-run=client -o yaml | kubectl apply -f - || true
-
-    kubectl -n "$ns" create secret generic aws-bucket \
-      --from-literal=AWS_BUCKET="${T_AWS_BUCKET}" \
-      --dry-run=client -o yaml | kubectl apply -f - || true
-
-    kubectl -n "$ns" create secret generic storage-type \
-      --from-literal=STORAGE_TYPE="${T_STORAGE_TYPE}" \
-      --dry-run=client -o yaml | kubectl apply -f - || true
+      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
   done
 
   # Create/update sealed-secrets TLS secret in kube-system
@@ -271,11 +245,11 @@ EOF
   chmod 600 "$CRT_PATH" "$KEY_PATH" || true
 
   # Apply the TLS secret (dry-run -> apply) and mark the key active
-  kubectl -n kube-system create secret tls sealed-secrets-key \
+  /usr/local/bin/kubectl -n kube-system create secret tls sealed-secrets-key \
     --cert="$CRT_PATH" --key="$KEY_PATH" \
-    --dry-run=client -o yaml | kubectl apply -f - || { echo "ERROR: kubectl apply failed" >&2; rm -rf "$TMPDIR"; exit 8; }
-
-  kubectl -n kube-system label secret sealed-secrets-key \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || { echo "ERROR: kubectl apply failed" >&2; rm -rf "$TMPDIR"; exit 8; }
+  # Mark key active (ignore failure if label already exists)
+  /usr/local/bin/kubectl -n kube-system label secret sealed-secrets-key \
     sealedsecrets.bitnami.com/sealed-secrets-key=active --overwrite || true
 
   echo "Applied sealed-secrets key in kube-system."
@@ -292,6 +266,7 @@ EOF
   /usr/local/bin/kubectl -n default create secret generic backend-db-connection \
     --from-literal=DB_URI="$${DB_URI_PROD}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
+  # Cloudflare API token secret for cert-manager (if provided)
   if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
     echo "Creating cert-manager Cloudflare API token secret..."
     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
