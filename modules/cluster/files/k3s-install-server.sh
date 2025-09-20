@@ -247,11 +247,6 @@ if [ -z "${T_SEALED_SECRETS_CERT}" ] || [ -z "${T_SEALED_SECRETS_KEY}" ]; then
   exit 2
 fi
 
-if ! command -v kubectl >/dev/null 2>&1; then
-  echo "ERROR: kubectl not found in PATH." >&2
-  exit 3
-fi
-
 TMPDIR=$(mktemp -d /tmp/sealed-secret.XXXXXX) || {
   echo "ERROR: failed to create temp dir" >&2
   exit 4
