@@ -193,7 +193,19 @@ generate_secrets_and_credentials() {
   kubectl get crd | grep -i sealed
   # eg: sealedsecrets.bitnami.com  <something>
 
-  
+  # Fetch the latest sealed-secrets version using GitHub API
+  KUBESEAL_VERSION=$(curl -s https://api.github.com/repos/bitnami-labs/sealed-secrets/tags | jq -r '.[0].name' | cut -c 2-)
+
+  # Check if the version was fetched successfully
+  if [ -z "$KUBESEAL_VERSION" ]; then
+      echo "Failed to fetch the latest KUBESEAL_VERSION"
+      exit 1
+  fi
+  # Download and install kubeseal CLI
+  curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v$${KUBESEAL_VERSION}/kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz"
+  tar -xvzf kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz kubeseal
+  sudo install -m 755 kubeseal /usr/local/bin/kubeseal
+
   sleep 30
   echo "Generating credentials and Kubernetes secrets..."
 
