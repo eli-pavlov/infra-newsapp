@@ -256,23 +256,40 @@ fi
 TMPDIR="$(mktemp -d /tmp/sealed-secret.XXXXXX)"
 cleanup() {
   rc=$?
-  # unset sensitive env vars in this shell
+
+  # Unset sensitive envs (best-effort)
   unset T_SEALED_SECRETS_CERT T_SEALED_SECRETS_KEY || true
 
-  # If shred is available, securely shred files; otherwise rm -f
-  if command -v shred >/dev/null 2>&1; then
-    for f in "$TMPDIR"/*; do
-      [ -e "$f" ] || continue
-      shred -u "$f" 2>/dev/null || true
-    done
-  else
-    for f in "$TMPDIR"/*; do
-      [ -e "$f" ] || continue
-      rm -f "$f" 2>/dev/null || true
-    done
+  # Only attempt cleanup if TMPDIR exists and is a directory
+  if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then
+    # Use nullglob to avoid literal '*' when dir is empty
+    if shopt -s nullglob 2>/dev/null; then
+      nullglob_supported=1
+    else
+      nullglob_supported=0
+    fi
+
+    if command -v shred >/dev/null 2>&1; then
+      # iterate files including dotfiles (.[!.]* and ..?* avoid . and ..)
+      for f in "$TMPDIR"/* "$TMPDIR"/.[!.]* "$TMPDIR"/..?*; do
+        [ -e "$f" ] || continue
+        shred -u "$f" 2>/dev/null || rm -f "$f" 2>/dev/null || true
+      done
+    else
+      # fallback: try removal, ignore errors
+      rm -f "$TMPDIR"/* "$TMPDIR"/.[!.]* "$TMPDIR"/..?* 2>/dev/null || true
+    fi
+
+    # restore shell option if we changed it (no-op if unsupported)
+    if [ "${nullglob_supported:-0}" -eq 1 ]; then
+      shopt -u nullglob 2>/dev/null || true
+    fi
+
+    # finally remove tempdir (ignore errors)
+    rm -rf "$TMPDIR" 2>/dev/null || true
   fi
 
-  rm -rf "$TMPDIR"
+  # Preserve the original exit code (or force 0 if you prefer success)
   exit $rc
 }
 trap cleanup EXIT
