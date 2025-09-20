@@ -1,4 +1,5 @@
-# modules/cluster/bastion.tf
+
+# === Cluster module: bastion host ===
 
 # Bastion compute instance
 resource "oci_core_instance" "bastion" {

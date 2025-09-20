@@ -1,3 +1,5 @@
+
+# === Provider configuration ===
 terraform {
   required_providers {
     oci = {
@@ -19,6 +21,7 @@ terraform {
   }
 }
 
+# OCI provider
 provider "oci" {
   tenancy_ocid = var.tenancy_ocid
   user_ocid    = var.user_ocid
@@ -27,6 +30,7 @@ provider "oci" {
   private_key  = var.private_key_pem
 }
 
+# Cloudflare provider
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }

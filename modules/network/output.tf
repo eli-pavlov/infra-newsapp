@@ -1,4 +1,5 @@
-# modules/network/output.tf
+
+# === Network module outputs ===
 
 output "public_subnet_id" {
   value = oci_core_subnet.public.id

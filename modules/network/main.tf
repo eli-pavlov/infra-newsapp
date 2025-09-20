@@ -1,3 +1,5 @@
+
+# === Virtual Cloud Network (VCN) ===
 resource "oci_core_vcn" "main" {
   cidr_block     = var.vcn_cidr
   compartment_id = var.compartment_ocid
@@ -5,6 +7,8 @@ resource "oci_core_vcn" "main" {
   dns_label      = "k8svcn"
 }
 
+
+# Public subnet for bastion and load balancers
 resource "oci_core_subnet" "public" {
   cidr_block        = var.public_subnet_cidr
   compartment_id    = var.compartment_ocid
@@ -15,6 +19,8 @@ resource "oci_core_subnet" "public" {
   vcn_id            = oci_core_vcn.main.id
 }
 
+
+# Private subnet for Kubernetes nodes
 resource "oci_core_subnet" "private" {
   cidr_block                 = var.private_subnet_cidr
   compartment_id             = var.compartment_ocid
@@ -26,18 +32,24 @@ resource "oci_core_subnet" "private" {
   vcn_id                     = oci_core_vcn.main.id
 }
 
+
+# Internet gateway for public subnet
 resource "oci_core_internet_gateway" "main" {
   compartment_id = var.compartment_ocid
   display_name   = "k8s-igw"
   vcn_id         = oci_core_vcn.main.id
 }
 
+
+# NAT gateway for private subnet egress
 resource "oci_core_nat_gateway" "main" {
   compartment_id = var.compartment_ocid
   display_name   = "k8s-nat-gw"
   vcn_id         = oci_core_vcn.main.id
 }
 
+
+# Default route table for public subnet
 resource "oci_core_default_route_table" "public" {
   manage_default_resource_id = oci_core_vcn.main.default_route_table_id
   route_rules {
@@ -47,6 +59,8 @@ resource "oci_core_default_route_table" "public" {
   }
 }
 
+
+# Private route table for private subnet egress via NAT
 resource "oci_core_route_table" "private" {
   compartment_id = var.compartment_ocid
   vcn_id         = oci_core_vcn.main.id

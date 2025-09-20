@@ -1,4 +1,5 @@
-# variables.tf
+
+# === Root variables ===
 
 variable "tenancy_ocid" {
   description = "The OCID of the tenancy."

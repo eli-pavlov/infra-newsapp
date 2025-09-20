@@ -1,4 +1,5 @@
-# modules/cluster/storage.tf  (AFTER)
+
+# === Cluster module: storage attachment ===
 # The block storage resource is now managed by infra/storage (separate workspace & state).
 # This module no longer creates or destroys the volume. The stack reads the existing volume
 # by OCID using data.oci_core_volume.db_volume (defined in root main.tf).

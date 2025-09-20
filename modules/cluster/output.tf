@@ -1,4 +1,5 @@
-# modules/cluster/output.tf
+
+# === Cluster module outputs ===
 output "control_plane_private_ip" {
   description = "Private IP of the control-plane node."
   value       = data.oci_core_vnic.cp.private_ip_address

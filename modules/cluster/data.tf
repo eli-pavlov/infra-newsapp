@@ -1,10 +1,12 @@
+
+# === Cluster module: data sources and randoms ===
 # K3s token for cluster join authentication
 resource "random_password" "k3s_token" {
   length  = 55
   special = false
 }
 
-# =================== CONTROL-PLANE cloud-init ===================
+# CONTROL-PLANE cloud-init config
 data "cloudinit_config" "k3s_server_tpl" {
   gzip            = true
   base64_encode   = true
@@ -34,8 +36,7 @@ data "cloudinit_config" "k3s_server_tpl" {
   }
 }
 
-# =================== VNIC lookups for instance IPs ===================
-
+# VNIC lookups for instance IPs
 # Control plane
 data "oci_core_vnic_attachments" "cp" {
   compartment_id = var.compartment_ocid

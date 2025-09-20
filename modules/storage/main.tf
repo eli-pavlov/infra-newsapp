@@ -1,3 +1,5 @@
+
+# === Storage module main ===
 terraform {
   required_providers {
     oci = {
@@ -7,6 +9,7 @@ terraform {
   }
 }
 
+# Block storage volume for database
 resource "oci_core_volume" "db_volume" {
   availability_domain = var.availability_domain
   compartment_id      = var.compartment_ocid

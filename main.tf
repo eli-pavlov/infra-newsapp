@@ -1,3 +1,6 @@
+
+# === Local values ===
+# db_storage_ocid: OCID for the database storage volume, from remote state or variable fallback
 locals {
   db_storage_ocid = coalesce(
     try(data.terraform_remote_state.storage.outputs.db_storage_ocid, null),
@@ -5,6 +8,8 @@ locals {
   )
 }
 
+
+# Validation: fail if db_storage_ocid is not set
 resource "null_resource" "validate_db_storage_ocid" {
   count = local.db_storage_ocid == null || local.db_storage_ocid == "" ? 1 : 0
   provisioner "local-exec" {
@@ -13,6 +18,8 @@ resource "null_resource" "validate_db_storage_ocid" {
 }
 
 
+
+# --- Remote state and data sources ---
 # Read the storage state file using the dedicated data source
 data "terraform_remote_state" "storage" {
   backend = "oci"
@@ -23,17 +30,22 @@ data "terraform_remote_state" "storage" {
     region    = var.region
   }
 }
+
 # Query the existing volume in OCI by OCID retrieved above
 data "oci_core_volume" "db_volume" {
   volume_id = local.db_storage_ocid
 }
 
 
+
+# Fetch SSH public key from object storage
 data "oci_objectstorage_object" "ssh_public_key" {
   namespace = var.os_namespace
   bucket    = var.tf_state_bucket
   object    = "oracle.key.pub"
 }
+
+# --- Network module ---
 module "network" {
   source           = "./modules/network"
   compartment_ocid = var.compartment_ocid
@@ -42,9 +54,10 @@ module "network" {
   cloudflare_cidrs = var.cloudflare_cidrs
   cloudflare_zone_id = var.cloudflare_zone_id
   argocd_host        = var.argocd_host
-  
 }
 
+  
+# --- Cluster module ---
 module "cluster" {
   source = "./modules/cluster"
   region                = var.region
@@ -55,8 +68,8 @@ module "cluster" {
   os_image_id           = var.os_image_id
   bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
-  cloudflare_api_token = var.cloudflare_api_token
-  db_storage_ocid = local.db_storage_ocid 
+  cloudflare_api_token  = var.cloudflare_api_token
+  db_storage_ocid       = local.db_storage_ocid 
   # AWS S3 for object storage
   aws_access_key_id     = var.aws_access_key_id
   aws_secret_access_key = var.aws_secret_access_key

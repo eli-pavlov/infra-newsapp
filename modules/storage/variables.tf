@@ -1,3 +1,5 @@
+
+# === Storage module variables ===
 variable "oci_tenancy_ocid" {
   description = "OCID of the OCI tenancy (used by the OCI provider)."
   type        = string

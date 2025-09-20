@@ -1,4 +1,5 @@
-# modules/cluster/nodes.tf
+
+# === Cluster module: nodes ===
 
 locals {
   app_worker_private_ips = {

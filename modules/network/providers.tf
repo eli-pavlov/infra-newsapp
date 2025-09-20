@@ -1,3 +1,5 @@
+
+# === Network module provider configuration ===
 terraform {
   required_providers {
     oci = {

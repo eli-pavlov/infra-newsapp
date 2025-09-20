@@ -1,4 +1,6 @@
-# --- Backends for the PRIVATE (Classic) LB -> Kube API:6443 ---
+
+# === Cluster module: load balancer backends ===
+# Backends for the PRIVATE (Classic) LB -> Kube API:6443
 resource "oci_load_balancer_backend" "kube_api" {
   load_balancer_id = var.private_lb_id
   backendset_name  = var.private_lb_backendset_name
@@ -15,7 +17,7 @@ locals {
   app_worker_ips = { for idx, vnic in data.oci_core_vnic.app : tostring(idx) => vnic.private_ip_address }
 }
 
-# --- Backends for the PUBLIC NLB -> ingress-nginx NodePorts 30080/30443 ---
+# Backends for the PUBLIC NLB -> ingress-nginx NodePorts 30080/30443
 resource "oci_network_load_balancer_backend" "http" {
   for_each                 = local.app_worker_ips
   network_load_balancer_id = var.public_nlb_id
