@@ -67,3 +67,12 @@ resource "cloudflare_dns_record" "pgadmin_dev" {
   ttl     = 1
   proxied = true
 }
+
+resource "cloudflare_dns_record" "grafana" {
+  zone_id = var.cloudflare_zone_id
+  name    = "grafana"
+  content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
+  type    = "A"
+  ttl     = 1
+  proxied = true
+}
