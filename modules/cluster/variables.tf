@@ -143,12 +143,6 @@ variable "cloudflare_api_token" {
   default     = ""
 }
 
-variable "public_nlb_postgres_backend_set_name" {
-  description = "Name of the public NLB backend set for prod Postgres"
-  type        = string
-  default     = "k8s_postgres_backend_set" # optional default
-}
-
 # AWS S3 Bucket credentials for external storage of app data (e.g. Minio)
 variable "aws_access_key_id" {
   description = "AWS Access Key ID for the S3 bucket."

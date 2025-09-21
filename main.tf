@@ -92,8 +92,7 @@ module "cluster" {
   public_nlb_backend_set_http_name  = module.network.public_nlb_backend_set_http_name
   public_nlb_backend_set_https_name = module.network.public_nlb_backend_set_https_name
   private_lb_backendset_name        = module.network.private_lb_backendset_name
-  public_nlb_postgres_backend_set_name     = module.network.public_nlb_backend_set_postgres_name
-  
+    
   depends_on = [
   module.network
   ]

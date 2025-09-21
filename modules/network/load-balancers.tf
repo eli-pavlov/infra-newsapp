@@ -71,21 +71,3 @@ resource "oci_load_balancer_listener" "private_lb_listener" {
   protocol                   = "TCP"
 }
 
-resource "oci_network_load_balancer_backend_set" "public_nlb_backends_postgres" {
-  name                       = "k8s_postgres_backend_set" # Generic name
-  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.public_nlb.id
-  policy                     = "FIVE_TUPLE"
-  is_preserve_source         = true
-  health_checker {
-    protocol = "TCP"
-    port     = 30432 # CHANGED: Health check now targets the single NGINX NodePort
-  }
-}
-
-resource "oci_network_load_balancer_listener" "public_nlb_listener_postgres" {
-  name                       = "k8s_postgres_listener" # Generic name
-  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.public_nlb.id
-  default_backend_set_name = oci_network_load_balancer_backend_set.public_nlb_backends_postgres.name
-  port                       = 5432 # The single public port for all DB traffic
-  protocol                   = "TCP"
-}

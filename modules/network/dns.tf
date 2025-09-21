@@ -59,20 +59,11 @@ resource "cloudflare_dns_record" "newsapp_prod" {
   proxied = true
 }
 
-resource "cloudflare_dns_record" "newsapp_db_dev" {
+resource "cloudflare_dns_record" "pgadmin_dev" {
   zone_id = var.cloudflare_zone_id
-  name    = "dbdev"
+  name    = "pgadmin-dev"
   content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
   type    = "A"
-  ttl     = 1 # Automatic
-  proxied = false
-}
-
-resource "cloudflare_dns_record" "newsapp_db_prod" {
-  zone_id = var.cloudflare_zone_id
-  name    = "dbprod"
-  content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
-  type    = "A"
-  ttl     = 1 # Automatic
-  proxied = false
+  ttl     = 1
+  proxied = true
 }

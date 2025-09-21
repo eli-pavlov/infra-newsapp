@@ -55,7 +55,4 @@ output "private_subnet_cidr" {
   value = oci_core_subnet.private.cidr_block
 }
 
-output "public_nlb_backend_set_postgres_name" {
-  value = oci_network_load_balancer_backend_set.public_nlb_backends_postgres.name
-}
 

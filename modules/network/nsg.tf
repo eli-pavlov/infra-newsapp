@@ -420,21 +420,3 @@ resource "oci_core_network_security_group_security_rule" "workers_kubelet_in_fro
   }
 }
 
-
-# --- NLB -> Workers: allow Public NLB to reach NGINX NodePort for PostgreSQL traffic (30432) ---
-# Special rule for PostgreSQL NodePort via NGINX
-resource "oci_core_network_security_group_security_rule" "workers_ingress_from_public_lb_for_postgres_nodeport" {
-  network_security_group_id = oci_core_network_security_group.workers.id
-  direction                 = "INGRESS"
-  protocol                  = "6" # TCP
-  source_type               = "NETWORK_SECURITY_GROUP"
-  source                    = oci_core_network_security_group.public_lb.id
-  description               = "Allow Public NLB to reach NGINX NodePort for PostgreSQL traffic"
-  # PostgreSQL NodePort
-  tcp_options {
-    destination_port_range {
-      min = 30432
-      max = 30432
-    }
-  }
-}
