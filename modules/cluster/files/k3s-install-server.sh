@@ -283,7 +283,7 @@ EOF
   # simple cleanup
   rm -rf "$TMPDIR" || true
 
-  # # backend DB connection secrets expected by charts
+  # # backend DB connection secrets expected by charts - commented out due to backedn not using these
   # DB_URI_DEV="postgresql://${T_DB_USER}:$${DB_PASSWORD}@${T_DB_SERVICE_NAME_DEV}-client.development.svc.cluster.local:5432/${T_DB_NAME_DEV}"
   # /usr/local/bin/kubectl -n development create secret generic backend-db-connection \
   #   --from-literal=DB_URI="$${DB_URI_DEV}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
