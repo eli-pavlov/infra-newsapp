@@ -127,6 +127,7 @@ wait_for_kubeconfig_and_api() {
     fi
     sleep 5
   done
+  kubectl label node newsapp-control-plane role=control-plane --overwrite
 }
 
 # Waits until the expected number of nodes have joined the cluster and are in a 'Ready' state.
