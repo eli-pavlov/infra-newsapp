@@ -33,6 +33,13 @@ resource "cloudflare_ruleset" "argocd_admin_only" {
       action      = var.cloudflare_argocd_ruleset_action  # challenge | block
       enabled     = true
       ref         = "argocd-admin-only-rule"
+    },
+    {
+      description = "Block non-Israel traffic to newsapp hosts"
+      expression  = "(http.host in {\"newsapp.weblightenment.com\" \"newsapp-dev.weblightenment.com\"} and ip.geoip.country ne \"IL\")"
+      action      = "block"
+      enabled     = true
+      ref         = "newsapp-israel-only-rule"
     }
   ]
 }
