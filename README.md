@@ -228,58 +228,62 @@ infra-newsapp/
 
 
 
-NEEDED ENV VARS FOR WHOLE PROJECT
+---
 
+## 🧩 Application Configuration
 
---- App Source Repos ---
-https://github.com/ghGill/newsAppFront
-https://github.com/ghGill/newsAppbackend
+The infrastructure is designed to run the `newsApp` application, which is deployed via Argo CD from the following source repositories:
+-   **Frontend**: `https://github.com/ghGill/newsAppFront`
+-   **Backend**: `https://github.com/ghGill/newsAppbackend`
 
+The following environment variables are required by the application itself. These are **not** Terraform variables; they should be managed as Kubernetes secrets (ideally using the provisioned Sealed Secrets controller) and applied to your deployments.
 
---- Frontend build-time (Vite) ---
-VITE_SERVER_URL={{VITE_SERVER_URL}}                    # e.g. /api
-VITE_NEWS_INTERVAL_IN_MIN={{VITE_NEWS_INTERVAL_IN_MIN}}  # e.g. 5
+### **Frontend Environment Variables**
 
+#### Build-Time (Vite)
 
---- Frontend runtime (Nginx proxy target) ---
-BACKEND_SERVICE_HOST={{BACKEND_SERVICE_HOST}}          # e.g. backend.default.svc.cluster.local
-BACKEND_SERVICE_PORT={{BACKEND_SERVICE_PORT}}          # e.g. 8080
+| Variable                      | Description                               | Example                                  |
+| ----------------------------- | ----------------------------------------- | ---------------------------------------- |
+| `VITE_SERVER_URL`             | The base path for API requests.           | `/api`                                   |
+| `VITE_NEWS_INTERVAL_IN_MIN`   | The interval in minutes to fetch news.    | `5`                                      |
+| `VITE_FRONTEND_GIT_BRANCH`    | Git branch of the frontend build.         | `main`                                   |
+| `VITE_FRONTEND_GIT_COMMIT`    | Git commit SHA of the frontend build.     | `a1b2c3d`                                |
 
+#### Runtime (NGINX)
 
---- Backend DB config (example) ---
-MONGO | MONGOOSE | POSTGRES | MYSQL
-DB_ENGINE_TYPE={{DB_ENGINE_TYPE}}
+| Variable                   | Description                                             | Example                                  |
+| -------------------------- | ------------------------------------------------------- | ---------------------------------------- |
+| `BACKEND_SERVICE_HOST`     | The internal Kubernetes service hostname for the backend. | `backend.default.svc.cluster.local`      |
+| `BACKEND_SERVICE_PORT`     | The port of the backend service.                        | `8080`                                   |
 
+### **Backend Environment Variables**
 
-connection string : [protocol]://[username]:[password]@[host]:[port]/[database]
-DB_PROTOCOL= ( required, without :// )
-DB_USER= ( can be empty, optional )
-DB_PASSWORD= ( can be empty, optional )
-DB_HOST= ( required )
-DB_PORT= ( can be empty, optional ) 
-DB_NAME= ( required )
+#### Database Configuration
 
+| Variable         | Description                                                        | Example      |
+| ---------------- | ------------------------------------------------------------------ | ------------ |
+| `DB_ENGINE_TYPE` | The database engine type (`POSTGRES`, `MONGO`, etc.).              | `POSTGRES`   |
+| `DB_PROTOCOL`    | The database connection protocol.                                  | `postgresql` |
+| `DB_USER`        | The database username.                                             | `news_user`  |
+| `DB_PASSWORD`    | The database password. **(Should be a secret)** | `s3cr3t_p4ss`|
+| `DB_HOST`        | The internal Kubernetes service hostname for the database.         | `postgresql-prod-client.default.svc.cluster.local` |
+| `DB_PORT`        | The port for the database service.                                 | `5432`       |
+| `DB_NAME`        | The name of the database.                                          | `newsdb_prod`|
 
-AWS_S3 | DISK
-STORAGE_TYPE=
+#### Storage Configuration
 
+| Variable                | Description                                                                                                   | Example                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `STORAGE_TYPE`          | The storage backend type (`AWS_S3` or `DISK`).                                                                | `AWS_S3`                     |
+| `AWS_ACCESS_KEY_ID`     | AWS Access Key ID. **(Required if `STORAGE_TYPE` is `AWS_S3`)** | `AKIA...`                    |
+| `AWS_SECRET_ACCESS_KEY` | AWS Secret Access Key. **(Required if `STORAGE_TYPE` is `AWS_S3`; should be a secret)** | `wJal...`                    |
+| `AWS_REGION`            | The AWS region for the S3 bucket. **(Required if `STORAGE_TYPE` is `AWS_S3`)** | `us-east-1`                  |
+| `AWS_BUCKET`            | The name of the S3 bucket. **(Required if `STORAGE_TYPE` is `AWS_S3`)** | `my-app-data-bucket`         |
+| `DISK_ROOT_PATH`        | The root path on the disk for local storage. **(Required if `STORAGE_TYPE` is `DISK`)** | `/data/movies`               |
 
-In case of STORAGE_TYPE = AWS_S3
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_REGION=
-AWS_BUCKET= [ the name of the bucket where to create the movies folder ]
+#### Build Information
 
-
-In case of STORAGE_TYPE = DISK
-DISK_ROOT_PATH= [ full path on disk to the root directory where to create the movies folder ]
-
-
-Frontend commit info
-VITE_FRONTEND_GIT_BRANCH=
-VITE_FRONTEND_GIT_COMMIT=
-
-
-Backedn commit info
-BACKEND_GIT_BRANCH=
-BACKEND_GIT_COMMIT
+| Variable             | Description                              | Example   |
+| -------------------- | ---------------------------------------- | --------- |
+| `BACKEND_GIT_BRANCH` | Git branch of the backend build.         | `main`    |
+| `BACKEND_GIT
