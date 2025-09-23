@@ -1,45 +1,39 @@
 
 # === Storage module variables ===
-variable "oci_tenancy_ocid" {
+variable "tenancy_ocid" {
   description = "OCID of the OCI tenancy (used by the OCI provider)."
   type        = string
-  sensitive   = false
 }
 
-variable "oci_user_ocid" {
+variable "user_ocid" {
   description = "OCID of the OCI user (used by the OCI provider)."
   type        = string
-  sensitive   = false
 }
 
-variable "oci_fingerprint" {
+variable "fingerprint" {
   description = "Fingerprint for the OCI API key (used by the OCI provider)."
   type        = string
-  sensitive   = false
 }
 
-variable "oci_private_key_pem" {
+variable "private_key_pem" {
   description = "PEM private key for the OCI API user. Provide the full PEM contents (sensitive)."
   type        = string
   sensitive   = true
 }
 
-variable "oci_region" {
+variable "region" {
   description = "OCI region (e.g. eu-frankfurt-1)."
   type        = string
-  sensitive   = false
 }
 
 variable "compartment_ocid" {
   description = "OCID of the compartment where resources will be created."
   type        = string
-  sensitive   = false
 }
 
 variable "availability_domain" {
   description = "Availability Domain for resources (used by block storage creation)."
   type        = string
-  sensitive   = false
 }
 
 variable "os_namespace" {
@@ -84,5 +78,4 @@ variable "storage_display_name" {
   description = "Human-friendly display name for the DB block volume."
   type        = string
   default     = "newsapp-db-volume"
-  sensitive   = false
 }
