@@ -1,0 +1,30 @@
+name: 'Stack: Plan and Apply'
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform/2-stack/**'
+      - 'terraform/modules/cluster/**'
+      - 'terraform/modules/network/**'
+      - 'scripts/**'
+  workflow_dispatch: {}
+
+jobs:
+  plan:
+    name: Plan Main Stack
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      workspace-path: "terraform/2-stack"
+      action: "plan"
+    secrets: inherit
+
+  apply:
+    name: Apply Main Stack
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      workspace-path: "terraform/2-stack"
+      action: "apply"
+    secrets: inherit

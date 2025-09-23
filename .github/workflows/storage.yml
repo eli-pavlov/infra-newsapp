@@ -1,0 +1,26 @@
+name: 'Storage: Plan and Apply'
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'terraform/1-storage/**', 'terraform/modules/storage/**' ]
+  workflow_dispatch: {}
+
+jobs:
+  plan:
+    name: Plan Storage Volume
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      workspace-path: "terraform/1-storage"
+      action: "plan"
+    secrets: inherit
+
+  apply:
+    name: Apply Storage Volume
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      workspace-path: "terraform/1-storage"
+      action: "apply"
+    secrets: inherit

@@ -1,0 +1,22 @@
+name: 'All Stacks: Destroy'
+on:
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: 'Workspace to destroy (storage or stack)'
+        required: true
+        type: choice
+        options:
+        - storage
+        - stack
+
+jobs:
+  destroy:
+    name: 'Destroy: ${{ github.event.inputs.workspace }}'
+    environment: production
+    concurrency: terraform-destroy
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      workspace-path: "terraform/${{ (github.event.inputs.workspace == 'storage' && '1-storage') || '2-stack' }}"
+      action: "destroy"
+    secrets: inherit
