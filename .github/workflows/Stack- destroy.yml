@@ -98,6 +98,7 @@ jobs:
           CFG
 
       - name: Terraform Init
+        working-directory: terraform/2-stack
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
@@ -106,4 +107,5 @@ jobs:
             -backend-config="region=${{ secrets.OCI_REGION }}"
 
       - name: Terraform Destroy
+        working-directory: terraform/2-stack
         run: terraform destroy -auto-approve -input=false -lock-timeout=15m -parallelism=10

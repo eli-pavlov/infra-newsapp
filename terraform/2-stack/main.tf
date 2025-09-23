@@ -47,7 +47,7 @@ data "oci_objectstorage_object" "ssh_public_key" {
 
 # --- Network module ---
 module "network" {
-  source           = "./modules/network"
+  source           = "../../modules/network/"
   compartment_ocid = var.compartment_ocid
   region           = var.region
   admin_cidrs      = var.admin_cidrs
@@ -59,7 +59,7 @@ module "network" {
   
 # --- Cluster module ---
 module "cluster" {
-  source = "./modules/cluster"
+  source = "../../modules/cluster"
   region                = var.region
   availability_domain   = var.availability_domain
   compartment_ocid      = var.compartment_ocid
