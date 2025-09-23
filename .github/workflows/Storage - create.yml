@@ -98,7 +98,7 @@ jobs:
           CFG
 
       - name: Determine backend key and import OCID (if present)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           set -euo pipefail
 
