@@ -183,7 +183,7 @@ To tear down all resources, run the workflows in the reverse order of creation.
 
 ## 📂 Repository Structure
 
-
+```bash
 infra-newsapp/
 ├── .github/workflows/   # GitHub Actions for CI/CD
 ├── modules/               # Reusable Terraform modules
@@ -197,7 +197,7 @@ infra-newsapp/
 ├── 0-bootstrap/     # Creates the TF state bucket
 ├── 1-storage/       # Manages the DB block volume
 └── 2-stack/         # The main infrastructure stack
-
+```
 
 <br/>
 <details>
