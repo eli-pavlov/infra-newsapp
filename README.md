@@ -1,3 +1,6 @@
+NEEDED ENV VARS
+
+
 # --- App Source Repos ---
 https://github.com/ghGill/newsAppFront
 https://github.com/ghGill/newsAppbackend
