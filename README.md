@@ -1,5 +1,3 @@
-NEEDED ENV VARS
-
 newsapp-infra — Infrastructure & GitHub Actions (OCI + Terraform) 🚀
 
 Single-repo overview for the Terraform modules & GitHub Actions that bootstrap and manage the newsapp infrastructure on Oracle Cloud (OCI).
@@ -273,6 +271,8 @@ License
 
 This repository contains infrastructure code. Add your preferred license file (e.g., LICENSE). If you're unsure, consider MIT for permissive open-source usage.
 
+
+NEEDED ENV VARS FOR WHOLE PROJECT
 
 # --- App Source Repos ---
 https://github.com/ghGill/newsAppFront
