@@ -142,11 +142,11 @@ jobs:
           fi
 
       - name: Terraform Validate
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: terraform validate
 
       - name: Terraform Plan (storage)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         env:
           # per-invocation vars: fall back to repo secrets if inputs empty
           TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
@@ -158,11 +158,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: storage-tfplan
-          path: infra/storage/tfplan
+          path: terraform/1-storage/tfplan
           if-no-files-found: ignore
 
       - name: Terraform Apply (storage)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         env:
           TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
           TF_VAR_compartment_id: ${{ github.event.inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
@@ -176,7 +176,7 @@ jobs:
           fi
 
       - name: Show resulting DB volume OCID
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           set -euo pipefail
           # print output if available
