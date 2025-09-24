@@ -34,7 +34,6 @@ jobs:
       # Other useful defaults (optional)
       TF_VAR_compartment_ocid:   ${{ secrets.COMPARTMENT_OCID }}
     steps:
-    steps:
       - name: Guard required secrets (explicit checks)
         run: |
           set -euo pipefail
