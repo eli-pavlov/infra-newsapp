@@ -72,7 +72,7 @@ jobs:
           CFG
 
       - name: Terraform Init (storage backend)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           # default storage key (same folder as other states)
           terraform init \
@@ -83,7 +83,7 @@ jobs:
             -reconfigure
 
       - name: Terraform Destroy (storage)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           echo "Running terraform destroy for storage workspace. This will delete the actual block volume in OCI!"
           terraform destroy -auto-approve

@@ -78,7 +78,7 @@ jobs:
 
       # --- Part 1: Remove the volume from the MAIN state file ---
       - name: Init Terraform for MAIN stack
-        working-directory: ./  # Assuming main.tf is in the root
+        working-directory: terraform/2-stack # Assuming main.tf is in the root
         run: |
           terraform init -reconfigure \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
@@ -88,7 +88,7 @@ jobs:
 
       - name: Find Volume Resource Address in Main State
         id: find_address
-        working-directory: ./
+        working-directory: terraform/2-stack
         run: |
           set -euo pipefail
 
@@ -120,7 +120,7 @@ jobs:
 
       # --- Part 2: Init the storage workspace (and import if we have an OCID) ---
       - name: Init Terraform for STORAGE stack + import if OCID available
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         # provide all TF_VARs the storage module expects so terraform won't error on "required variable"
         env:
           TF_VAR_oci_tenancy_ocid:    ${{ secrets.OCI_TENANCY_OCID }}
@@ -180,7 +180,7 @@ jobs:
           fi
 
       - name: Verify Storage State
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           set -euo pipefail
           echo "Verifying the new storage state..."
