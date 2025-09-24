@@ -22,7 +22,7 @@ on:
       volume_size_gb:
         description: 'Size in GB for new volume (used when creating)'
         required: false
-        default: '30'
+        default: '50'
 
 permissions:
   contents: read
@@ -48,6 +48,8 @@ jobs:
       TF_VAR_oci_fingerprint:    ${{ secrets.OCI_FINGERPRINT }}
       TF_VAR_oci_private_key_pem: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
       TF_VAR_oci_region:         ${{ secrets.OCI_REGION }}
+      TF_VAR_tf_state_key:   ${{ secrets.TF_STATE_KEY }}
+      TF_VAR_db_storage_ocid: ${{ secrets.DB_STORAGE_OCID }}
 
       # Other useful defaults (optional)
       TF_VAR_compartment_ocid:   ${{ secrets.COMPARTMENT_OCID }}
@@ -98,7 +100,7 @@ jobs:
           CFG
 
       - name: Determine backend key and import OCID (if present)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           set -euo pipefail
 
@@ -142,11 +144,11 @@ jobs:
           fi
 
       - name: Terraform Validate
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: terraform validate
 
       - name: Terraform Plan (storage)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         env:
           # per-invocation vars: fall back to repo secrets if inputs empty
           TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
@@ -158,11 +160,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: storage-tfplan
-          path: infra/storage/tfplan
+          path: terraform/1-storage/tfplan
           if-no-files-found: ignore
 
       - name: Terraform Apply (storage)
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         env:
           TF_VAR_availability_domain: ${{ github.event.inputs.availability_domain || secrets.AVAILABILITY_DOMAIN || '' }}
           TF_VAR_compartment_id: ${{ github.event.inputs.compartment_ocid || secrets.COMPARTMENT_OCID || '' }}
@@ -176,7 +178,7 @@ jobs:
           fi
 
       - name: Show resulting DB volume OCID
-        working-directory: infra/storage
+        working-directory: terraform/1-storage
         run: |
           set -euo pipefail
           # print output if available

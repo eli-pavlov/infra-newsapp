@@ -47,5 +47,5 @@ variable "cloudflare_argocd_ruleset_action" {
 
 variable "protected_hosts" {
   type    = list(string)
-  default = ["argocd.weblightenment.com", "pgadmin-dev.weblightenment.com"]
+  default = ["argocd.weblightenment.com", "pgadmin-dev.weblightenment.com", "grafana.weblightenment.com"]
 }

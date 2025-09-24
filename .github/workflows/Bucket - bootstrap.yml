@@ -41,7 +41,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform Init (for bootstrap)
-        working-directory: bootstrap/state-bucket
+        working-directory: terraform/0-bootstrap
         env:
           TF_VAR_region:            ${{ secrets.OCI_REGION }}
           TF_VAR_tenancy_ocid:      ${{ secrets.OCI_TENANCY_OCID }}
@@ -54,7 +54,7 @@ jobs:
         run: terraform init -upgrade
 
       - name: Terraform Apply (for bootstrap)
-        working-directory: bootstrap/state-bucket
+        working-directory: terraform/0-bootstrap
         env:
           TF_VAR_region:            ${{ secrets.OCI_REGION }}
           TF_VAR_tenancy_ocid:      ${{ secrets.OCI_TENANCY_OCID }}

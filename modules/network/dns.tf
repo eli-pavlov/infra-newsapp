@@ -33,6 +33,13 @@ resource "cloudflare_ruleset" "argocd_admin_only" {
       action      = var.cloudflare_argocd_ruleset_action  # challenge | block
       enabled     = true
       ref         = "argocd-admin-only-rule"
+    },
+    {
+      description = "Block non-Israel traffic to newsapp hosts"
+      expression  = "(http.host in {\"newsapp.weblightenment.com\" \"newsapp-dev.weblightenment.com\"} and ip.geoip.country ne \"IL\")"
+      action      = "block"
+      enabled     = true
+      ref         = "newsapp-israel-only-rule"
     }
   ]
 }
@@ -62,6 +69,15 @@ resource "cloudflare_dns_record" "newsapp_prod" {
 resource "cloudflare_dns_record" "pgadmin_dev" {
   zone_id = var.cloudflare_zone_id
   name    = "pgadmin-dev"
+  content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
+  type    = "A"
+  ttl     = 1
+  proxied = true
+}
+
+resource "cloudflare_dns_record" "grafana" {
+  zone_id = var.cloudflare_zone_id
+  name    = "grafana"
   content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
   type    = "A"
   ttl     = 1

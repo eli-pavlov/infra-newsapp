@@ -13,7 +13,7 @@ data "cloudinit_config" "k3s_server_tpl" {
 
   part {
     content_type = "text/x-shellscript"
-    content = templatefile("${path.module}/files/k3s-install-server.sh", {
+    content = templatefile("${path.root}/../../scripts/k3s-install-server.sh", {
       T_K3S_VERSION          = var.k3s_version,
       T_K3S_TOKEN            = random_password.k3s_token.result,
       T_DB_USER              = var.db_user,
