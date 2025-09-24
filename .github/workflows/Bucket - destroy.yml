@@ -18,17 +18,30 @@ jobs:
   destroy-state-bucket:
     name: Destroy OCI State Bucket
     runs-on: ubuntu-latest
-
-    # Safety Check: Only run the job if the user-provided bucket name matches the one in secrets.
-    if: github.event.inputs.confirm_bucket_name == env.BUCKET_NAME
-
     env:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Visible verification step — fails with a clear message if names don't match
+      - name: Verify provided bucket name matches secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.TF_STATE_BUCKET }}" ]; then
+            echo "::error::Secret TF_STATE_BUCKET is not set. Aborting."
+            exit 1
+          fi
+
+          if [ "${{ github.event.inputs.confirm_bucket_name }}" != "${{ secrets.TF_STATE_BUCKET }}" ]; then
+            echo "::error::Confirmation bucket name does not match the TF_STATE_BUCKET secret. Aborting."
+            echo "Provided: '${{ github.event.inputs.confirm_bucket_name }}'"
+            exit 1
+          fi
+          echo "Bucket name verified."
 
       - name: Guard required secrets
         shell: bash
@@ -44,10 +57,19 @@ jobs:
             exit 1
           fi
 
+      # Optional: write PEM secret to a file (uncomment if your Terraform/provider expects a file)
+      # - name: Write OCI private key to file
+      #   shell: bash
+      #   run: |
+      #     mkdir -p /tmp/oci_key
+      #     echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > /tmp/oci_key/oci_key.pem
+      #     chmod 600 /tmp/oci_key/oci_key.pem
+      #   env:
+      #     OCI_PRIVATE_KEY_PEM: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          # Use the same Terraform version as the creation workflow for consistency
           terraform_version: 1.13.1
           terraform_wrapper: false
 
@@ -62,7 +84,7 @@ jobs:
           TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}
           TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}
           TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
-        run: terraform init -upgrade
+        run: terraform init -reconfigure -input=false
 
       - name: Terraform Destroy (for bootstrap)
         working-directory: terraform/0-bootstrap
@@ -75,4 +97,4 @@ jobs:
           TF_VAR_compartment_ocid:  ${{ secrets.COMPARTMENT_OCID }}
           TF_VAR_bucket_name:       ${{ secrets.TF_STATE_BUCKET }}
           TF_VAR_os_namespace:      ${{ secrets.OS_NAMESPACE }}
-        run: terraform destroy -auto-approve
+        run: terraform destroy -auto-approve -input=false
