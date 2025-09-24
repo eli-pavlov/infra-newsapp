@@ -20,9 +20,9 @@ resource "cloudflare_dns_record" "argocd" {
   proxied = true
 }
 
-resource "cloudflare_ruleset" "argocd_admin_only" {
+resource "cloudflare_ruleset" "admin_access_only" {
   zone_id     = var.cloudflare_zone_id
-  name        = "argocd-admin-only"
+  name        = "admin-access-only"
   kind        = "zone"
   phase       = "http_request_firewall_custom"
   description = "Challenge/block requests to argocd host that do not originate from admin CIDRs."

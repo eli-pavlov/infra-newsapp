@@ -87,19 +87,3 @@ resource "oci_core_default_security_list" "main" {
     source   = var.vcn_cidr
   }
 }
-
-resource "oci_core_network_security_group_security_rule" "public_lb_postgres_ingress" {
-  for_each                    = toset(local.public_lb_ingress_cidrs)
-  network_security_group_id   = oci_core_network_security_group.public_lb.id
-  direction                   = "INGRESS"
-  protocol                    = "6"
-  source_type                 = "CIDR_BLOCK"
-  source                      = each.value
-
-  tcp_options {
-    destination_port_range {
-      min = 5432
-      max = 5433
-    }
-  }
-}
