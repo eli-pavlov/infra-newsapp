@@ -1,4 +1,4 @@
-name: BUCKET - Destroy Bootstrap
+name: BUCKET - Destroy
 
 on:
   workflow_dispatch:
