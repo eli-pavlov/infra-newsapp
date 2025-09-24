@@ -201,9 +201,9 @@ infra-newsapp/
 │   ├── k3s-install-agent.sh
 │   └── k3s-install-server.sh
 └── terraform/             # Terraform root configurations (workspaces)
-├── 0-bootstrap/     # Creates the TF state bucket
-├── 1-storage/       # Manages the DB block volume
-└── 2-stack/         # The main infrastructure stack
+    ├── 0-bootstrap/     # Creates the TF state bucket
+    ├── 1-storage/       # Manages the DB block volume
+    └── 2-stack/         # The main infrastructure stack
 ```
 
 <br/>
