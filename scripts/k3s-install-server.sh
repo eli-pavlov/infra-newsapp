@@ -75,7 +75,6 @@ get_private_ip() {
 # Installs the K3s server component.
 install_k3s_server() {
   echo "Installing K3s server..."
-  # Define installation parameters for the K3s installer script.
   local PARAMS="--write-kubeconfig-mode 644 \
     --node-ip $PRIVATE_IP \
     --advertise-address $PRIVATE_IP \
@@ -84,17 +83,43 @@ install_k3s_server() {
     --tls-san $T_PRIVATE_LB_IP \
     --kubelet-arg=register-with-taints=node-role.kubernetes.io/control-plane=true:NoSchedule"
 
-  # Pass parameters to the installer via environment variables.
   export INSTALL_K3S_EXEC="$PARAMS"
   export K3S_TOKEN="$T_K3S_TOKEN"
   export INSTALL_K3S_VERSION="$T_K3S_VERSION"
 
-  # Download and execute the official K3s installation script.
   curl -sfL https://get.k3s.io | sh -
-  # Wait until the K3s server node reports a 'Ready' status.
-  echo "Waiting for K3s server node to be Ready..."
-  while ! /usr/local/bin/kubectl get node "$(hostname)" 2>/dev/null | grep -q 'Ready'; do sleep 5; done
-  echo "K3s server node is running."
+
+  # ensure kubectl will point at the freshly created kubeconfig
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+  # wait for kubeconfig file to exist before any kubectl calls
+  local wait=0
+  while [ ! -f "$KUBECONFIG" ] && [ $wait -lt 60 ]; do
+    sleep 2; wait=$((wait+2))
+  done
+
+  echo "Waiting for K3s server node to be Ready (this may take a minute)..."
+  # wait up to 5 minutes for the node to show Ready
+  local start=$(date +%s)
+  while ! /usr/local/bin/kubectl get nodes --no-headers 2>/dev/null | awk '{print $2}' | grep -q '^Ready'; do
+    sleep 5
+    if [ $(( $(date +%s) - start )) -gt 300 ]; then
+      echo "Timeout waiting for node to become Ready."
+      /usr/local/bin/kubectl get nodes || true
+      break
+    fi
+  done
+
+  # If the node is tainted control-plane, ensure kube-proxy tolerates it.
+  if /usr/local/bin/kubectl get nodes -o jsonpath='{.items[*].spec.taints}' 2>/dev/null | grep -q 'node-role.kubernetes.io/control-plane'; then
+    echo "Detected control-plane taint on nodes — ensuring kube-proxy toleration..."
+    /usr/local/bin/kubectl -n kube-system patch daemonset kube-proxy --type='merge' -p '{
+      "spec":{"template":{"spec":{"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}}}}' || {
+        echo "Warning: patch failed or kube-proxy DaemonSet not yet created; will try again later."
+      }
+  fi
+
+  echo "K3s server install completed."
 }
 
 # Waits for the kubeconfig file to be created and for the Kubernetes API server to become responsive.
