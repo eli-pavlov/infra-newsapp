@@ -156,6 +156,11 @@ install_k3s_agent() {
   # Download and execute the official K3s installation script.
   curl -sfL https://get.k3s.io | sh -
   echo "✅ K3s agent setup complete with params: $params"
+  # Ensure availability of kube config
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  # or copy it for convenience (ensure ownership/permissions afterward)
+  sudo cp /etc/rancher/k3s/k3s.yaml $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
 }
 
 # --- Main Execution Logic ---
