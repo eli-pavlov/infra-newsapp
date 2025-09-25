@@ -279,8 +279,8 @@ generate_secrets_and_credentials() {
   sleep 30 # A brief pause to allow CRDs to settle.
   echo "Generating credentials and Kubernetes secrets..."
 
-  # Install Cert-manager CRD's
-  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.crds.yaml
+  # Optional - Install Cert-manager CRD's
+  # kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.crds.yaml
 
   # --- Argo CD Initial Password Retrieval ---
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "")
