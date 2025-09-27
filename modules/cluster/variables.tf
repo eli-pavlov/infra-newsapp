@@ -135,44 +135,12 @@ variable "private_lb_backendset_name" {
   type        = string
 }
 
-# Cloudflare API token used by the instance user-data to create cert-manager secret
-variable "cloudflare_api_token" {
-  description = "Cloudflare API token (sensitive). Passed into instance user-data to create cert-manager secret."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-# AWS S3 Bucket credentials for external storage of app data (e.g. Minio)
-variable "aws_access_key_id" {
-  description = "AWS Access Key ID for the S3 bucket."
-  type        = string
-  sensitive   = true
-}
-
-variable "aws_secret_access_key" {
-  description = "AWS Secret Access Key for the S3 bucket."
-  type        = string
-  sensitive   = true
-}
-variable "aws_region" {
-  description = "AWS Region for the S3 bucket."
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "aws_bucket" {
-  description = "Name of the S3 bucket for external storage."
-  type        = string
-}
-
 variable "storage_type" {
   description = "Type of storage to use (e.g., 's3' for AWS S3)."
   type        = string
   default     = "s3"
 }
 
-# sealed-secrets keypair (base64-encoded)
 variable "sealed_secrets_cert" {
   description = "Base64-encoded TLS certificate for Sealed Secrets controller."
   type        = string
