@@ -312,17 +312,17 @@ EOF
   echo "Credentials saved to /home/opc/credentials.txt"
 
   # --- Kubernetes Secret Creation ---
-  # Create the postgres-credentials secret in relevant namespaces.
-  for ns in default development; do
-    # Create namespace if it doesn't exist.
-    /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+  # Create the postgres-credentials secret in relevant namespaces. OPTIONAL
+  # for ns in default development; do
+  #   # Create namespace if it doesn't exist.
+  #   /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
 
-    # Create the generic secret containing the DB user and password.
-    /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-      --from-literal=POSTGRES_USER="${T_DB_USER}" \
-      --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-      --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-  done
+  #   # Create the generic secret containing the DB user and password.
+  #   /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
+  #     --from-literal=POSTGRES_USER="${T_DB_USER}" \
+  #     --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
+  #     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+  # done
 
   # --- Sealed Secrets Master Key Injection ---
   # Create/update the master TLS secret for Sealed Secrets from Terraform variables.
@@ -362,18 +362,18 @@ EOF
   # Clean up the temporary directory.
   rm -rf "$TMPDIR" || true
 
-  # --- Cloudflare API Token Secret (Conditional) ---
+  # --- Cloudflare API Token Secret (Conditional) OPTIONAL ---
   # If a Cloudflare API token is provided, create a secret for cert-manager to use for DNS-01 challenges.
-  if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
-    echo "Creating cert-manager Cloudflare API token secret..."
-    /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-    /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
-      --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-    echo "cloudflare-api-token-secret created/updated in cert-manager."
-  else
-    echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
-  fi
-}
+#   if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
+#     echo "Creating cert-manager Cloudflare API token secret..."
+#     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+#     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
+#       --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
+#     echo "cloudflare-api-token-secret created/updated in cert-manager."
+#   else
+#     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
+#   fi
+# }
 
 # Clones the Git repository containing Kubernetes manifests and applies the root Argo CD application.
 bootstrap_argocd_apps() {
