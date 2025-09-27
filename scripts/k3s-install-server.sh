@@ -241,7 +241,7 @@ bootstrap_argo_cd_instance() {
 }
 
 # Generates secrets and credentials needed by the applications.
-generate_secrets_and_credentials() {
+install_sealed_secrets() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
   
   # --- Sealed Secrets Setup ---
@@ -269,31 +269,6 @@ generate_secrets_and_credentials() {
   curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v$${KUBESEAL_VERSION}/kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz"
   tar -xvzf kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz kubeseal
   sudo install -m 755 kubeseal /usr/local/bin/kubeseal
-
-  sleep 30 # A brief pause to allow CRDs to settle.
-  echo "Generating credentials and Kubernetes secrets..."
-
-  # Optional - Install Cert-manager CRD's
-  # kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.crds.yaml
-
-  # --- Argo CD Initial Password Retrieval ---
-  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "")
-  if [ -n "$ARGO_PASSWORD" ]; then
-    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
-  else
-    ARGO_PASSWORD="(unknown)"
-  fi
-
-  # --- Credentials File Creation ---
-  # Create a file on the server with the generated and retrieved credentials for admin access.
-  cat << EOF > /home/opc/credentials.txt
-# --- Argo CD Admin Credentials ---
-Username: admin
-Password: $${ARGO_PASSWORD}
-EOF
-  chmod 600 /home/opc/credentials.txt
-  echo "Credentials saved to /home/opc/credentials.txt"
-
 
   # --- Sealed Secrets Master Key Injection ---
   # Create/update the master TLS secret for Sealed Secrets from Terraform variables.
@@ -368,6 +343,27 @@ bootstrap_argocd_apps() {
   echo "Waiting up to 5m for applications to become Healthy..."
   /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=5m || true
   echo "Argo CD Application CRs applied."
+
+  echo "Generating credentials"
+  
+  # --- Argo CD Initial Password Retrieval ---
+  ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "")
+  if [ -n "$ARGO_PASSWORD" ]; then
+    ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
+  else
+    ARGO_PASSWORD="(unknown)"
+  fi
+
+  # --- Credentials File Creation ---
+  # Create a file on the server with the generated and retrieved credentials for admin access.
+  cat << EOF > /home/opc/credentials.txt
+# --- Argo CD Admin Credentials ---
+Username: admin
+Password: $${ARGO_PASSWORD}
+EOF
+  chmod 600 /home/opc/credentials.txt
+  echo "Credentials saved to /home/opc/credentials.txt"
+
 }
 
 # --- Main Execution Logic ---
@@ -380,7 +376,7 @@ main() {
   wait_for_all_nodes
   install_helm
   bootstrap_argo_cd_instance
-  generate_secrets_and_credentials
+  install_sealed_secrets
   bootstrap_argocd_apps
 }
 
