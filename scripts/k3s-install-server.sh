@@ -25,15 +25,9 @@ trap 'echo "ERROR at line $LINENO: $BASH_COMMAND" >&2' ERR
 # values for the cluster setup.
 T_K3S_VERSION="${T_K3S_VERSION}"
 T_K3S_TOKEN="${T_K3S_TOKEN}"
-T_DB_USER="${T_DB_USER}"
-T_DB_NAME_DEV="${T_DB_NAME_DEV}"
-T_DB_NAME_PROD="${T_DB_NAME_PROD}"
-T_DB_SERVICE_NAME_DEV="${T_DB_SERVICE_NAME_DEV}"
-T_DB_SERVICE_NAME_PROD="${T_DB_SERVICE_NAME_PROD}"
 T_MANIFESTS_REPO_URL="${T_MANIFESTS_REPO_URL}"
 T_EXPECTED_NODE_COUNT="${T_EXPECTED_NODE_COUNT}"
 T_PRIVATE_LB_IP="${T_PRIVATE_LB_IP}"
-T_CLOUDFLARE_API_TOKEN="${T_CLOUDFLARE_API_TOKEN}"
 T_SEALED_SECRETS_CERT="${T_SEALED_SECRETS_CERT}"
 T_SEALED_SECRETS_KEY="${T_SEALED_SECRETS_KEY}"
 
@@ -290,39 +284,16 @@ generate_secrets_and_credentials() {
     ARGO_PASSWORD="(unknown)"
   fi
 
-  # --- Database Password Generation ---
-  # Generate a cryptographically secure random password for the database.
-  DB_PASSWORD=$(python3 - <<'PY'
-import secrets,string
-print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(32)))
-PY
-)
-
   # --- Credentials File Creation ---
   # Create a file on the server with the generated and retrieved credentials for admin access.
   cat << EOF > /home/opc/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
 Password: $${ARGO_PASSWORD}
-# --- PostgreSQL Database Credentials ---
-Username: ${T_DB_USER}
-Password: $${DB_PASSWORD}
 EOF
   chmod 600 /home/opc/credentials.txt
   echo "Credentials saved to /home/opc/credentials.txt"
 
-  # --- Kubernetes Secret Creation ---
-  # Create the postgres-credentials secret in relevant namespaces. OPTIONAL
-  # for ns in default development; do
-  #   # Create namespace if it doesn't exist.
-  #   /usr/local/bin/kubectl create namespace "$ns" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-
-  #   # Create the generic secret containing the DB user and password.
-  #   /usr/local/bin/kubectl -n "$ns" create secret generic postgres-credentials \
-  #     --from-literal=POSTGRES_USER="${T_DB_USER}" \
-  #     --from-literal=POSTGRES_PASSWORD="$${DB_PASSWORD}" \
-  #     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-  # done
 
   # --- Sealed Secrets Master Key Injection ---
   # Create/update the master TLS secret for Sealed Secrets from Terraform variables.
@@ -362,18 +333,6 @@ EOF
   # Clean up the temporary directory.
   rm -rf "$TMPDIR" || true
 
-  # --- Cloudflare API Token Secret (Conditional) OPTIONAL ---
-  # If a Cloudflare API token is provided, create a secret for cert-manager to use for DNS-01 challenges.
-#   if [ -n "$${T_CLOUDFLARE_API_TOKEN:-}" ]; then
-#     echo "Creating cert-manager Cloudflare API token secret..."
-#     /usr/local/bin/kubectl create namespace cert-manager --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-#     /usr/local/bin/kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
-#       --from-literal=api-token="${T_CLOUDFLARE_API_TOKEN}" --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f - || true
-#     echo "cloudflare-api-token-secret created/updated in cert-manager."
-#   else
-#     echo "T_CLOUDFLARE_API_TOKEN not set — skipping cert-manager Cloudflare secret creation."
-#   fi
-# }
 
 # Clones the Git repository containing Kubernetes manifests and applies the root Argo CD application.
 bootstrap_argocd_apps() {
