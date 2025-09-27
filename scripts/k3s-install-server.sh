@@ -371,19 +371,17 @@ bootstrap_argocd_apps() {
     DB_PASSWORD="(unknown)"
   fi
 
-
   # --- Credentials File Creation ---
   # Create a file on the server with all retrieved credentials for admin access.
   cat << EOF > /home/opc/credentials.txt
-  # --- Argo CD Admin Credentials ---
-  Username: admin
-  Password: ${ARGO_PASSWORD}
+# --- Argo CD Admin Credentials ---
+Username: admin
+Password: ${ARGO_PASSWORD}
 
-  # --- Database Credentials ---
-  DB User: ${DB_USER}
-  DB Password: ${DB_PASSWORD}
-  EOF
-
+# --- Database Credentials ---
+DB User: ${DB_USER}
+DB Password: ${DB_PASSWORD}
+EOF
 }
 
 # --- Main Execution Logic ---
