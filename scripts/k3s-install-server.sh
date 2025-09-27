@@ -339,10 +339,6 @@ bootstrap_argocd_apps() {
   # Re-enable exit-on-error.
   set -e
 
-  # Wait for the root application to become Healthy in Argo CD.
-  echo "Waiting up to 5m for applications to become Healthy..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=5m || true
-  echo "Argo CD Application CRs applied."
 
   echo "Generating credentials"
 
@@ -383,6 +379,12 @@ DB User: ${DB_USER}
 DB Password: ${DB_PASSWORD}
 EOF
 }
+
+
+  # Wait for the root application to become Healthy in Argo CD.
+  echo "Waiting up to 5m for applications to become Healthy..."
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=5m || true
+  echo "Argo CD Application CRs applied."
 
 # --- Main Execution Logic ---
 # The main function orchestrates the execution of all setup steps in the correct order.
