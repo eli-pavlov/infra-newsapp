@@ -340,6 +340,7 @@ bootstrap_argocd_apps() {
   set -e
 
 
+  ### --- Save credentials --- ###
   echo "Generating credentials"
 
   # --- Argo CD Initial Password Retrieval ---
