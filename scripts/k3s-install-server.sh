@@ -373,11 +373,11 @@ bootstrap_argocd_apps() {
   cat << EOF > /home/opc/credentials.txt
 # --- Argo CD Admin Credentials ---
 Username: admin
-Password: ${ARGO_PASSWORD}
+Password: $${ARGO_PASSWORD}
 
 # --- Database Credentials ---
-DB User: ${DB_USER}
-DB Password: ${DB_PASSWORD}
+DB User: $${DB_USER}
+DB Password: $${DB_PASSWORD}
 EOF
 }
 
