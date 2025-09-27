@@ -345,24 +345,44 @@ bootstrap_argocd_apps() {
   echo "Argo CD Application CRs applied."
 
   echo "Generating credentials"
-  
+
   # --- Argo CD Initial Password Retrieval ---
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "")
   if [ -n "$ARGO_PASSWORD" ]; then
     ARGO_PASSWORD=$(echo "$ARGO_PASSWORD" | base64 -d)
   else
-    ARGO_PASSWORD="(unknown)"
+    ARGO_PASSWORD="(unknown)"s
   fi
 
+  # --- Dynamic Database Secret Retrieval ---
+  # Retrieve the database user from the specified secret and namespace.
+  DB_USER=$(/usr/local/bin/kubectl -n default get secret db-user -o jsonpath="{.data.db-user}" 2>/dev/null || echo "")
+  if [ -n "$DB_USER" ]; then
+    DB_USER=$(echo "$DB_USER" | base64 -d)
+  else
+    DB_USER="(unknown)"
+  fi
+
+  # Retrieve the database password from the specified secret and namespace.
+  DB_PASSWORD=$(/usr/local/bin/kubectl -n default get secret -o jsonpath="{.data.db-password}" 2>/dev/null || echo "")
+  if [ -n "$DB_PASSWORD" ]; then
+    DB_PASSWORD=$(echo "$DB_PASSWORD" | base64 -d)
+  else
+    DB_PASSWORD="(unknown)"
+  fi
+
+
   # --- Credentials File Creation ---
-  # Create a file on the server with the generated and retrieved credentials for admin access.
+  # Create a file on the server with all retrieved credentials for admin access.
   cat << EOF > /home/opc/credentials.txt
-# --- Argo CD Admin Credentials ---
-Username: admin
-Password: $${ARGO_PASSWORD}
-EOF
-  chmod 600 /home/opc/credentials.txt
-  echo "Credentials saved to /home/opc/credentials.txt"
+  # --- Argo CD Admin Credentials ---
+  Username: admin
+  Password: ${ARGO_PASSWORD}
+
+  # --- Database Credentials ---
+  DB User: ${DB_USER}
+  DB Password: ${DB_PASSWORD}
+  EOF
 
 }
 
