@@ -307,7 +307,7 @@ install_sealed_secrets() {
 
   # Clean up the temporary directory.
   rm -rf "$TMPDIR" || true
-
+}
 
 # Clones the Git repository containing Kubernetes manifests and applies the root Argo CD application.
 bootstrap_argocd_apps() {
