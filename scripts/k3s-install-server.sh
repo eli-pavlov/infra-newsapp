@@ -360,7 +360,7 @@ save_credentials(){
 
   # --- Dynamic Database Secret Retrieval ---
   # Retrieve the database user from the specified secret and namespace.
-  DB_USER=$(/usr/local/bin/kubectl -n default get secret db-user -o jsonpath="{.data.db-user}" 2>/dev/null || echo "")
+  DB_USER=$(/usr/local/bin/kubectl -n default get secret db-user -o jsonpath="{.data.DB_USER}" 2>/dev/null || echo "")
   if [ -n "$DB_USER" ]; then
     DB_USER=$(echo "$DB_USER" | base64 -d)
   else
@@ -368,7 +368,7 @@ save_credentials(){
   fi
 
   # Retrieve the database password from the specified secret and namespace.
-  DB_PASSWORD=$(/usr/local/bin/kubectl -n default get secret -o jsonpath="{.data.db-password}" 2>/dev/null || echo "")
+  DB_PASSWORD=$(/usr/local/bin/kubectl -n default get secret db-password -o jsonpath="{.data.DB_PASSWORD}" 2>/dev/null || echo "")
   if [ -n "$DB_PASSWORD" ]; then
     DB_PASSWORD=$(echo "$DB_PASSWORD" | base64 -d)
   else
