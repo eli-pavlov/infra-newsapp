@@ -339,15 +339,8 @@ bootstrap_argocd_apps() {
   # Re-enable exit-on-error.
   set -e
 
-  # Wait for the root application to become Healthy in Argo CD.
-  echo "Waiting up to 15m for applications to become Healthy..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=15m
-  echo "Argo CD Application CRs applied."
-}
 
-
-save_credentials(){
- ### --- Save credentials --- ###
+  ### --- Save credentials --- ###
   echo "Generating credentials"
 
   # --- Argo CD Initial Password Retrieval ---
@@ -386,6 +379,12 @@ Password: $${ARGO_PASSWORD}
 DB User: $${DB_USER}
 DB Password: $${DB_PASSWORD}
 EOF
+
+
+  # Wait for the root application to become Healthy in Argo CD.
+  echo "Waiting up to 15m for applications to become Healthy..."
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=15m
+  echo "Argo CD Application CRs applied."
 }
 
 
@@ -401,7 +400,6 @@ main() {
   bootstrap_argo_cd_instance
   install_sealed_secrets
   bootstrap_argocd_apps
-  save_credentials
 }
 
 # Execute the main function, passing any script arguments to it.
