@@ -341,7 +341,7 @@ bootstrap_argocd_apps() {
 
   # Wait for the root application to become Healthy in Argo CD.
   echo "Waiting up to 15m for applications to become Healthy..."
-  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=15m || true
+  /usr/local/bin/kubectl -n argocd wait --for=condition=Healthy application/newsapp-master-app --timeout=15m
   echo "Argo CD Application CRs applied."
 }
 
