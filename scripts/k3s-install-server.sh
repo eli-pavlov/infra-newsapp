@@ -342,7 +342,6 @@ bootstrap_argocd_apps() {
 
   ### --- Save credentials --- ###
   echo "Generating credentials"
-
   # --- Argo CD Initial Password Retrieval ---
   ARGO_PASSWORD=$(/usr/local/bin/kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null || echo "")
   if [ -n "$ARGO_PASSWORD" ]; then
@@ -379,7 +378,6 @@ Password: $${ARGO_PASSWORD}
 DB User: $${DB_USER}
 DB Password: $${DB_PASSWORD}
 EOF
-
 
   # Wait for the root application to become Healthy in Argo CD.
   echo "Waiting up to 15m for applications to become Healthy..."
