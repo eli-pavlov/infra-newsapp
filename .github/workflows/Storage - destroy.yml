@@ -72,6 +72,54 @@ jobs:
           key_file=$HOME/.oci/oci_api_key.pem
           CFG
 
+      - name: Determine backend key and import OCID (if present)
+        working-directory: terraform/1-storage
+        run: |
+          set -euo pipefail
+
+          # decide backend state key: input -> fall back to default 'storage.tfstate'
+          STORAGE_STATE_KEY="${{ github.event.inputs.storage_state_key }}"
+          if [ -z "$STORAGE_STATE_KEY" ]; then
+            STORAGE_STATE_KEY="storage.tfstate"
+          fi
+          echo "Using storage state key: $STORAGE_STATE_KEY"
+
+          # decide which OCID to import: prefer explicit input, else repository secret DB_STORAGE_OCID (may be empty)
+          IMPORT_OCID="${{ github.event.inputs.import_ocid }}"
+          if [ -z "$IMPORT_OCID" ]; then
+            IMPORT_OCID="${{ secrets.DB_STORAGE_OCID }}" || true
+          fi
+
+          # Initialize the backend
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${STORAGE_STATE_KEY}" \
+            -backend-config="namespace=${{ secrets.OS_NAMESPACE }}" \
+            -backend-config="region=${{ secrets.OCI_REGION }}" \
+            -reconfigure
+
+          # If an OCID is available, try to import it into state unless it's already present
+          if [ -n "${IMPORT_OCID:-}" ]; then
+            echo "Found OCID to import: $IMPORT_OCID"
+
+            # capture list of tracked resources (if any)
+            state_list=$(terraform state list 2>/dev/null || true)
+          if echo "$state_list" | grep -q -E '^module\.storage\.oci_core_volume\.db_volume$'; then
+              echo "Resource oci_core_volume.db_volume already present in state — skipping import."
+            else
+              echo "Importing volume into state..."
+              terraform import -lock=false module.storage.oci_core_volume.db_volume "$IMPORT_OCID" || {
+                echo "::warning::Import failed or resource may already exist in state; continuing"
+              }
+            fi
+          else
+            echo "No OCID provided (input or DB_STORAGE_OCID secret). Plan will create resource if code requests it."
+          fi
+
+      - name: Terraform Validate
+        working-directory: terraform/1-storage
+        run: terraform validate
+
       - name: Terraform Init (storage backend)
         working-directory: terraform/1-storage
         run: |
