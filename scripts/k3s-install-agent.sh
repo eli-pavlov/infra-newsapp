@@ -69,24 +69,46 @@ systemctl disable firewalld --now
 
 # Prepares a local block volume specifically for database nodes.
 setup_local_db_volume() {
-  # This function only runs if the node has the label "role=database".
-  echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; return 0; }
+  # Only run on DB nodes (preserve TF-templated labels)
+  echo "$T_NODE_LABELS" | grep -q "role=database" || { echo "Not a DB node; skipping local volume prep."; DB_STORAGE_LABEL="local"; return 0; }
 
-  echo "Preparing local block volume for DB (paravirtualized attach)..."
-  # Detect the attached block volume device, checking for Oracle-specific paths first.
+  echo "Preparing storage for DB node (OCI volume if present, root FS fallback)..."
+
+  # Detect attached block volume (keep your original probes)
   DEV="$(ls /dev/oracleoci/oraclevd[b-z] 2>/dev/null | head -n1 || true)"
-  # Fallback to standard Linux device naming if the Oracle path is not found.
   if [ -z "$DEV" ]; then
     DEV="$(ls /dev/sd[b-z] /dev/nvme*n* 2>/dev/null | head -n1 || true)"
   fi
-  
+
+  # Common paths
+  MNT="/mnt/oci/db"
+  DEV_DIR="${MNT}/dev"
+  PROD_DIR="${MNT}/prod"
+  LEGACY="${MNT}/postgres"
+
   if [ -z "$DEV" ]; then
-    echo "⚠️ No extra OCI volume found; DB will fall back to ephemeral root disk."
+    echo "⚠️ No extra volume found; using root filesystem."
+    # Ensure directories on root FS
+    mkdir -p "$DEV_DIR" "$PROD_DIR"
+    chown -R 999:999 "$DEV_DIR" "$PROD_DIR"
+    chmod -R 700 "$DEV_DIR" "$PROD_DIR"
+
+    # Legacy → dev migration (root FS)
+    if [ -d "$LEGACY" ] && [ "$(ls -A "$LEGACY" 2>/dev/null)" ]; then
+      echo "Migrating legacy data (root) $LEGACY → $DEV_DIR ..."
+      cp -a "$LEGACY"/ "$DEV_DIR"/
+      mv "$LEGACY" "${LEGACY}.bak.$(date +%s)"
+      echo "Legacy migration (root) complete."
+    fi
+
+    DB_STORAGE_LABEL="local"
+    echo "✅ DB paths ready on root FS at $MNT"
     return 0
   fi
 
   echo "Detected extra volume: $DEV"
-  # Check if the volume already has a filesystem. If not, format it with ext4.
+
+  # Create filesystem if missing
   if ! blkid "$DEV" >/dev/null 2>&1; then
     echo "No filesystem on $DEV; creating ext4..."
     mkfs.ext4 -F "$DEV"
@@ -94,47 +116,58 @@ setup_local_db_volume() {
     echo "Filesystem already present on $DEV; leaving as-is."
   fi
 
-  # Get the UUID of the device for a stable fstab entry.
+  # --- Pre-mount migration from root → disk (to avoid hiding root data) ---
+  ROOT_DEV_DIR="$DEV_DIR"
+  ROOT_PROD_DIR="$PROD_DIR"
+  mkdir -p /mnt/oci.tmp
+  mount "$DEV" /mnt/oci.tmp
+
+  # Prepare target dirs on the disk (temporary mount)
+  mkdir -p /mnt/oci.tmp/dev /mnt/oci.tmp/prod
+  chown -R 999:999 /mnt/oci.tmp/dev /mnt/oci.tmp/prod
+  chmod -R 700 /mnt/oci.tmp/dev /mnt/oci.tmp/prod
+
+  # Migrate root/dev → disk/dev (if any data exists)
+  if [ -d "$ROOT_DEV_DIR" ] && [ "$(ls -A "$ROOT_DEV_DIR" 2>/dev/null)" ]; then
+    echo "Migrating existing root data $ROOT_DEV_DIR → /mnt/oci.tmp/dev ..."
+    cp -a "$ROOT_DEV_DIR"/ /mnt/oci.tmp/dev/
+    mv "$ROOT_DEV_DIR" "${ROOT_DEV_DIR}.migrated.$(date +%s)"
+  fi
+
+  # Migrate root/prod → disk/prod (if any data exists)
+  if [ -d "$ROOT_PROD_DIR" ] && [ "$(ls -A "$ROOT_PROD_DIR" 2>/dev/null)" ]; then
+    echo "Migrating existing root data $ROOT_PROD_DIR → /mnt/oci.tmp/prod ..."
+    cp -a "$ROOT_PROD_DIR"/ /mnt/oci.tmp/prod/
+    mv "$ROOT_PROD_DIR" "${ROOT_PROD_DIR}.migrated.$(date +%s)"
+  fi
+
+  # Migrate legacy layout (postgres/) → disk/dev
+  if [ -d "$LEGACY" ] && [ "$(ls -A "$LEGACY" 2>/dev/null)" ]; then
+    echo "Migrating legacy $LEGACY → /mnt/oci.tmp/dev ..."
+    cp -a "$LEGACY"/ /mnt/oci.tmp/dev/
+    mv "$LEGACY" "${LEGACY}.bak.$(date +%s)"
+  fi
+
+  umount /mnt/oci.tmp
+  rmdir /mnt/oci.tmp
+
+  # Stable mount via UUID at /mnt/oci/db (keep your original mountpoint/options)
   UUID="$(blkid -s UUID -o value "$DEV")"
-
-  # Ensure the mount point exists.
-  mkdir -p /mnt/oci/db
-
-  # Add an entry to /etc/fstab to ensure the volume is mounted on boot.
+  mkdir -p "$MNT"
   if ! grep -q "$UUID" /etc/fstab; then
-    echo "UUID=$UUID /mnt/oci/db ext4 defaults,noatime 0 2" >> /etc/fstab
+    echo "UUID=$UUID $MNT ext4 defaults,noatime 0 2" >> /etc/fstab
   fi
 
   echo "Mounting all filesystems from /etc/fstab..."
   mount -a
 
-  # Create subdirectories for development and production persistent volumes.
-  # Set ownership to 999:999, which is the default user/group for the PostgreSQL Helm chart.
-  mkdir -p /mnt/oci/db/dev /mnt/oci/db/prod
-  chown -R 999:999 /mnt/oci/db/dev /mnt/oci/db/prod
-  chmod -R 700 /mnt/oci/db/dev /mnt/oci/db/prod
+  # Ensure final dirs & permissions (in case of fresh disk)
+  mkdir -p "$DEV_DIR" "$PROD_DIR"
+  chown -R 999:999 "$DEV_DIR" "$PROD_DIR"
+  chmod -R 700 "$DEV_DIR" "$PROD_DIR"
 
-  # Verify that the directories were created with the correct ownership.
-  for path in /mnt/oci/db/dev /mnt/oci/db/prod; do
-    if [ ! -d "$path" ]; then
-      echo "Error: $path does not exist"
-      exit 1
-    fi
-    if [ "$(stat -c %u:%g "$path")" != "999:999" ]; then
-      echo "Error: $path has incorrect ownership (expected 999:999)"
-      exit 1
-    fi
-  done
-
-  # Simple data migration logic for backward compatibility.
-  if [ -d /mnt/oci/db/postgres ] && [ "$(ls -A /mnt/oci/db/postgres)" ]; then
-    echo "Found existing data in /mnt/oci/db/postgres; migrating to /mnt/oci/db/dev..."
-    cp -r /mnt/oci/db/postgres/. /mnt/oci/db/dev/
-    echo "Data migrated to /mnt/oci/db/dev; removing old /mnt/oci/db/postgres..."
-    rm -rf /mnt/oci/db/postgres
-  fi
-
-  echo "✅ DB volume ready at /mnt/oci/db (PV paths: /mnt/oci/db/dev, /mnt/oci/db/prod)."
+  DB_STORAGE_LABEL="oci"
+  echo "✅ DB volume ready at $MNT (PV paths: $DEV_DIR, $PROD_DIR)."
 }
 
 # Installs the K3s agent and joins it to the cluster.
@@ -169,6 +202,7 @@ main() {
   install_base_tools
   wait_for_server
   setup_local_db_volume
+  T_NODE_LABELS="${T_NODE_LABELS},dbstorage=${DB_STORAGE_LABEL:-local}"
   install_k3s_agent
 }
 
