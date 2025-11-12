@@ -41,7 +41,7 @@ wait_for_server() {
       echo "❌ Timed out waiting for K3s server."
       exit 1
     fi
-    echo "(${elapsed_time}/${timeout} s) Server not ready yet, waiting 10 seconds..."
+    echo "($elapsed_time/$timeout s) Server not ready yet, waiting 10 seconds..."
     sleep 10
   done
 }
