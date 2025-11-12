@@ -23,6 +23,7 @@ T_K3S_TOKEN="${T_K3S_TOKEN}"
 T_K3S_URL_IP="${T_K3S_URL_IP}"
 T_NODE_LABELS="${T_NODE_LABELS}"
 T_NODE_TAINTS="${T_NODE_TAINTS}"
+DB_STORAGE_LABEL="local"
 
 # --- Function Definitions ---
 
@@ -202,7 +203,6 @@ main() {
   install_base_tools
   wait_for_server
   setup_local_db_volume
-  DB_STORAGE_LABEL="${DB_STORAGE_LABEL:-local}"
   T_NODE_LABELS="${T_NODE_LABELS},dbstorage=$DB_STORAGE_LABEL"
   install_k3s_agent
 }
