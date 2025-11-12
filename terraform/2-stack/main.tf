@@ -8,15 +8,14 @@ locals {
   )
 }
 
-
-# Validation: fail if db_storage_ocid is not set
-resource "null_resource" "validate_db_storage_ocid" {
+# Validation: warn if db_storage_ocid is not set, but do not fail the apply
+resource "null_resource" "warn_db_storage_missing" {
   count = local.db_storage_ocid == null || local.db_storage_ocid == "" ? 1 : 0
   provisioner "local-exec" {
-    command = "echo 'ERROR: db_storage_ocid is empty. Ensure storage workspace created the volume and the remote state key is correct.' && exit 1"
+    command     = "echo '[WARN] db_storage_ocid is empty: cluster will use local-path or ephemeral storage for Postgres.'"
+    interpreter = ["/bin/bash", "-c"]
   }
 }
-
 
 
 # --- Remote state and data sources ---
@@ -67,7 +66,7 @@ module "cluster" {
   os_image_id           = var.os_image_id
   bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
-  db_storage_ocid       = local.db_storage_ocid 
+  db_storage_ocid       = local.db_storage_ocid
   storage_type          = var.storage_type
   # sealed-secrets keypair (base64-encoded)
   sealed_secrets_cert   = var.sealed_secrets_cert
