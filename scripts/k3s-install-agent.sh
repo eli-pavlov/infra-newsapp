@@ -202,7 +202,8 @@ main() {
   install_base_tools
   wait_for_server
   setup_local_db_volume
-  T_NODE_LABELS="${T_NODE_LABELS},dbstorage=${DB_STORAGE_LABEL:-local}"
+  DB_STORAGE_LABEL="${DB_STORAGE_LABEL:-local}"
+  T_NODE_LABELS="${T_NODE_LABELS},dbstorage=$DB_STORAGE_LABEL"
   install_k3s_agent
 }
 
