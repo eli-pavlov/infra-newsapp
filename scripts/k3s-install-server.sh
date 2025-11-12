@@ -247,11 +247,11 @@ seed_db_storage_configmaps() {
   if /usr/local/bin/kubectl get nodes -o json | jq -r '.items[].metadata.labels."dbstorage"' | grep -q '^oci$'; then
     dev_class="local-db-dev"
     prod_class="local-db-prod"
-    echo "Detected dbstorage=oci on a node → using ${dev_class}/${prod_class}"
+    echo "Detected dbstorage=oci on a node → using $${dev_class}/$${prod_class}"
   else
     dev_class="local-path"
     prod_class="local-path"
-    echo "No dbstorage=oci detected → using ${dev_class}/${prod_class}"
+    echo "No dbstorage=oci detected → using $${dev_class}/$${prod_class}"
   fi
 
   # Ensure namespaces exist (default already exists; harmless to apply)
