@@ -127,8 +127,13 @@ variable "storage_state_key" {
 }
 
 variable "db_storage_ocid" {
-  description = "OCID of the DB block storage (optional fallback). Prefer reading from storage.state outputs."
+  description = "OCID of the optional DB block volume. Leave empty to skip attachment and use local/ephemeral."
   type        = string
+  default     = ""
   sensitive   = false
-  default = ""
+
+  validation {
+    condition     = trimspace(var.db_storage_ocid) == "" || can(regex("^ocid1\\.volume\\.", trimspace(var.db_storage_ocid)))
+    error_message = "db_storage_ocid must be empty or a valid OCI volume OCID (starts with ocid1.volume.)."
+  }
 }
