@@ -153,15 +153,18 @@ variable "sealed_secrets_key" {
   sensitive   = true
 }
 
-variable "db_storage_ocid" {
-  description = "OCID of the DB block storage volume (provided by root via remote state or secret fallback)."
-  type        = string
-  sensitive   = false
-  default     = ""
+variable "attach_db_volume" {
+  description = "If true, attach a dedicated block volume to the DB worker. If false, always skip (use local/ephemeral)."
+  type        = bool
+  default     = false
+}
 
-  # Allow empty (skip attach) or a valid OCI volume OCID
+variable "db_storage_ocid" {
+  description = "OCID of the optional DB block volume. Leave empty to skip attachment."
+  type        = string
+  default     = ""
   validation {
-    condition     = var.db_storage_ocid == "" || can(regex("^ocid1\\.volume\\.", var.db_storage_ocid))
+    condition     = trimspace(var.db_storage_ocid) == "" || can(regex("^ocid1\\.volume\\.", trimspace(var.db_storage_ocid)))
     error_message = "db_storage_ocid must be empty or a valid OCI volume OCID (starts with ocid1.volume.)."
   }
 }

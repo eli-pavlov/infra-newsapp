@@ -65,7 +65,6 @@ module "cluster" {
   os_image_id           = var.os_image_id
   bastion_os_image_id   = var.bastion_os_image_id
   manifests_repo_url    = var.manifests_repo_url
-  db_storage_ocid       = local.db_storage_ocid
   storage_type          = var.storage_type
   # sealed-secrets keypair (base64-encoded)
   sealed_secrets_cert   = var.sealed_secrets_cert
@@ -83,7 +82,9 @@ module "cluster" {
   public_nlb_backend_set_http_name  = module.network.public_nlb_backend_set_http_name
   public_nlb_backend_set_https_name = module.network.public_nlb_backend_set_https_name
   private_lb_backendset_name        = module.network.private_lb_backendset_name
-    
+  attach_db_volume = false
+  db_storage_ocid  = ""   # optional; won’t matter while attach_db_volume=false
+  
   depends_on = [
   module.network
   ]
