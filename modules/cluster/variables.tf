@@ -158,4 +158,10 @@ variable "db_storage_ocid" {
   type        = string
   sensitive   = false
   default     = ""
+
+  # Allow empty (skip attach) or a valid OCI volume OCID
+  validation {
+    condition     = var.db_storage_ocid == "" || can(regex("^ocid1\\.volume\\.", var.db_storage_ocid))
+    error_message = "db_storage_ocid must be empty or a valid OCI volume OCID (starts with ocid1.volume.)."
+  }
 }

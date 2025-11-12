@@ -1,18 +1,12 @@
-
 # === Cluster module: storage attachment ===
-# The block storage resource is now managed by infra/storage (separate workspace & state).
-# This module no longer creates or destroys the volume. The stack reads the existing volume
-# by OCID using data.oci_core_volume.db_volume (defined in root main.tf).
-# (Volume creation / lifecycle is handled by infra/storage)
-
-# === Cluster module: storage attachment (OPTIONAL) ===
-# Attaches an existing OCI block volume to the DB worker if an OCID is provided.
-# If no OCID is supplied (empty string), the attachment is skipped so the stack
-# can still come up and the software layer can fall back to local-path/ephemeral.
+# The block storage volume is optional. When `var.db_storage_ocid` is empty,
+# we skip attaching any volume and the DB node will fall back to local/ephemeral
+# storage (handled in cloud-init).
 
 locals {
-  has_db_volume = var.db_storage_ocid != null && var.db_storage_ocid != ""
+  has_db_volume = var.db_storage_ocid != ""
 }
+
 resource "oci_core_volume_attachment" "db_volume_attachment" {
   count           = local.has_db_volume ? 1 : 0
   attachment_type = "paravirtualized"
@@ -20,4 +14,3 @@ resource "oci_core_volume_attachment" "db_volume_attachment" {
   volume_id       = var.db_storage_ocid
   display_name    = "${var.cluster_name}-db-attachment"
 }
-

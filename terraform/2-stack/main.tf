@@ -9,11 +9,10 @@ locals {
 }
 
 # Validation: warn if db_storage_ocid is not set, but do not fail the apply
-resource "null_resource" "warn_db_storage_missing" {
+resource "null_resource" "warn_db_storage_optional" {
   count = local.db_storage_ocid == null || local.db_storage_ocid == "" ? 1 : 0
   provisioner "local-exec" {
-    command     = "echo '[WARN] db_storage_ocid is empty: cluster will use local-path or ephemeral storage for Postgres.'"
-    interpreter = ["/bin/bash", "-c"]
+    command = "echo 'INFO: db_storage_ocid is empty; DB will use local/ephemeral storage. Volume attachment will be skipped.'"
   }
 }
 

@@ -130,4 +130,5 @@ variable "db_storage_ocid" {
   description = "OCID of the DB block storage (optional fallback). Prefer reading from storage.state outputs."
   type        = string
   sensitive   = false
+  default = ""
 }
