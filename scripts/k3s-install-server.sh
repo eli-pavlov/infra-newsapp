@@ -260,11 +260,11 @@ seed_db_storage_configmaps() {
 
   # Create/Update the selector ConfigMap used by manifests/Helm charts
   /usr/local/bin/kubectl -n development create configmap db-storage \
-    --from-literal=class="${dev_class}" \
+    --from-literal=class="$${dev_class}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 
   /usr/local/bin/kubectl -n default create configmap db-storage \
-    --from-literal=class="${prod_class}" \
+    --from-literal=class="$${prod_class}" \
     --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
 }
 
