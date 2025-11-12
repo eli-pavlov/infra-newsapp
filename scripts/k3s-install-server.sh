@@ -240,6 +240,35 @@ bootstrap_argo_cd_instance() {
     /usr/local/bin/kubectl wait --for=condition=Available -n argocd deployment/argocd-server --timeout=5m
 }
 
+seed_db_storage_configmaps() {
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+  # Decide classes: if any node advertises dbstorage=oci, prefer Local PV classes; else fall back to local-path
+  if /usr/local/bin/kubectl get nodes -o json | jq -r '.items[].metadata.labels."dbstorage"' | grep -q '^oci$'; then
+    dev_class="local-db-dev"
+    prod_class="local-db-prod"
+    echo "Detected dbstorage=oci on a node → using ${dev_class}/${prod_class}"
+  else
+    dev_class="local-path"
+    prod_class="local-path"
+    echo "No dbstorage=oci detected → using ${dev_class}/${prod_class}"
+  fi
+
+  # Ensure namespaces exist (default already exists; harmless to apply)
+  /usr/local/bin/kubectl create namespace development --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+  /usr/local/bin/kubectl create namespace default --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+
+  # Create/Update the selector ConfigMap used by manifests/Helm charts
+  /usr/local/bin/kubectl -n development create configmap db-storage \
+    --from-literal=class="${dev_class}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+
+  /usr/local/bin/kubectl -n default create configmap db-storage \
+    --from-literal=class="${prod_class}" \
+    --dry-run=client -o yaml | /usr/local/bin/kubectl apply -f -
+}
+
+
 # Generates secrets and credentials needed by the applications.
 install_sealed_secrets() {
   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -395,6 +424,7 @@ main() {
   wait_for_kubeconfig_and_api
   wait_for_all_nodes
   install_helm
+  seed_db_storage_configmaps
   bootstrap_argo_cd_instance
   install_sealed_secrets
   bootstrap_argocd_apps
