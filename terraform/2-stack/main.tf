@@ -61,6 +61,7 @@ module "cluster" {
   availability_domain   = var.availability_domain
   compartment_ocid      = var.compartment_ocid
   cluster_name          = var.cluster_name
+  app_worker_count     = 1
   public_key_content    = data.oci_objectstorage_object.ssh_public_key.content
   os_image_id           = var.os_image_id
   bastion_os_image_id   = var.bastion_os_image_id
