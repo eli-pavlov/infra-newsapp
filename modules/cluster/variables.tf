@@ -56,7 +56,7 @@ variable "workers_nsg_id"       { type = string }
 variable "app_worker_count" {
   description = "Number of application worker nodes."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 # --- DATABASE & SECRET VARIABLES ---
