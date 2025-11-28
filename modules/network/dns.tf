@@ -83,3 +83,24 @@ resource "cloudflare_dns_record" "grafana" {
   ttl     = 1
   proxied = true
 }
+
+# Website (dev) - website-dev.weblightenment.com
+resource "cloudflare_dns_record" "website_dev" {
+  zone_id = var.cloudflare_zone_id
+  name    = "website-dev"
+  content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
+  type    = "A"
+  ttl     = 1
+  proxied = true
+}
+
+# Website (prod) - website.weblightenment.com
+# Note: this is a subdomain; it does NOT touch the root or your existing main provider.
+resource "cloudflare_dns_record" "website" {
+  zone_id = var.cloudflare_zone_id
+  name    = "website"
+  content = oci_network_load_balancer_network_load_balancer.public_nlb.ip_addresses[0].ip_address
+  type    = "A"
+  ttl     = 1
+  proxied = true
+}
