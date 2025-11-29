@@ -1,5 +1,5 @@
-
 # === Cluster module: load balancer backends ===
+
 # Backends for the PRIVATE (Classic) LB -> Kube API:6443
 resource "oci_load_balancer_backend" "kube_api" {
   load_balancer_id = var.private_lb_id
@@ -12,14 +12,25 @@ resource "oci_load_balancer_backend" "kube_api" {
   offline          = false
 }
 
-# Helper map of app worker IPs
+# Helper maps of node IPs for the public Network Load Balancer.
+# - app_worker_ips: all application worker nodes
+# - app_backend_ips: if workers exist, use them; otherwise, fall back to the DB node
 locals {
-  app_worker_ips = { for idx, vnic in data.oci_core_vnic.app : tostring(idx) => vnic.private_ip_address }
+  app_worker_ips = {
+    for idx, vnic in data.oci_core_vnic.app :
+    tostring(idx) => vnic.private_ip_address
+  }
+
+  # If there is at least one app worker, use workers as backends.
+  # If app_worker_count == 0 (no workers), use the DB node as the sole backend.
+  app_backend_ips = length(keys(local.app_worker_ips)) > 0 ? local.app_worker_ips : {
+    db = data.oci_core_vnic.db.private_ip_address
+  }
 }
 
-# Backends for the PUBLIC NLB -> ingress-nginx NodePorts 30080/30443
+# Public NLB backends: HTTP (NodePort 30080)
 resource "oci_network_load_balancer_backend" "http" {
-  for_each                 = local.app_worker_ips
+  for_each                 = local.app_backend_ips
   network_load_balancer_id = var.public_nlb_id
   backend_set_name         = var.public_nlb_backend_set_http_name
   name                     = "app-${each.key}-http"
@@ -30,8 +41,9 @@ resource "oci_network_load_balancer_backend" "http" {
   is_offline               = false
 }
 
+# Public NLB backends: HTTPS (NodePort 30443)
 resource "oci_network_load_balancer_backend" "https" {
-  for_each                 = local.app_worker_ips
+  for_each                 = local.app_backend_ips
   network_load_balancer_id = var.public_nlb_id
   backend_set_name         = var.public_nlb_backend_set_https_name
   name                     = "app-${each.key}-https"
