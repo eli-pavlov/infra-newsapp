@@ -43,6 +43,7 @@ install_base_tools() {
   # Refresh the dnf cache. `|| true` prevents the script from exiting if this fails.
   dnf makecache --refresh -y || true
   # Update all system packages.
+  sudo sed -i 's/baseurl=https:\/\/yum$ociregion.$ocidomain/baseurl=https:\/\/yum.oracle.com/g' /etc/yum.repos.d/oracle-linux-ol9.repo
   dnf update -y
   # Install curl, jq (for JSON parsing), and git.
   dnf install -y curl jq git || true
