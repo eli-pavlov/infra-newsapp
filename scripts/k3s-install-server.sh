@@ -276,7 +276,7 @@ install_sealed_secrets() {
   
   # --- Sealed Secrets Setup ---
   # 1. Add the Sealed Secrets Helm repository.
-  helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+  helm repo add sealed-secrets https://bitnami.github.io/sealed-secrets
   helm repo update
 
   # 2. Pull the chart locally to apply CRDs separately.
