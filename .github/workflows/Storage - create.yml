@@ -84,13 +84,16 @@ jobs:
         with:
           terraform_version: 1.13.1
           terraform_wrapper: false
-
+          
       - name: Configure OCI Credentials
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          echo -e "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"          cat > "$HOME/.oci/config" <<CFG
+          echo -e "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          
+          cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
           fingerprint=${{ secrets.OCI_FINGERPRINT }}
@@ -98,6 +101,9 @@ jobs:
           region=${{ secrets.OCI_REGION }}
           key_file=$HOME/.oci/oci_api_key.pem
           CFG
+          
+          # Strip any leading spaces caused by YAML indentation
+          sed -i 's/^[ \t]*//' "$HOME/.oci/config"
 
       - name: Determine backend key and import OCID (if present)
         working-directory: terraform/1-storage
