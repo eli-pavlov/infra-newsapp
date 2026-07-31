@@ -50,6 +50,7 @@ wait_for_server() {
 install_base_tools() {
   echo "Installing base packages (dnf: jq, e2fsprogs, util-linux, curl)..."
   dnf makecache --refresh -y || true
+  sudo sed -i 's/baseurl=https:\/\/yum$ociregion.$ocidomain/baseurl=https:\/\/yum.oracle.com/g' /etc/yum.repos.d/oracle-linux-ol9.repo
   dnf update -y
   dnf install -y jq e2fsprogs util-linux curl || true
 }
