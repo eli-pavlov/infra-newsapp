@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.oci"
           umask 077
-          echo "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
+          echo -e "${{ secrets.OCI_PRIVATE_KEY_PEM }}" > "$HOME/.oci/oci_api_key.pem"
           cat > "$HOME/.oci/config" <<CFG
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
