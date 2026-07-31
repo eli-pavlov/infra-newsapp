@@ -296,7 +296,7 @@ install_sealed_secrets() {
       echo "Failed to fetch the latest KUBESEAL_VERSION"
       exit 1
   fi
-  curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v$${KUBESEAL_VERSION}/kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz"
+  curl -OL "https://github.com/bitnami/sealed-secrets/releases/download/v$${KUBESEAL_VERSION}/kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz"
   tar -xvzf kubeseal-$${KUBESEAL_VERSION}-linux-arm64.tar.gz kubeseal
   sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 
