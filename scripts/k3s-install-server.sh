@@ -290,7 +290,7 @@ install_sealed_secrets() {
 
   # --- Kubeseal CLI Installation ---
   # Fetch the latest version tag from GitHub API and install the kubeseal CLI.
-  KUBESEAL_VERSION=$(curl -s https://api.github.com/repos/bitnami-labs/sealed-secrets/tags | jq -r '.[0].name' | cut -c 2-)
+  KUBESEAL_VERSION=$(curl -s https://api.github.com/repos/bitnami/sealed-secrets/tags | jq -r '.[0].name' | cut -c 2-)
 
   if [ -z "$KUBESEAL_VERSION" ]; then
       echo "Failed to fetch the latest KUBESEAL_VERSION"
