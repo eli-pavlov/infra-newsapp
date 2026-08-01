@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Visible verification step — fails with a clear message if names don't match
       - name: Verify provided bucket name matches secret
@@ -68,9 +68,9 @@ jobs:
       #     OCI_PRIVATE_KEY_PEM: ${{ secrets.OCI_PRIVATE_KEY_PEM }}
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.13.1
+          terraform_version: 1.15.8
           terraform_wrapper: false
 
       - name: Terraform Init (for bootstrap)

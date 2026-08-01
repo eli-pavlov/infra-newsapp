@@ -100,7 +100,7 @@ variable "db_volume_size_gb" {
 variable "k3s_version" {
   description = "The version of K3s to install."
   type        = string
-  default     = "v1.33.4+k3s1"
+  default     = "v1.33.13+k3s1"
 }
 
 variable "public_nlb_id" {

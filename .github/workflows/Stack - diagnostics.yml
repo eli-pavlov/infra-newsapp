@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install tools (jq, oci-cli, openssl)
         run: |
@@ -109,9 +109,9 @@ jobs:
           echo "------------------------------------"
       
       - name: 3. Discover Availability Domains
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.13.1
+          terraform_version: 1.15.8
           terraform_wrapper: false
       - name: Run Availability Domain Discovery Script
         shell: bash
@@ -238,9 +238,9 @@ jobs:
 
 
       - name: 5. Check Terraform Configuration
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.13.1
+          terraform_version: 1.15.8
           terraform_wrapper: false
 
       - name: 6. Run Terraform Init and Validate
